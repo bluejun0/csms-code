@@ -1,0 +1,11 @@
+<XMLDB PATH="local/ubattend/db">
+  <TABLES>
+    <TABLE NAME="local_ubattend_config" COMMENT="설정 테이블">
+      <FIELDS>
+        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="courseid" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" COMMENT="강좌 고유번호"/>
+        <FIELD NAME="smart_status" TYPE="int" LENGTH="1" NOTNULL="false" DEFAULT="2" COMMENT="스마트 출결 상태값"/>
+      </FIELDS>
+    </TABLE>
+  </TABLES>
+</XMLDB>
