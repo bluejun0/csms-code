@@ -40,8 +40,16 @@ export class RecordTypeInference {
     }
 
     // ④ dataarg: 스코프 전역(insert/update 의 data 인자)
-    const da = facts.dataArgBindings.find(d => d.dataVar === varName && sameScope(d.scope, scope) && tableExists(d.tableArg));
-    if (da) return { varName, tableName: da.tableArg, source: 'dataarg' };
+    // 동일 변수명이 서로 다른 테이블에 바인딩되면(예: install/upgrade 스크립트에서
+    // $data 를 재사용) 어느 쪽인지 확신할 수 없으므로 null(오탐 방지) — 단일 테이블로
+    // 귀결될 때만 바인딩.
+    const daMatches = facts.dataArgBindings.filter(d =>
+      d.dataVar === varName && sameScope(d.scope, scope) && tableExists(d.tableArg));
+    if (daMatches.length > 0) {
+      const distinctTables = new Set(daMatches.map(d => d.tableArg));
+      if (distinctTables.size === 1) return { varName, tableName: daMatches[0].tableArg, source: 'dataarg' };
+      return null;
+    }
 
     return null;
   }

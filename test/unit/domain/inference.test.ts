@@ -30,6 +30,20 @@ describe('RecordTypeInference', () => {
     const f = { ...base, dataArgBindings: [{ method: 'insert_record', tableArg: 'local_ubattend_config', dataVar: 'data', index: 90, scope: S }] };
     assert.deepEqual(inf.infer(f, 'data', 50, S, known), { varName: 'data', tableName: 'local_ubattend_config', source: 'dataarg' });
   });
+  it('dataarg: 동일 변수명이 서로 다른 테이블을 가리키면 모호 → null(오탐 방지)', () => {
+    const f = { ...base, dataArgBindings: [
+      { method: 'insert_record', tableArg: 'local_ubattend_config', dataVar: 'data', index: 10, scope: S },
+      { method: 'update_record', tableArg: 'local_ubattend_log', dataVar: 'data', index: 90, scope: S },
+    ] };
+    assert.equal(inf.infer(f, 'data', 50, S, known), null);
+  });
+  it('dataarg: 동일 변수명이 같은 테이블을 여러 번 가리키면 모호 아님 → 바인딩', () => {
+    const f = { ...base, dataArgBindings: [
+      { method: 'insert_record', tableArg: 'local_ubattend_config', dataVar: 'data', index: 10, scope: S },
+      { method: 'update_record', tableArg: 'local_ubattend_config', dataVar: 'data', index: 90, scope: S },
+    ] };
+    assert.deepEqual(inf.infer(f, 'data', 50, S, known), { varName: 'data', tableName: 'local_ubattend_config', source: 'dataarg' });
+  });
   it('phpdoc 테이블 타입이 대입보다 우선', () => {
     const f = { ...base,
       phpdocVars: [{ varName: 'u', typeText: 'assign', index: 5, scope: S }],
