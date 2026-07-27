@@ -3,3 +3,6 @@ dist/
 dist-test/
 *.vsix
 *.map
+# 통합 테스트가 mini-moodle 픽스처에 생성하는 프로브 파일
+test/fixtures/mini-moodle/local/ubattend/probe.php
+.vscode-test/

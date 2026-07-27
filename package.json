@@ -13,6 +13,8 @@
     "bundle": "node esbuild.mjs --production",
     "lint": "eslint src --ext ts",
     "test:unit": "mocha",
+    "pretest:integration": "npm run compile && tsc -p tsconfig.test.json",
+    "test:integration": "node ./dist-test/integration/runTest.js",
     "package": "npm run bundle && vsce package --no-dependencies"
   },
   "dependencies": {
