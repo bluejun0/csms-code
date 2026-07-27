@@ -9,5 +9,9 @@ node_modules/**
 package-lock.json
 .superpowers/**
 docs/superpowers/**
-!dist/**
-dist/**/*.map
+# vsce's ignore engine is NOT gitignore-style (no last-match-wins): a "!" pattern
+# unconditionally force-includes anything it matches, regardless of later ignore
+# rules or file order. So "!dist/**" would defeat any "dist/**/*.map" exclusion no
+# matter where it's placed. Allow-list only the payload we want shipped instead.
+!dist/**/*.js
+!dist/**/*.wasm
