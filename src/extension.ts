@@ -25,7 +25,14 @@ export async function activate(ctx: vscode.ExtensionContext) {
   store.buildFromRoot(root);
 
   // 번들 시 dist에 tree-sitter.wasm + tree-sitter-php.wasm 복사됨
-  const syntax = await TreeSitterPhpSyntax.create(path.join(ctx.extensionPath, 'dist'));
+  let syntax: TreeSitterPhpSyntax;
+  try {
+    syntax = await TreeSitterPhpSyntax.create(path.join(ctx.extensionPath, 'dist'));
+  } catch (err) {
+    console.error('CSMS Code: tree-sitter WASM 로드에 실패하여 확장을 활성화할 수 없습니다.', err);
+    vscode.window.showErrorMessage('CSMS Code: tree-sitter WASM 로드에 실패했습니다. 확장 기능이 비활성화됩니다.');
+    return;
+  }
   const inference = new RecordTypeInference();
 
   const validate = new ValidateRecordColumns(syntax, store, inference);

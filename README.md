@@ -41,6 +41,14 @@ npm run package         # esbuild(production) + vsce package → csms-code-0.1.0
 
 수동 검증 절차는 [docs/manual-verification.md](docs/manual-verification.md)를 참고하세요.
 
+## 알려진 제한 (Known limitations)
+
+추론은 현재 함수 스코프 내 로컬 데이터플로우만 추적하며, 레코드 대입 후 같은 변수를
+다른 값으로 재대입(예: `$rec = build_row();`)하는 경우 그 재대입을 추적하지 못해
+이전 테이블 바인딩이 남아 드물게 정상 코드에 오탐 경고가 날 수 있습니다. 이 경우
+`csmscode.diagnostics.enable`로 진단을 끄거나 해당 변수에 정확한 `@var` 주석을 달 수
+있습니다. (kill-on-reassign은 후속 단계 예정.)
+
 ## 비목표
 
 - PHPStorm 지원

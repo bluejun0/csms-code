@@ -11,7 +11,7 @@
       "files": ["src/domain/**/*.ts"],
       "rules": {
         "no-restricted-imports": ["error", {
-          "patterns": ["vscode", "fs", "path", "web-tree-sitter", "*/infrastructure/*", "*/presentation/*"]
+          "patterns": ["vscode", "fs", "path", "node:fs", "node:path", "node:*", "web-tree-sitter", "*/infrastructure/*", "*/presentation/*"]
         }]
       }
     },
@@ -19,7 +19,7 @@
       "files": ["src/application/**/*.ts"],
       "rules": {
         "no-restricted-imports": ["error", {
-          "patterns": ["vscode", "fs", "path", "*/infrastructure/*", "*/presentation/*"]
+          "patterns": ["vscode", "fs", "path", "node:fs", "node:path", "node:*", "*/infrastructure/*", "*/presentation/*"]
         }]
       }
     }

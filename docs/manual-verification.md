@@ -11,3 +11,11 @@
    - foreach ($rows as $r) 에서 $r-> (get_records 대상) 컬럼 완성
    - $data = new stdClass(); ... insert_record('local_ubattend_config', $data) 위에서 $data-> 완성
 5. 설정 csmscode.diagnostics.enable=false → 진단 사라짐 확인
+
+## 알려진 제한 (Known limitations)
+
+추론은 현재 함수 스코프 내 로컬 데이터플로우만 추적하며, 레코드 대입 후 같은 변수를
+다른 값으로 재대입(예: `$rec = build_row();`)하는 경우 그 재대입을 추적하지 못해
+이전 테이블 바인딩이 남아 드물게 정상 코드에 오탐 경고가 날 수 있습니다. 이 경우
+`csmscode.diagnostics.enable`로 진단을 끄거나 해당 변수에 정확한 `@var` 주석을 달 수
+있습니다. (kill-on-reassign은 후속 단계 예정.)

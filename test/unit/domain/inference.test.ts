@@ -56,4 +56,11 @@ describe('RecordTypeInference', () => {
       assignments: [{ varName: 'u', receiver: 'DB', method: 'get_record', tableArg: 'user', index: 10, scope: S }] };
     assert.equal(inf.infer(f, 'u', 50, S, known)!.source, 'assignment');
   });
+  it('스코프 격리: 다른 함수 스코프의 대입은 건너오지 않음 → null', () => {
+    const scopeA = { start: 0, end: 100 };
+    const scopeB = { start: 200, end: 300 };
+    const f = { ...base,
+      assignments: [{ varName: 'u', receiver: 'DB', method: 'get_record', tableArg: 'user', index: 10, scope: scopeA }] };
+    assert.equal(inf.infer(f, 'u', 250, scopeB, known), null);
+  });
 });
