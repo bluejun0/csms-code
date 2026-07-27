@@ -5,6 +5,7 @@ export function registerDiagnostics(ctx: vscode.ExtensionContext, uc: ValidateRe
   const coll = vscode.languages.createDiagnosticCollection('csmscode');
   ctx.subscriptions.push(coll);
   const refresh = (doc: vscode.TextDocument) => {
+    if (doc.uri.scheme !== 'file') return;
     if (doc.languageId !== 'php') return;
     if (!vscode.workspace.getConfiguration('csmscode').get('diagnostics.enable', true)) { coll.delete(doc.uri); return; }
     const items = uc.run(doc.getText());
@@ -21,5 +22,10 @@ export function registerDiagnostics(ctx: vscode.ExtensionContext, uc: ValidateRe
     vscode.workspace.onDidOpenTextDocument(refresh),
     vscode.workspace.onDidChangeTextDocument(e => refresh(e.document)),
     vscode.workspace.onDidCloseTextDocument(d => coll.delete(d.uri)),
+    vscode.workspace.onDidChangeConfiguration(e => {
+      if (e.affectsConfiguration('csmscode.diagnostics.enable')) {
+        vscode.workspace.textDocuments.forEach(refresh);
+      }
+    }),
   );
 }
