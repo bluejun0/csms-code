@@ -1,0 +1,36 @@
+{
+  "name": "csms-code",
+  "displayName": "CSMS Code",
+  "description": "CSMS/Moodle 개발 지원 — DB 레코드 컬럼 인텔리전스",
+  "version": "0.1.0",
+  "publisher": "bluesoft",
+  "engines": { "vscode": "^1.85.0" },
+  "categories": ["Programming Languages"],
+  "activationEvents": ["onLanguage:php"],
+  "main": "./dist/extension.js",
+  "scripts": {
+    "compile": "tsc -noEmit && node esbuild.mjs",
+    "bundle": "node esbuild.mjs --production",
+    "lint": "eslint src --ext ts",
+    "test:unit": "mocha",
+    "package": "npm run bundle && vsce package --no-dependencies"
+  },
+  "dependencies": {
+    "web-tree-sitter": "0.20.8",
+    "tree-sitter-wasms": "0.1.13"
+  },
+  "devDependencies": {
+    "@types/mocha": "^10.0.6",
+    "@types/node": "^18.19.0",
+    "@types/vscode": "^1.85.0",
+    "@typescript-eslint/eslint-plugin": "^7.0.0",
+    "@typescript-eslint/parser": "^7.0.0",
+    "@vscode/test-electron": "^2.3.9",
+    "@vscode/vsce": "^2.24.0",
+    "esbuild": "^0.20.0",
+    "eslint": "^8.57.0",
+    "mocha": "^10.3.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3"
+  }
+}
