@@ -24,17 +24,47 @@ const Q_ASSIGN_NOTABLE = `
     right: (member_call_expression
       object: (variable_name (name) @recv)
       name: (name) @method))`;
-const Q_FOREACH = `
+// foreach: 4가지 형태를 각각 별도 쿼리로 잡는다(스파이크로 실제 노드 구조 확인, 2026-07-27).
+//   - 단순: foreach ($rows as $r)                     → (foreach_statement (variable_name) (variable_name @item))
+//   - key=>value: foreach ($rows as $k => $v)         → (foreach_statement (variable_name) (pair (variable_name @key) (variable_name @item)))
+//   - by-ref: foreach ($rows as &$r)                  → (foreach_statement (variable_name) (by_ref (variable_name @item)))
+//   - key=>&value: foreach ($rows as $k => &$v)       → (foreach_statement (variable_name) (pair (variable_name @key) (by_ref (variable_name @item))))
+// key 변수는 레코드가 아니므로 캡처만 하고(패턴을 정확히 매칭시키기 위해) itemVar로는 절대 쓰지 않는다.
+const Q_FOREACH_SIMPLE = `
   (foreach_statement (variable_name (name) @collection) (variable_name (name) @item))`;
+const Q_FOREACH_PAIR = `
+  (foreach_statement (variable_name (name) @collection)
+    (pair (variable_name (name) @key) (variable_name (name) @item)))`;
+const Q_FOREACH_BYREF = `
+  (foreach_statement (variable_name (name) @collection)
+    (by_ref (variable_name (name) @item)))`;
+const Q_FOREACH_PAIR_BYREF = `
+  (foreach_statement (variable_name (name) @collection)
+    (pair (variable_name (name) @key) (by_ref (variable_name (name) @item))))`;
 const Q_PROP = `
   (member_access_expression object: (variable_name (name) @var) name: (name) @prop)`;
+// dataArg: 테이블 문자열 바로 다음(anchor .) 위치 인자만 datavar로 잡는다 — 3번째 이상 인자는 매칭되지 않는다.
+// 메서드는 insert_record/update_record(쓰기)만 허용하는데, 이 grammar/버전에서 술어(#any-of? 등)가
+// top-level 패턴 밖에 있으면 무시됨을 스파이크로 확인했으므로, 메서드 필터링은 캡처 후 코드에서 수행한다.
 const Q_DATAARG = `
   (member_call_expression
     name: (name) @method
-    arguments: (arguments . (argument (string (string_content) @table)) (argument (variable_name (name) @datavar))))`;
+    arguments: (arguments . (argument (string (string_content) @table)) . (argument (variable_name (name) @datavar))))`;
+const DATAARG_WRITE_METHODS = new Set(['insert_record', 'update_record']);
+
+interface CompiledQueries {
+  assign: Parser.Query;
+  assignNoTable: Parser.Query;
+  foreachSimple: Parser.Query;
+  foreachPair: Parser.Query;
+  foreachByRef: Parser.Query;
+  foreachPairByRef: Parser.Query;
+  prop: Parser.Query;
+  dataArg: Parser.Query;
+}
 
 export class TreeSitterPhpSyntax implements PhpSyntax {
-  private constructor(private parser: Parser, private lang: Parser.Language) {}
+  private constructor(private parser: Parser, private queries: CompiledQueries) {}
 
   /** runtimeDir: tree-sitter.wasm + tree-sitter-php.wasm 이 있는 폴더(dist). 테스트에선 node_modules. */
   static async create(runtimeDir?: string): Promise<TreeSitterPhpSyntax> {
@@ -45,7 +75,18 @@ export class TreeSitterPhpSyntax implements PhpSyntax {
     await Parser.init({ locateFile: (f: string) => path.join(rt, f) });
     const lang = await Parser.Language.load(phpWasm);
     const parser = new Parser(); parser.setLanguage(lang);
-    return new TreeSitterPhpSyntax(parser, lang);
+    // 쿼리는 인스턴스당 1회만 컴파일해 재사용한다 — facts() 호출마다 재컴파일하면 WASM 힙이 계속 늘어난다.
+    const queries: CompiledQueries = {
+      assign: lang.query(Q_ASSIGN),
+      assignNoTable: lang.query(Q_ASSIGN_NOTABLE),
+      foreachSimple: lang.query(Q_FOREACH_SIMPLE),
+      foreachPair: lang.query(Q_FOREACH_PAIR),
+      foreachByRef: lang.query(Q_FOREACH_BYREF),
+      foreachPairByRef: lang.query(Q_FOREACH_PAIR_BYREF),
+      prop: lang.query(Q_PROP),
+      dataArg: lang.query(Q_DATAARG),
+    };
+    return new TreeSitterPhpSyntax(parser, queries);
   }
 
   facts(text: string): DocumentFacts {
@@ -61,42 +102,59 @@ export class TreeSitterPhpSyntax implements PhpSyntax {
       for (const c of caps) m.set(c.name, c.node);
       return m;
     };
-    // matches() 로 한 매치 내 캡처들을 묶는다
-    const runMatches = (q: string) => this.lang.query(q).matches(root)
-      .map(mt => ({ caps: capMap(mt.captures), anchor: mt.captures[0].node }));
+    // matches() 로 한 매치 내 캡처들을 묶는다 (쿼리 객체는 캐시된 것을 사용, 매 호출 재컴파일하지 않음)
+    const runMatches = (q: Parser.Query) => q.matches(root).map(mt => ({ caps: capMap(mt.captures) }));
 
     const assignments: RecordAssignment[] = [];
-    for (const { caps } of runMatches(Q_ASSIGN)) {
+    for (const { caps } of runMatches(this.queries.assign)) {
       const varN = caps.get('var')!, recv = caps.get('recv')!, method = caps.get('method')!, table = caps.get('table');
       assignments.push({ varName: varN.text, receiver: recv.text, method: method.text,
         tableArg: table ? table.text : null, index: varN.startIndex, scope: scopeOf(varN) });
     }
     // 테이블 인자가 없는(get_record_sql 등) 대입도 잡아, 이미 잡힌 var는 제외
     const seen = new Set(assignments.map(a => a.index));
-    for (const { caps } of runMatches(Q_ASSIGN_NOTABLE)) {
+    for (const { caps } of runMatches(this.queries.assignNoTable)) {
       const varN = caps.get('var')!;
       if (seen.has(varN.startIndex)) continue;
       assignments.push({ varName: varN.text, receiver: caps.get('recv')!.text, method: caps.get('method')!.text,
         tableArg: null, index: varN.startIndex, scope: scopeOf(varN) });
     }
 
-    const foreachBindings: ForeachBinding[] = runMatches(Q_FOREACH).map(({ caps }) => {
-      const item = caps.get('item')!;
-      return { collectionVar: caps.get('collection')!.text, itemVar: item.text, index: item.startIndex, scope: scopeOf(item) };
-    });
+    // foreach: 4가지 형태를 모두 돌려 병합한다. key 변수는 버리고 value(레코드) 변수만 itemVar로 취급.
+    // 같은 foreach가 두 형태에 동시에 매칭될 일은 노드 구조상 없지만(직속 자식이 variable_name/pair/by_ref 중 하나로 고정),
+    // 방어적으로 item 위치(index) 기준 중복 제거를 해둔다.
+    const foreachBindings: ForeachBinding[] = [];
+    const foreachSeen = new Set<number>();
+    const foreachQueries = [this.queries.foreachSimple, this.queries.foreachPair, this.queries.foreachByRef, this.queries.foreachPairByRef];
+    for (const q of foreachQueries) {
+      for (const { caps } of runMatches(q)) {
+        const item = caps.get('item')!;
+        if (foreachSeen.has(item.startIndex)) continue;
+        foreachSeen.add(item.startIndex);
+        foreachBindings.push({ collectionVar: caps.get('collection')!.text, itemVar: item.text, index: item.startIndex, scope: scopeOf(item) });
+      }
+    }
 
-    const dataArgBindings: DataArgBinding[] = runMatches(Q_DATAARG).map(({ caps }) => {
+    // dataArg: 쓰기 메서드(insert_record/update_record)만, 테이블 문자열 바로 다음 2번째 위치 인자만 남긴다.
+    const dataArgBindings: DataArgBinding[] = [];
+    for (const { caps } of runMatches(this.queries.dataArg)) {
+      const method = caps.get('method')!;
+      if (!DATAARG_WRITE_METHODS.has(method.text)) continue;
       const dv = caps.get('datavar')!;
-      return { method: caps.get('method')!.text, tableArg: caps.get('table')!.text, dataVar: dv.text, index: dv.startIndex, scope: scopeOf(dv) };
-    });
+      dataArgBindings.push({ method: method.text, tableArg: caps.get('table')!.text, dataVar: dv.text, index: dv.startIndex, scope: scopeOf(dv) });
+    }
 
-    const propertyAccesses: PropertyAccess[] = runMatches(Q_PROP).map(({ caps }) => {
+    const propertyAccesses: PropertyAccess[] = runMatches(this.queries.prop).map(({ caps }) => {
       const v = caps.get('var')!, p = caps.get('prop')!;
       return { varName: v.text, property: p.text, propLine: p.startPosition.row, propColumn: p.startPosition.column,
         propIndex: p.startIndex, index: v.startIndex, scope: scopeOf(v) };
     });
 
     const phpdocVars = extractPhpdocVars(text, root, scopeOf);
+
+    // 위에서 모든 캡처를 plain 값(text/index/scope 등)으로 옮겨 담았으므로, 이제 트리를 해제해도
+    // 반환하는 팩트 객체는 안전하다(트리 노드에 대한 참조를 들고 있지 않음). 호출마다 트리를 쌓아두지 않도록 해제한다.
+    tree.delete();
 
     return { assignments, foreachBindings, dataArgBindings, phpdocVars, propertyAccesses };
   }
