@@ -14,6 +14,14 @@
           "patterns": ["vscode", "fs", "path", "web-tree-sitter", "*/infrastructure/*", "*/presentation/*"]
         }]
       }
+    },
+    {
+      "files": ["src/application/**/*.ts"],
+      "rules": {
+        "no-restricted-imports": ["error", {
+          "patterns": ["vscode", "fs", "path", "*/infrastructure/*", "*/presentation/*"]
+        }]
+      }
     }
   ]
 }

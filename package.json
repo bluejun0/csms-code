@@ -4,10 +4,30 @@
   "description": "CSMS/Moodle 개발 지원 — DB 레코드 컬럼 인텔리전스",
   "version": "0.1.0",
   "publisher": "bluesoft",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bluesoft/csms-code"
+  },
   "engines": { "vscode": "^1.85.0" },
   "categories": ["Programming Languages"],
   "activationEvents": ["onLanguage:php"],
   "main": "./dist/extension.js",
+  "contributes": {
+    "configuration": {
+      "title": "CSMS Code",
+      "properties": {
+        "csmscode.detectInSubfolders": {
+          "type": "array", "items": { "type": "string" }, "default": [],
+          "description": "Moodle 루트가 하위 폴더에 있을 때 탐색할 폴더명 목록 (예: [\"moodle\"])."
+        },
+        "csmscode.diagnostics.enable": {
+          "type": "boolean", "default": true,
+          "description": "DB 레코드 컬럼 오타 진단을 켭니다."
+        }
+      }
+    }
+  },
   "scripts": {
     "compile": "tsc -noEmit && node esbuild.mjs",
     "bundle": "node esbuild.mjs --production",
