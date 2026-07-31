@@ -63,4 +63,63 @@ describe('RecordTypeInference', () => {
       assignments: [{ varName: 'u', receiver: 'DB', method: 'get_record', tableArg: 'user', index: 10, scope: scopeA }] };
     assert.equal(inf.infer(f, 'u', 250, scopeB, known), null);
   });
+
+  // ---- kill-on-reassign (스펙 2026-07-31) ----
+  it('kill: 레코드 대입 후 일반 재대입 → null (대표 오탐 시나리오)', () => {
+    const f = { ...base,
+      assignments: [{ varName: 'rec', receiver: 'DB', method: 'get_record', tableArg: 'user', index: 10, scope: S }],
+      plainAssignments: [{ varName: 'rec', index: 10, scope: S }, { varName: 'rec', index: 30, scope: S }] };
+    assert.equal(inf.infer(f, 'rec', 50, S, known), null);
+  });
+  it('kill 후 재차 레코드 대입 → 재바인딩', () => {
+    const f = { ...base,
+      assignments: [
+        { varName: 'rec', receiver: 'DB', method: 'get_record', tableArg: 'user', index: 10, scope: S },
+        { varName: 'rec', receiver: 'DB', method: 'get_record', tableArg: 'assign', index: 40, scope: S }],
+      plainAssignments: [
+        { varName: 'rec', index: 10, scope: S }, { varName: 'rec', index: 30, scope: S }, { varName: 'rec', index: 40, scope: S }] };
+    assert.deepEqual(inf.infer(f, 'rec', 60, S, known), { varName: 'rec', tableName: 'assign', source: 'assignment' });
+  });
+  it('foreach 항목이 앞선 레코드 대입보다 가까우면 foreach 승리(가림 버그 수정)', () => {
+    const f = { ...base,
+      assignments: [
+        { varName: 'r', receiver: 'DB', method: 'get_record', tableArg: 'user', index: 10, scope: S },
+        { varName: 'rows', receiver: 'DB', method: 'get_records', tableArg: 'local_ubattend_log', index: 20, scope: S }],
+      foreachBindings: [{ collectionVar: 'rows', itemVar: 'r', index: 30, scope: S }],
+      plainAssignments: [{ varName: 'r', index: 10, scope: S }, { varName: 'rows', index: 20, scope: S }] };
+    assert.deepEqual(inf.infer(f, 'r', 50, S, known), { varName: 'r', tableName: 'local_ubattend_log', source: 'foreach' });
+  });
+  it('foreach 항목 사용 후 재대입 → kill', () => {
+    const f = { ...base,
+      assignments: [{ varName: 'rows', receiver: 'DB', method: 'get_records', tableArg: 'user', index: 10, scope: S }],
+      foreachBindings: [{ collectionVar: 'rows', itemVar: 'r', index: 20, scope: S }],
+      plainAssignments: [{ varName: 'rows', index: 10, scope: S }, { varName: 'r', index: 40, scope: S }] };
+    assert.equal(inf.infer(f, 'r', 60, S, known), null);
+  });
+  it('phpdoc @var은 후속 일반 대입에도 생존(절대 우선)', () => {
+    const f = { ...base,
+      phpdocVars: [{ varName: 'rec', typeText: 'user', index: 5, scope: S }],
+      plainAssignments: [{ varName: 'rec', index: 10, scope: S }] };
+    assert.equal(inf.infer(f, 'rec', 50, S, known)!.source, 'phpdoc');
+  });
+  it('dataarg는 new stdClass kill에도 생존', () => {
+    const f = { ...base,
+      plainAssignments: [{ varName: 'data', index: 10, scope: S }],
+      dataArgBindings: [{ method: 'insert_record', tableArg: 'local_ubattend_config', dataVar: 'data', index: 90, scope: S }] };
+    assert.deepEqual(inf.infer(f, 'data', 50, S, known), { varName: 'data', tableName: 'local_ubattend_config', source: 'dataarg' });
+  });
+  it('컬렉션 재대입 후 foreach → 항목 바인딩 없음', () => {
+    const f = { ...base,
+      assignments: [{ varName: 'rows', receiver: 'DB', method: 'get_records', tableArg: 'user', index: 10, scope: S }],
+      foreachBindings: [{ collectionVar: 'rows', itemVar: 'r', index: 40, scope: S }],
+      plainAssignments: [{ varName: 'rows', index: 10, scope: S }, { varName: 'rows', index: 20, scope: S }] };
+    assert.equal(inf.infer(f, 'r', 60, S, known), null);
+  });
+  it('다른 스코프의 일반 대입은 kill 아님(sameScope 가드)', () => {
+    const scopeA = { start: 0, end: 100 }; const scopeB = { start: 200, end: 300 };
+    const f = { ...base,
+      assignments: [{ varName: 'rec', receiver: 'DB', method: 'get_record', tableArg: 'user', index: 10, scope: scopeA }],
+      plainAssignments: [{ varName: 'rec', index: 10, scope: scopeA }, { varName: 'rec', index: 250, scope: scopeB }] };
+    assert.deepEqual(inf.infer(f, 'rec', 50, scopeA, known), { varName: 'rec', tableName: 'user', source: 'assignment' });
+  });
 });

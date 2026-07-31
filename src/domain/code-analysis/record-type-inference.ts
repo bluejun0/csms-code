@@ -1,4 +1,4 @@
-import { DocumentFacts, Scope } from './facts';
+import { DocumentFacts, ForeachBinding, Scope } from './facts';
 
 export type BindingSource = 'phpdoc' | 'assignment' | 'foreach' | 'dataarg';
 export interface RecordBinding { varName: string; tableName: string; source: BindingSource; }
@@ -14,7 +14,7 @@ export class RecordTypeInference {
   infer(facts: DocumentFacts, varName: string, atIndex: number, scope: Scope,
         tableExists: (t: string) => boolean): RecordBinding | null {
 
-    // ① phpdoc: 타입 텍스트가 실존 테이블명으로 해석되면 우선
+    // ① phpdoc: 절대 우선 — 오탐 회피 수단(@var)이 자기 다음 대입에 죽지 않도록 위치 비교에 불참
     const doc = nearestPreceding(
       facts.phpdocVars.filter(v => v.varName === varName && sameScope(v.scope, scope)), atIndex);
     if (doc) {
@@ -23,26 +23,30 @@ export class RecordTypeInference {
       // bare stdClass 등 → 폴백(아래로)
     }
 
-    // ② 직전 대입: RECORD_METHODS + 리터럴 테이블
+    // kill 기준: 종류 무관 가장 가까운 일반 대입 — 이보다 오래된 바인딩 이벤트는 죽는다
+    const kill = nearestPreceding(
+      facts.plainAssignments.filter(p => p.varName === varName && sameScope(p.scope, scope)), atIndex);
+
+    // ②+③ 병합: 레코드 대입 vs foreach 중 더 가까운 이벤트가 승리
     const asg = nearestPreceding(
       facts.assignments.filter(a => a.varName === varName && sameScope(a.scope, scope)
         && RECORD_METHODS.has(a.method) && a.tableArg && tableExists(a.tableArg)), atIndex);
-    if (asg) return { varName, tableName: asg.tableArg!, source: 'assignment' };
-
-    // ③ foreach: 항목 변수 → 컬렉션의 테이블
     const fe = nearestPreceding(
       facts.foreachBindings.filter(b => b.itemVar === varName && sameScope(b.scope, scope)), atIndex);
-    if (fe) {
-      const coll = nearestPreceding(
-        facts.assignments.filter(a => a.varName === fe.collectionVar && sameScope(a.scope, scope)
-          && RECORD_METHODS.has(a.method) && a.tableArg && tableExists(a.tableArg)), fe.index);
-      if (coll) return { varName, tableName: coll.tableArg!, source: 'foreach' };
+
+    if (asg && (!fe || asg.index > fe.index)) {
+      // 레코드 대입은 자신도 일반 대입(같은 index)이므로 >= 로 자연 통과
+      if (!kill || asg.index >= kill.index) {
+        return { varName, tableName: asg.tableArg!, source: 'assignment' };
+      }
+    } else if (fe && (!kill || fe.index >= kill.index)) {
+      const table = resolveCollection(facts, fe, scope, tableExists);
+      if (table) return { varName, tableName: table, source: 'foreach' };
     }
 
-    // ④ dataarg: 스코프 전역(insert/update 의 data 인자)
-    // 동일 변수명이 서로 다른 테이블에 바인딩되면(예: install/upgrade 스크립트에서
-    // $data 를 재사용) 어느 쪽인지 확신할 수 없으므로 null(오탐 방지) — 단일 테이블로
-    // 귀결될 때만 바인딩.
+    // ④ dataarg: 스코프 전역 유지 — $data = new stdClass(); … insert_record('tbl', $data)
+    // 패턴에서 new stdClass 대입이 kill이어도 dataarg가 되살리는 것이 의도된 동작.
+    // 동일 변수명이 서로 다른 테이블에 바인딩되면 null(오탐 방지) — 단일 테이블로 귀결될 때만 바인딩.
     const daMatches = facts.dataArgBindings.filter(d =>
       d.dataVar === varName && sameScope(d.scope, scope) && tableExists(d.tableArg));
     if (daMatches.length > 0) {
@@ -53,6 +57,19 @@ export class RecordTypeInference {
 
     return null;
   }
+}
+
+/** foreach 컬렉션 변수를 fe 시점 기준으로 해석 — 컬렉션 변수에도 동일한 kill 가드 적용 */
+function resolveCollection(facts: DocumentFacts, fe: ForeachBinding, scope: Scope,
+                           tableExists: (t: string) => boolean): string | null {
+  const collAsg = nearestPreceding(
+    facts.assignments.filter(a => a.varName === fe.collectionVar && sameScope(a.scope, scope)
+      && RECORD_METHODS.has(a.method) && a.tableArg && tableExists(a.tableArg)), fe.index);
+  if (!collAsg) return null;
+  const collKill = nearestPreceding(
+    facts.plainAssignments.filter(p => p.varName === fe.collectionVar && sameScope(p.scope, scope)), fe.index);
+  if (collKill && collKill.index > collAsg.index) return null;
+  return collAsg.tableArg!;
 }
 
 function nearestPreceding<T extends { index: number }>(items: T[], atIndex: number): T | undefined {
