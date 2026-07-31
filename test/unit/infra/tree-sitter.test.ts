@@ -143,3 +143,27 @@ describe('TreeSitterPhpSyntax — plainAssignments (kill-on-reassign)', () => {
     assert.ok(inner.scope.start > outer.scope.start, '클로저 scope가 함수 scope보다 안쪽이어야 함');
   });
 });
+
+// 최종 리뷰(2026-07-31): 문법 고정 — 복합/구조분해/참조 대입은 plainAssignments에 캡처되지 않음(낙관 동작).
+// tree-sitter-wasms 업그레이드로 노드 형태가 바뀌면 이 테스트가 잡는다.
+const CODE4 = `<?php
+function process4() {
+    $a = 1;
+    $b += 2;
+    $c ??= 3;
+    $d .= 'x';
+    [$e, $f] = [1, 2];
+    list($g, $h) = [3, 4];
+    $i =& $ref;
+}
+`;
+
+describe('TreeSitterPhpSyntax — plainAssignments 문법 고정(비캡처 형태)', () => {
+  let syn: TreeSitterPhpSyntax; let f: any;
+  before(async () => { syn = await TreeSitterPhpSyntax.create(); f = syn.facts(CODE4); });
+
+  it('단순 LHS 대입($a)만 캡처 — 복합(+=/??=/.=)·구조분해·참조(=&) 대입은 비캡처', () => {
+    const names = f.plainAssignments.map((x: any) => x.varName).sort();
+    assert.deepEqual(names, ['a']);
+  });
+});

@@ -116,10 +116,10 @@ describe('RecordTypeInference', () => {
     assert.equal(inf.infer(f, 'r', 60, S, known), null);
   });
   it('다른 스코프의 일반 대입은 kill 아님(sameScope 가드)', () => {
-    const scopeA = { start: 0, end: 100 }; const scopeB = { start: 200, end: 300 };
+    const scopeA = { start: 0, end: 100 }; const scopeB = { start: 20, end: 40 }; // 중첩 클로저 스코프
     const f = { ...base,
       assignments: [{ varName: 'rec', receiver: 'DB', method: 'get_record', tableArg: 'user', index: 10, scope: scopeA }],
-      plainAssignments: [{ varName: 'rec', index: 10, scope: scopeA }, { varName: 'rec', index: 250, scope: scopeB }] };
+      plainAssignments: [{ varName: 'rec', index: 10, scope: scopeA }, { varName: 'rec', index: 30, scope: scopeB }] };
     assert.deepEqual(inf.infer(f, 'rec', 50, scopeA, known), { varName: 'rec', tableName: 'user', source: 'assignment' });
   });
 });
