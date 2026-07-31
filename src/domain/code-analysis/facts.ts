@@ -4,10 +4,12 @@ export interface ForeachBinding { collectionVar: string; itemVar: string; index:
 export interface DataArgBinding { method: string; tableArg: string; dataVar: string; index: number; scope: Scope; }
 export interface PhpdocVar { varName: string; typeText: string; index: number; scope: Scope; }
 export interface PropertyAccess { varName: string; property: string; propLine: number; propColumn: number; propIndex: number; index: number; scope: Scope; }
+export interface PlainAssignment { varName: string; index: number; scope: Scope; }
 export interface DocumentFacts {
   assignments: RecordAssignment[];
   foreachBindings: ForeachBinding[];
   dataArgBindings: DataArgBinding[];
   phpdocVars: PhpdocVar[];
   propertyAccesses: PropertyAccess[];
+  plainAssignments: PlainAssignment[];
 }

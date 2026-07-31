@@ -1,7 +1,7 @@
 import * as path from 'path';
 import Parser from 'web-tree-sitter';
 import {
-  DocumentFacts, RecordAssignment, ForeachBinding, DataArgBinding, PhpdocVar, PropertyAccess, Scope,
+  DocumentFacts, RecordAssignment, ForeachBinding, DataArgBinding, PhpdocVar, PlainAssignment, PropertyAccess, Scope,
 } from '../../domain/code-analysis/facts';
 import { PhpSyntax } from '../../domain/code-analysis/ports/php-syntax';
 
@@ -51,6 +51,9 @@ const Q_DATAARG = `
     name: (name) @method
     arguments: (arguments . (argument (string (string_content) @table)) . (argument (variable_name (name) @datavar))))`;
 const DATAARG_WRITE_METHODS = new Set(['insert_record', 'update_record']);
+// kill-on-reassign: LHS가 단순 변수인 모든 대입(RHS 무관). 레코드 대입도 포함된다(추론이 index 동일성으로 처리).
+const Q_PLAIN_ASSIGN = `
+  (assignment_expression left: (variable_name (name) @var))`;
 
 interface CompiledQueries {
   assign: Parser.Query;
@@ -61,6 +64,7 @@ interface CompiledQueries {
   foreachPairByRef: Parser.Query;
   prop: Parser.Query;
   dataArg: Parser.Query;
+  plainAssign: Parser.Query;
 }
 
 export class TreeSitterPhpSyntax implements PhpSyntax {
@@ -85,6 +89,7 @@ export class TreeSitterPhpSyntax implements PhpSyntax {
       foreachPairByRef: lang.query(Q_FOREACH_PAIR_BYREF),
       prop: lang.query(Q_PROP),
       dataArg: lang.query(Q_DATAARG),
+      plainAssign: lang.query(Q_PLAIN_ASSIGN),
     };
     return new TreeSitterPhpSyntax(parser, queries);
   }
@@ -144,6 +149,12 @@ export class TreeSitterPhpSyntax implements PhpSyntax {
       dataArgBindings.push({ method: method.text, tableArg: caps.get('table')!.text, dataVar: dv.text, index: dv.startIndex, scope: scopeOf(dv) });
     }
 
+    const plainAssignments: PlainAssignment[] = [];
+    for (const { caps } of runMatches(this.queries.plainAssign)) {
+      const varN = caps.get('var')!;
+      plainAssignments.push({ varName: varN.text, index: varN.startIndex, scope: scopeOf(varN) });
+    }
+
     const propertyAccesses: PropertyAccess[] = runMatches(this.queries.prop).map(({ caps }) => {
       const v = caps.get('var')!, p = caps.get('prop')!;
       return { varName: v.text, property: p.text, propLine: p.startPosition.row, propColumn: p.startPosition.column,
@@ -156,7 +167,7 @@ export class TreeSitterPhpSyntax implements PhpSyntax {
     // 반환하는 팩트 객체는 안전하다(트리 노드에 대한 참조를 들고 있지 않음). 호출마다 트리를 쌓아두지 않도록 해제한다.
     tree.delete();
 
-    return { assignments, foreachBindings, dataArgBindings, phpdocVars, propertyAccesses };
+    return { assignments, foreachBindings, dataArgBindings, phpdocVars, propertyAccesses, plainAssignments };
   }
 }
 

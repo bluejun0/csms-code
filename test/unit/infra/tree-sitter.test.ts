@@ -103,3 +103,43 @@ describe('TreeSitterPhpSyntax — review 1 fixes', () => {
     assert.ok(!f.dataArgBindings.some((x: any) => x.dataVar === 'extra'));
   });
 });
+
+// kill-on-reassign: 일반 대입(plainAssignments) 추출 (스펙 2026-07-31)
+const CODE3 = `<?php
+function process3() {
+    $a = build_row();
+    $b = new stdClass();
+    $c = $other;
+    $d = 42;
+    $e = $obj->fetch();
+    $rec = $DB->get_record('user', ['id' => 1]);
+    $rec->prop = 1;
+    $fn = function () { $inner = 1; };
+}
+`;
+
+describe('TreeSitterPhpSyntax — plainAssignments (kill-on-reassign)', () => {
+  let syn: TreeSitterPhpSyntax; let f: any;
+  before(async () => { syn = await TreeSitterPhpSyntax.create(); f = syn.facts(CODE3); });
+
+  it('RHS 종류 무관 전부 캡처: func()/new/변수/리터럴/메서드콜', () => {
+    for (const v of ['a', 'b', 'c', 'd', 'e']) {
+      assert.ok(f.plainAssignments.some((x: any) => x.varName === v), `$${v} 캡처되어야 함`);
+    }
+  });
+  it('프로퍼티 쓰기($rec->prop = 1)는 캡처하지 않음', () => {
+    assert.ok(!f.plainAssignments.some((x: any) => x.varName === 'prop'));
+    assert.equal(f.plainAssignments.filter((x: any) => x.varName === 'rec').length, 1,
+      '$rec는 get_record 대입 1건만(프로퍼티 쓰기 줄은 제외)');
+  });
+  it('레코드 대입도 plainAssignments에 같은 index로 존재', () => {
+    const ra = f.assignments.find((x: any) => x.varName === 'rec');
+    assert.ok(f.plainAssignments.some((x: any) => x.varName === 'rec' && x.index === ra.index));
+  });
+  it('클로저 내부 대입의 scope는 클로저(외부와 분리)', () => {
+    const inner = f.plainAssignments.find((x: any) => x.varName === 'inner');
+    const outer = f.plainAssignments.find((x: any) => x.varName === 'a');
+    assert.ok(inner, '$inner 캡처되어야 함');
+    assert.ok(inner.scope.start > outer.scope.start, '클로저 scope가 함수 scope보다 안쪽이어야 함');
+  });
+});
