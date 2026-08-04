@@ -40,6 +40,15 @@ export function listInstallXmlFiles(root: string): { file: string; component: st
 }
 
 function safeReaddir(dir: string): string[] {
-  try { return fs.readdirSync(dir, { withFileTypes: true }).filter(d => d.isDirectory()).map(d => d.name); }
-  catch { return []; }
+  try {
+    return fs.readdirSync(dir, { withFileTypes: true })
+      .filter(d => d.isDirectory() || (d.isSymbolicLink() && statIsDirectory(path.join(dir, d.name))))
+      .map(d => d.name);
+  } catch { return []; }
+}
+
+/** 심볼릭 링크의 실제 대상이 디렉터리인지 — statSync는 링크를 따라가고, 깨진 링크는 throw → false */
+function statIsDirectory(p: string): boolean {
+  try { return fs.statSync(p).isDirectory(); }
+  catch { return false; }
 }
