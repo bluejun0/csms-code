@@ -142,6 +142,12 @@ describe('RecordTypeInference', () => {
       plainAssignments: [{ varName: 'rows', index: 10, scope: S }] };
     assert.equal(inf.infer(f, 'rows', 50, S, known), null);
   });
+  it('get_records_select 직접 대입 → null (컬렉션 4개 대칭 커버)', () => {
+    const f = { ...base,
+      assignments: [{ varName: 'rows', receiver: 'DB', method: 'get_records_select', tableArg: 'user', index: 10, scope: S }],
+      plainAssignments: [{ varName: 'rows', index: 10, scope: S }] };
+    assert.equal(inf.infer(f, 'rows', 50, S, known), null);
+  });
   it('foreach over get_recordset → 항목은 바인딩', () => {
     const f = { ...base,
       assignments: [{ varName: 'rs', receiver: 'DB', method: 'get_recordset', tableArg: 'local_ubattend_log', index: 10, scope: S }],

@@ -55,3 +55,20 @@ describe('CompleteRecordColumns — scopeContaining 클로저 정밀화', () => 
     assert.equal(uc.run(CODE2, 'c', atOuter).length, 3);
   });
 });
+
+// 컬렉션 분리 E2E 음성 핀(백로그 12번): 도메인 테스트는 합성 팩트라 tree-sitter 추출이
+// 표류하면 못 잡는다. 컬렉션 분리(965295a) 이전 코드라면 'foo' 진단 1건이 나와 실패했을 핀.
+const CODE3 = `<?php
+function h() {
+  $rs = $DB->get_recordset('local_ubattend_config', ['id' => 1]);
+  echo $rs->foo;
+}
+`;
+
+describe('ValidateRecordColumns — 컬렉션 변수 음성 핀', () => {
+  it('recordset 변수 프로퍼티 접근 → 진단 0건 (실파서 E2E)', async () => {
+    const syn = await TreeSitterPhpSyntax.create();
+    const uc = new ValidateRecordColumns(syn, repo, new RecordTypeInference());
+    assert.equal(uc.run(CODE3).length, 0);
+  });
+});
