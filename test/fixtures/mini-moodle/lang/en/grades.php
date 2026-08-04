@@ -1,0 +1,2 @@
+<?php
+$string['gradebook'] = 'Gradebook';

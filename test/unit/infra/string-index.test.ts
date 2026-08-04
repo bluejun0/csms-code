@@ -25,6 +25,10 @@ describe('StringIndexStore', () => {
     assert.equal(store.getString('mod_testmod', 'pluginname')!.en!.value, 'Test module');
     assert.equal(store.getString('testmod', 'pluginname')!.en!.value, 'Test module'); // bare → mod_testmod
   });
+  it('bare 이름이 코어 서브시스템이면 core_<s> 우선(mod 폴백 아님)', () => {
+    assert.equal(store.getString('grades', 'gradebook')!.en!.value, 'Gradebook');
+    assert.equal(store.getString('core_grades', 'gradebook')!.en!.value, 'Gradebook');
+  });
   it('hasComponent: 색인된 것만 true', () => {
     assert.equal(store.hasComponent('local_ubattend'), true);
     assert.equal(store.hasComponent('local_nope'), false);

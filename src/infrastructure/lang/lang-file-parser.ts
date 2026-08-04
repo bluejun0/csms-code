@@ -6,9 +6,11 @@ export function parseLangFile(text: string): ParsedLangString[] {
   const out: ParsedLangString[] = [];
   const re = /\$string\[\s*'((?:[^'\\]|\\.)+)'\s*\]\s*=\s*'((?:[^'\\]|\\.)*)'\s*;/g;
   let m: RegExpExecArray | null;
+  let lastIdx = 0, lastLine = 0; // 증분 라인 계산 — 매치마다 전체 접두부를 재스캔(O(n²))하지 않는다
   while ((m = re.exec(text))) {
-    const line = text.slice(0, m.index).split('\n').length - 1;
-    out.push({ key: unescapeSq(m[1]), value: unescapeSq(m[2]), line });
+    for (let i = lastIdx; i < m.index; i++) if (text.charCodeAt(i) === 10) lastLine++;
+    lastIdx = m.index;
+    out.push({ key: unescapeSq(m[1]), value: unescapeSq(m[2]), line: lastLine });
   }
   return out;
 }

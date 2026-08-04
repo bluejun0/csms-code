@@ -35,6 +35,7 @@ const CODE2 = `<?php
 function g() {
   $c = $DB->get_record('local_ubattend_config', ['id' => 1]);
   echo $c->courseid;
+  echo get_string('attendance_book', 'local_ubattend');
   $fn = function () {
     $tmp = 1;
   };
