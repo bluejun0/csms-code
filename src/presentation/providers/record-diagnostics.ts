@@ -7,7 +7,7 @@ const CHANGE_DEBOUNCE_MS = 300;
 export function registerDiagnostics(ctx: vscode.ExtensionContext, uc: ValidateRecordColumns) {
   const coll = vscode.languages.createDiagnosticCollection('csmscode');
   const debouncer = new KeyedDebouncer(CHANGE_DEBOUNCE_MS);
-  ctx.subscriptions.push(coll, { dispose: () => debouncer.dispose() });
+  ctx.subscriptions.push(debouncer, coll);
   const refresh = (doc: vscode.TextDocument) => {
     if (doc.uri.scheme !== 'file') return;
     if (doc.languageId !== 'php') return;
@@ -25,7 +25,12 @@ export function registerDiagnostics(ctx: vscode.ExtensionContext, uc: ValidateRe
   ctx.subscriptions.push(
     vscode.workspace.onDidOpenTextDocument(refresh),
     // 타이핑 중 keystroke마다 재파싱하지 않도록 문서별 debounce (열림/토글은 즉시 유지)
-    vscode.workspace.onDidChangeTextDocument(e => debouncer.schedule(e.document.uri.toString(), () => refresh(e.document))),
+    vscode.workspace.onDidChangeTextDocument(e => {
+      // 가드 선행: 출력 채널 등 비대상 문서의 변경마다 타이머를 만들었다 지우는 churn 방지
+      // (refresh 내부의 동일 가드는 다른 호출 경로 보호용으로 유지)
+      if (e.document.languageId !== 'php' || e.document.uri.scheme !== 'file') return;
+      debouncer.schedule(e.document.uri.toString(), () => refresh(e.document));
+    }),
     vscode.workspace.onDidCloseTextDocument(d => { debouncer.cancel(d.uri.toString()); coll.delete(d.uri); }),
     vscode.workspace.onDidChangeConfiguration(e => {
       if (e.affectsConfiguration('csmscode.diagnostics.enable')) {

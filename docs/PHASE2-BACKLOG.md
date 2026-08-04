@@ -13,7 +13,7 @@ Phase 1 (DB stdClass 인텔리전스)은 완료되었습니다. 아래는 종합
 ## Phase 2 후속 작업 (우선순위 순)
 1. ~~**kill-on-reassign 추론**~~ — ✅ 완료 (2026-07-31, 설계: `docs/superpowers/specs/2026-07-31-kill-on-reassign-design.md`). 재대입 오탐 제거 + foreach 가림 버그 수정.
 2. ~~**진단 debounce + 파싱 공유**~~ — ✅ 완료 (2026-08-04, 설계: `docs/superpowers/specs/2026-08-04-diagnostics-debounce-facts-cache-design.md`). 문서별 300ms debounce + 텍스트 키 LRU 팩트 캐시(용량 8).
-3. **`get_recordset` 직접 바인딩 제거**: recordset 변수 자체에 컬럼 완성이 뜨는 오해 소지. foreach 항목에만 바인딩되도록 `RECORD_METHODS`에서 분리.
+3. ~~**`get_recordset` 직접 바인딩 제거**~~ — ✅ 완료 (2026-08-04, 설계: `docs/superpowers/specs/2026-08-04-recordset-scope-polish-design.md`). get_records(배열)까지 넓혀 직접 바인딩은 단일 레코드 메서드(get_record/get_record_select)로만 한정.
 4. **symlink 플러그인 디렉터리 색인**: `safeReaddir`가 `Dirent.isDirectory()`라 심볼릭 링크된 `local/*` 플러그인을 건너뜀 → `fs.statSync` 기반으로.
 5. **비동기 활성화 색인**: `buildFromRoot`가 동기 `readFileSync`. 스펙 §6의 비동기·프로그레스로.
 6. **nested subplugin 색인**: 현재 `root/<type>/<name>/db/install.xml`만. 서브플러그인 트리 미포함.
@@ -21,7 +21,7 @@ Phase 1 (DB stdClass 인텔리전스)은 완료되었습니다. 아래는 종합
 8. **resolve/describe 중복 제거**: 프로퍼티 접근 lookup을 `findPropertyAccessAt(facts, atIndex)` 헬퍼로 추출.
 9. **테스트 커버리지 보강**: `sameScope` 크로스스코프(추가됨), `parseFrankenstyle` null, `closestColumn` 비기본/동점, 다중 TABLE install.xml, `updateFile/removeFile/safeParse` 실패 경로.
 10. **.vsix 정리**: `.gitignore`/`.mocharc.json`/`tsconfig.test.json` 등 dev 파일 제외.
-11. **`scopeContaining()`에 plainAssignments 반영**: `src/application/complete-record-columns.ts`의 스코프 추정이 새 팩트를 모른다 — 일반 대입만 있는 클로저가 스코프 축소에 안 보여 바깥 바인딩이 새어들 수 있음(기존과 동일 동작, 개선 기회). 최종 리뷰 2026-07-31 발견.
+11. ~~**`scopeContaining()`에 plainAssignments 반영**~~ — ✅ 완료 (2026-08-04, 같은 설계 문서). 일반 대입만 있는 클로저의 바깥 바인딩 누수 수정.
 
 ## Plan 2 (별도 계획 예정)
 - **언어 문자열 인텔리전스**: `get_string('key','component')` 이동/완성/hover(한국어 값)/누락 진단. Phase 1이 증명한 색인·파서 인프라 재사용, 대부분 정규식 처리 가능.
