@@ -4,6 +4,7 @@ import { InMemoryTableRepository } from '../../../src/infrastructure/xmldb/xmldb
 import { Table } from '../../../src/domain/moodle-model/table';
 import { RecordTypeInference } from '../../../src/domain/code-analysis/record-type-inference';
 import { ValidateRecordColumns } from '../../../src/application/validate-record-columns';
+import { CompleteRecordColumns } from '../../../src/application/complete-record-columns';
 
 const loc = { uri: 'x', line: 0, column: 0 };
 const mk = (name: string, cols: string[]) => new Table(name, 'c', cols.map(n => ({ name: n, type: 'int', comment: n === 'courseid' ? '강좌번호' : '', notnull: true, default: null, location: loc })), loc);
@@ -25,5 +26,32 @@ describe('ValidateRecordColumns', () => {
     assert.equal(diags.length, 1);
     assert.match(diags[0].message, /coursid/);
     assert.equal(diags[0].suggestion, 'courseid');
+  });
+});
+
+// scopeContaining 클로저 정밀화 (스펙 2026-08-04): 일반 대입만 있는 클로저가
+// 스코프 축소에 보여야 바깥 바인딩이 클로저 안 완성으로 새지 않는다.
+const CODE2 = `<?php
+function g() {
+  $c = $DB->get_record('local_ubattend_config', ['id' => 1]);
+  echo $c->courseid;
+  $fn = function () {
+    $tmp = 1;
+  };
+}
+`;
+
+describe('CompleteRecordColumns — scopeContaining 클로저 정밀화', () => {
+  it('일반 대입만 있는 클로저 내부 → 바깥 바인딩이 새지 않음([])', async () => {
+    const syn = await TreeSitterPhpSyntax.create();
+    const uc = new CompleteRecordColumns(syn, repo, new RecordTypeInference());
+    const atInsideClosure = CODE2.indexOf('$tmp');
+    assert.deepEqual(uc.run(CODE2, 'c', atInsideClosure), []);
+  });
+  it('양성 대조: 바깥 함수 위치에서는 컬럼 3개(정상 완성 무회귀)', async () => {
+    const syn = await TreeSitterPhpSyntax.create();
+    const uc = new CompleteRecordColumns(syn, repo, new RecordTypeInference());
+    const atOuter = CODE2.indexOf('$c->courseid');
+    assert.equal(uc.run(CODE2, 'c', atOuter).length, 3);
   });
 });

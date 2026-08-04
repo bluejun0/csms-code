@@ -18,9 +18,9 @@ export class CompleteRecordColumns {
   }
 }
 // 커서 위치를 포함하는 가장 좁은 팩트 스코프(없으면 전체)
-function scopeContaining(facts: { assignments: {scope:Scope}[]; propertyAccesses: {scope:Scope}[]; foreachBindings:{scope:Scope}[]; dataArgBindings:{scope:Scope}[]; phpdocVars:{scope:Scope}[] }, atIndex: number): Scope {
+function scopeContaining(facts: { assignments: {scope:Scope}[]; propertyAccesses: {scope:Scope}[]; foreachBindings:{scope:Scope}[]; dataArgBindings:{scope:Scope}[]; phpdocVars:{scope:Scope}[]; plainAssignments:{scope:Scope}[] }, atIndex: number): Scope {
   let best: Scope = { start: 0, end: Number.MAX_SAFE_INTEGER };
-  const all = [...facts.assignments, ...facts.propertyAccesses, ...facts.foreachBindings, ...facts.dataArgBindings, ...facts.phpdocVars];
+  const all = [...facts.assignments, ...facts.propertyAccesses, ...facts.foreachBindings, ...facts.dataArgBindings, ...facts.phpdocVars, ...facts.plainAssignments];
   for (const { scope } of all)
     if (scope.start <= atIndex && atIndex <= scope.end && (scope.end - scope.start) < (best.end - best.start)) best = scope;
   return best;
