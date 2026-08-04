@@ -52,3 +52,35 @@ function statIsDirectory(p: string): boolean {
   try { return fs.statSync(p).isDirectory(); }
   catch { return false; }
 }
+
+export interface LangFileRef { file: string; component: string; locale: string; }
+const LANG_LOCALES = ['en', 'ko'];
+
+/** 코어(lang/en/*.php — ko 언어팩은 저장소 밖) + 플러그인(lang/{en,ko})의 lang 파일 열거.
+ *  mod 플러그인만 파일명이 `<name>.php`, 그 외는 `<type>_<name>.php` (Moodle 규칙). */
+export function listLangFiles(root: string): LangFileRef[] {
+  const out: LangFileRef[] = [];
+  const coreDir = path.join(root, 'lang', 'en');
+  for (const f of safeReaddirFiles(coreDir)) {
+    if (!f.endsWith('.php')) continue;
+    const base = f.slice(0, -4);
+    out.push({ file: path.join(coreDir, f), component: base === 'moodle' ? 'core' : `core_${base}`, locale: 'en' });
+  }
+  for (const type of PLUGIN_TYPES) {
+    const typeDir = path.join(root, type);
+    if (!fs.existsSync(typeDir)) continue;
+    for (const name of safeReaddir(typeDir)) {
+      const expected = type === 'mod' ? `${name}.php` : `${type}_${name}.php`;
+      for (const locale of LANG_LOCALES) {
+        const f = path.join(typeDir, name, 'lang', locale, expected);
+        if (fs.existsSync(f)) out.push({ file: f, component: `${type}_${name}`, locale });
+      }
+    }
+  }
+  return out;
+}
+
+function safeReaddirFiles(dir: string): string[] {
+  try { return fs.readdirSync(dir, { withFileTypes: true }).filter(d => d.isFile()).map(d => d.name); }
+  catch { return []; }
+}
