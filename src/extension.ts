@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { IndexStore } from './infrastructure/indexing/index-store';
+import { StringIndexStore } from './infrastructure/lang/string-index-store';
 import { TreeSitterPhpSyntax } from './infrastructure/tree-sitter/tree-sitter-php-syntax';
 import { CachedPhpSyntax } from './infrastructure/caching/cached-php-syntax';
 import { findMoodleRoot } from './infrastructure/workspace/moodle-root-resolver';
@@ -9,11 +10,18 @@ import { ValidateRecordColumns } from './application/validate-record-columns';
 import { CompleteRecordColumns } from './application/complete-record-columns';
 import { ResolveRecordDefinition } from './application/resolve-record-definition';
 import { DescribeRecordSymbol } from './application/describe-record-symbol';
+import { CompleteStringKeys } from './application/complete-string-keys';
+import { ResolveStringDefinition } from './application/resolve-string-definition';
+import { DescribeString } from './application/describe-string';
+import { ValidateStringKeys } from './application/validate-string-keys';
 import { registerDiagnostics } from './presentation/providers/record-diagnostics';
 import { RecordColumnCompletionProvider } from './presentation/providers/record-column-completion-provider';
 import { RecordDefinitionProvider } from './presentation/providers/record-definition-provider';
 import { RecordHoverProvider } from './presentation/providers/record-hover-provider';
 import { RecordQuickFixProvider } from './presentation/providers/record-quickfix-provider';
+import { StringKeyCompletionProvider } from './presentation/providers/string-key-completion-provider';
+import { StringDefinitionProvider } from './presentation/providers/string-definition-provider';
+import { StringHoverProvider } from './presentation/providers/string-hover-provider';
 
 export async function activate(ctx: vscode.ExtensionContext) {
   const folder = vscode.workspace.workspaceFolders?.[0];
@@ -24,6 +32,9 @@ export async function activate(ctx: vscode.ExtensionContext) {
 
   const store = new IndexStore();
   store.buildFromRoot(root);
+
+  const strings = new StringIndexStore();
+  strings.buildFromRoot(root);
 
   // 번들 시 dist에 tree-sitter.wasm + tree-sitter-php.wasm 복사됨
   let syntax: CachedPhpSyntax;
@@ -41,18 +52,31 @@ export async function activate(ctx: vscode.ExtensionContext) {
   const resolve = new ResolveRecordDefinition(syntax, store, inference);
   const describe = new DescribeRecordSymbol(syntax, store, inference);
 
+  const completeStr = new CompleteStringKeys(strings);
+  const resolveStr = new ResolveStringDefinition(syntax, strings);
+  const describeStr = new DescribeString(syntax, strings);
+  const validateStr = new ValidateStringKeys(syntax, strings);
+
   const php: vscode.DocumentSelector = { language: 'php', scheme: 'file' };
   ctx.subscriptions.push(
     vscode.languages.registerCompletionItemProvider(php, new RecordColumnCompletionProvider(complete), '>'),
     vscode.languages.registerDefinitionProvider(php, new RecordDefinitionProvider(resolve)),
     vscode.languages.registerHoverProvider(php, new RecordHoverProvider(describe)),
     vscode.languages.registerCodeActionsProvider(php, new RecordQuickFixProvider(), { providedCodeActionKinds: [vscode.CodeActionKind.QuickFix] }),
+    vscode.languages.registerCompletionItemProvider(php, new StringKeyCompletionProvider(completeStr), "'", '"'),
+    vscode.languages.registerDefinitionProvider(php, new StringDefinitionProvider(resolveStr)),
+    vscode.languages.registerHoverProvider(php, new StringHoverProvider(describeStr)),
   );
-  registerDiagnostics(ctx, validate);
+  registerDiagnostics(ctx, validate, validateStr);
 
   // install.xml 변경 시 증분 재색인
   const watcher = vscode.workspace.createFileSystemWatcher('**/db/install.xml');
   const reindex = () => store.buildFromRoot(root); // 단순: 전체 재색인(파일 수가 많지 않음). 최적화는 후속.
   ctx.subscriptions.push(watcher, watcher.onDidChange(reindex), watcher.onDidCreate(reindex), watcher.onDidDelete(reindex));
+
+  // lang 파일 변경 시 문자열 전체 재색인(단순화 — install.xml 워처와 동일 패턴)
+  const langWatcher = vscode.workspace.createFileSystemWatcher('**/lang/*/*.php');
+  const restring = () => strings.buildFromRoot(root);
+  ctx.subscriptions.push(langWatcher, langWatcher.onDidChange(restring), langWatcher.onDidCreate(restring), langWatcher.onDidDelete(restring));
 }
 export function deactivate() { /* noop */ }

@@ -1,10 +1,11 @@
 import * as vscode from 'vscode';
 import { ValidateRecordColumns } from '../../application/validate-record-columns';
+import { ValidateStringKeys } from '../../application/validate-string-keys';
 import { KeyedDebouncer } from '../keyed-debouncer';
 
 const CHANGE_DEBOUNCE_MS = 300;
 
-export function registerDiagnostics(ctx: vscode.ExtensionContext, uc: ValidateRecordColumns) {
+export function registerDiagnostics(ctx: vscode.ExtensionContext, uc: ValidateRecordColumns, ucStrings: ValidateStringKeys) {
   const coll = vscode.languages.createDiagnosticCollection('csmscode');
   const debouncer = new KeyedDebouncer(CHANGE_DEBOUNCE_MS);
   ctx.subscriptions.push(debouncer, coll);
@@ -12,7 +13,8 @@ export function registerDiagnostics(ctx: vscode.ExtensionContext, uc: ValidateRe
     if (doc.uri.scheme !== 'file') return;
     if (doc.languageId !== 'php') return;
     if (!vscode.workspace.getConfiguration('csmscode').get('diagnostics.enable', true)) { coll.delete(doc.uri); return; }
-    const items = uc.run(doc.getText());
+    const text = doc.getText();
+    const items = [...uc.run(text), ...ucStrings.run(text)];
     coll.set(doc.uri, items.map(i => {
       const range = new vscode.Range(i.line, i.column0, i.line, i.column0 + i.length);
       const d = new vscode.Diagnostic(range, i.suggestion ? `${i.message} '${i.suggestion}' 을(를) 의도하셨나요?` : i.message, vscode.DiagnosticSeverity.Warning);
