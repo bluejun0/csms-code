@@ -15,7 +15,7 @@ Phase 1 (DB stdClass 인텔리전스)은 완료되었습니다. 아래는 종합
 1. ~~**kill-on-reassign 추론**~~ — ✅ 완료 (2026-07-31, 설계: `docs/superpowers/specs/2026-07-31-kill-on-reassign-design.md`). 재대입 오탐 제거 + foreach 가림 버그 수정.
 2. ~~**진단 debounce + 파싱 공유**~~ — ✅ 완료 (2026-08-04, 설계: `docs/superpowers/specs/2026-08-04-diagnostics-debounce-facts-cache-design.md`). 문서별 300ms debounce + 텍스트 키 LRU 팩트 캐시(용량 8).
 3. ~~**`get_recordset` 직접 바인딩 제거**~~ — ✅ 완료 (2026-08-04, 설계: `docs/superpowers/specs/2026-08-04-recordset-scope-polish-design.md`). get_records(배열)까지 넓혀 직접 바인딩은 단일 레코드 메서드(get_record/get_record_select)로만 한정.
-4. **symlink 플러그인 디렉터리 색인**: `safeReaddir`가 `Dirent.isDirectory()`라 심볼릭 링크된 `local/*` 플러그인을 건너뜀 → `fs.statSync` 기반으로.
+4. ~~**symlink 플러그인 디렉터리 색인**~~ — ✅ 완료 (2026-08-04, 설계: `docs/superpowers/specs/2026-08-04-symlink-index-hardening-design.md`). 심볼릭 링크 엔트리만 statSync로 확인, 깨진 링크는 조용히 제외.
 5. **비동기 활성화 색인**: `buildFromRoot`가 동기 `readFileSync`. 스펙 §6의 비동기·프로그레스로.
 6. **nested subplugin 색인**: 현재 `root/<type>/<name>/db/install.xml`만. 서브플러그인 트리 미포함.
 7. **dead code 정리 또는 결선**: `parseFrankenstyle`, `TableRepository.allTableNames()`, `IndexStore.updateFile/removeFile`(워처가 전체 재색인이라 미사용), `RecordAssignment.receiver`.
@@ -23,7 +23,7 @@ Phase 1 (DB stdClass 인텔리전스)은 완료되었습니다. 아래는 종합
 9. **테스트 커버리지 보강**: `sameScope` 크로스스코프(추가됨), `parseFrankenstyle` null, `closestColumn` 비기본/동점, 다중 TABLE install.xml, `updateFile/removeFile/safeParse` 실패 경로.
 10. **.vsix 정리**: `.gitignore`/`.mocharc.json`/`tsconfig.test.json` 등 dev 파일 제외.
 11. ~~**`scopeContaining()`에 plainAssignments 반영**~~ — ✅ 완료 (2026-08-04, 같은 설계 문서). 일반 대입만 있는 클로저의 바깥 바인딩 누수 수정.
-12. **재발 방지 하드닝(2026-08-04 최종 리뷰)**: ① `scopeContaining` 파라미터를 `DocumentFacts`로 받아 팩트 배열을 구조적으로 유도(수기 열거는 새 팩트 추가 시 11번 버그 재발 경로) ② 컬렉션 분리 E2E 음성 테스트 1건(`$rs = get_recordset(); $rs->foo` → 진단 없음, 실파서 경유) ③ `get_records_select` 직접 대입 null 테스트(대칭성).
+12. ~~**재발 방지 하드닝(2026-08-04 최종 리뷰)**~~ — ✅ 완료 (2026-08-04, 같은 설계 문서). scopeContaining 구조적 유도 + E2E 음성 핀 + get_records_select 핀.
 
 ## Plan 2 (별도 계획 예정)
 - **언어 문자열 인텔리전스**: `get_string('key','component')` 이동/완성/hover(한국어 값)/누락 진단. Phase 1이 증명한 색인·파서 인프라 재사용, 대부분 정규식 처리 가능.
