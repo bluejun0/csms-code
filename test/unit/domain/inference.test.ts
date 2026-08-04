@@ -122,4 +122,38 @@ describe('RecordTypeInference', () => {
       plainAssignments: [{ varName: 'rec', index: 10, scope: scopeA }, { varName: 'rec', index: 30, scope: scopeB }] };
     assert.deepEqual(inf.infer(f, 'rec', 50, scopeA, known), { varName: 'rec', tableName: 'user', source: 'assignment' });
   });
+
+  // ---- 컬렉션 직접 바인딩 제거 (스펙 2026-08-04) ----
+  it('get_recordset 직접 대입 → null (recordset 객체는 레코드가 아님)', () => {
+    const f = { ...base,
+      assignments: [{ varName: 'rs', receiver: 'DB', method: 'get_recordset', tableArg: 'user', index: 10, scope: S }],
+      plainAssignments: [{ varName: 'rs', index: 10, scope: S }] };
+    assert.equal(inf.infer(f, 'rs', 50, S, known), null);
+  });
+  it('get_recordset_select 직접 대입 → null', () => {
+    const f = { ...base,
+      assignments: [{ varName: 'rs', receiver: 'DB', method: 'get_recordset_select', tableArg: 'user', index: 10, scope: S }],
+      plainAssignments: [{ varName: 'rs', index: 10, scope: S }] };
+    assert.equal(inf.infer(f, 'rs', 50, S, known), null);
+  });
+  it('get_records 직접 대입 → null (배열 변수는 레코드가 아님)', () => {
+    const f = { ...base,
+      assignments: [{ varName: 'rows', receiver: 'DB', method: 'get_records', tableArg: 'user', index: 10, scope: S }],
+      plainAssignments: [{ varName: 'rows', index: 10, scope: S }] };
+    assert.equal(inf.infer(f, 'rows', 50, S, known), null);
+  });
+  it('foreach over get_recordset → 항목은 바인딩', () => {
+    const f = { ...base,
+      assignments: [{ varName: 'rs', receiver: 'DB', method: 'get_recordset', tableArg: 'local_ubattend_log', index: 10, scope: S }],
+      foreachBindings: [{ collectionVar: 'rs', itemVar: 'r', index: 20, scope: S }],
+      plainAssignments: [{ varName: 'rs', index: 10, scope: S }] };
+    assert.deepEqual(inf.infer(f, 'r', 50, S, known), { varName: 'r', tableName: 'local_ubattend_log', source: 'foreach' });
+  });
+  it('foreach over get_record(단일 레코드) → 항목 바인딩 없음 (필드 값 순회)', () => {
+    const f = { ...base,
+      assignments: [{ varName: 'rec', receiver: 'DB', method: 'get_record', tableArg: 'user', index: 10, scope: S }],
+      foreachBindings: [{ collectionVar: 'rec', itemVar: 'v', index: 20, scope: S }],
+      plainAssignments: [{ varName: 'rec', index: 10, scope: S }] };
+    assert.equal(inf.infer(f, 'v', 50, S, known), null);
+  });
 });

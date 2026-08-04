@@ -3,10 +3,10 @@ import { DocumentFacts, ForeachBinding, Scope } from './facts';
 export type BindingSource = 'phpdoc' | 'assignment' | 'foreach' | 'dataarg';
 export interface RecordBinding { varName: string; tableName: string; source: BindingSource; }
 
-const RECORD_METHODS = new Set([
-  'get_record', 'get_record_select', 'get_records', 'get_records_select',
-  'get_recordset', 'get_recordset_select',
-]);
+// 단일 stdClass 레코드 반환 → 변수 자체에 컬럼 바인딩 (② 직접 대입 경로)
+const DIRECT_RECORD_METHODS = new Set(['get_record', 'get_record_select']);
+// 레코드 컬렉션 반환 → foreach 항목 변수에만 바인딩 — 배열/recordset 변수 자체는 레코드가 아님 (스펙 2026-08-04)
+const COLLECTION_METHODS = new Set(['get_records', 'get_records_select', 'get_recordset', 'get_recordset_select']);
 
 function sameScope(a: Scope, b: Scope): boolean { return a.start === b.start && a.end === b.end; }
 
@@ -30,7 +30,7 @@ export class RecordTypeInference {
     // ②+③ 병합: 레코드 대입 vs foreach 중 더 가까운 이벤트가 승리
     const asg = nearestPreceding(
       facts.assignments.filter(a => a.varName === varName && sameScope(a.scope, scope)
-        && RECORD_METHODS.has(a.method) && a.tableArg && tableExists(a.tableArg)), atIndex);
+        && DIRECT_RECORD_METHODS.has(a.method) && a.tableArg && tableExists(a.tableArg)), atIndex);
     const fe = nearestPreceding(
       facts.foreachBindings.filter(b => b.itemVar === varName && sameScope(b.scope, scope)), atIndex);
 
@@ -64,7 +64,7 @@ function resolveCollection(facts: DocumentFacts, fe: ForeachBinding, scope: Scop
                            tableExists: (t: string) => boolean): string | null {
   const collAsg = nearestPreceding(
     facts.assignments.filter(a => a.varName === fe.collectionVar && sameScope(a.scope, scope)
-      && RECORD_METHODS.has(a.method) && a.tableArg && tableExists(a.tableArg)), fe.index);
+      && COLLECTION_METHODS.has(a.method) && a.tableArg && tableExists(a.tableArg)), fe.index);
   if (!collAsg) return null;
   const collKill = nearestPreceding(
     facts.plainAssignments.filter(p => p.varName === fe.collectionVar && sameScope(p.scope, scope)), fe.index);
