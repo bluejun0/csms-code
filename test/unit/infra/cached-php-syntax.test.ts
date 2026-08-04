@@ -8,7 +8,7 @@ class CountingFake implements PhpSyntax {
   calls = 0;
   facts(_text: string): DocumentFacts {
     this.calls++;
-    return { assignments: [], foreachBindings: [], dataArgBindings: [], phpdocVars: [], propertyAccesses: [], plainAssignments: [] };
+    return { assignments: [], foreachBindings: [], dataArgBindings: [], phpdocVars: [], propertyAccesses: [], plainAssignments: [], stringCalls: [] };
   }
 }
 

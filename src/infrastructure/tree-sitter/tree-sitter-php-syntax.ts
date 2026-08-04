@@ -1,7 +1,7 @@
 import * as path from 'path';
 import Parser from 'web-tree-sitter';
 import {
-  DocumentFacts, RecordAssignment, ForeachBinding, DataArgBinding, PhpdocVar, PlainAssignment, PropertyAccess, Scope,
+  DocumentFacts, RecordAssignment, ForeachBinding, DataArgBinding, PhpdocVar, PlainAssignment, PropertyAccess, Scope, StringCall,
 } from '../../domain/code-analysis/facts';
 import { PhpSyntax } from '../../domain/code-analysis/ports/php-syntax';
 
@@ -55,6 +55,15 @@ const DATAARG_WRITE_METHODS = new Set(['insert_record', 'update_record']);
 const Q_PLAIN_ASSIGN = `
   (assignment_expression left: (variable_name (name) @var))`;
 
+// Plan 2: get_string('key','component') 리터럴 호출 — 함수명 필터는 캡처 후 코드에서(술어 미지원, Q_DATAARG 선례).
+// 변수 키/컴포넌트·보간 문자열은 string_content 캡처가 없어 매칭 자체가 안 된다(자연 침묵).
+const Q_STRING_CALL = `
+  (function_call_expression
+    function: (name) @fn
+    arguments: (arguments
+      . (argument (string (string_content) @key))
+      . (argument (string (string_content) @component))))`;
+
 interface CompiledQueries {
   assign: Parser.Query;
   assignNoTable: Parser.Query;
@@ -65,6 +74,7 @@ interface CompiledQueries {
   prop: Parser.Query;
   dataArg: Parser.Query;
   plainAssign: Parser.Query;
+  stringCall: Parser.Query;
 }
 
 export class TreeSitterPhpSyntax implements PhpSyntax {
@@ -90,6 +100,7 @@ export class TreeSitterPhpSyntax implements PhpSyntax {
       prop: lang.query(Q_PROP),
       dataArg: lang.query(Q_DATAARG),
       plainAssign: lang.query(Q_PLAIN_ASSIGN),
+      stringCall: lang.query(Q_STRING_CALL),
     };
     return new TreeSitterPhpSyntax(parser, queries);
   }
@@ -155,6 +166,18 @@ export class TreeSitterPhpSyntax implements PhpSyntax {
       plainAssignments.push({ varName: varN.text, index: varN.startIndex, scope: scopeOf(varN) });
     }
 
+    const stringCalls: StringCall[] = [];
+    for (const { caps } of runMatches(this.queries.stringCall)) {
+      const fn = caps.get('fn')!;
+      if (fn.text !== 'get_string') continue;
+      const key = caps.get('key')!, component = caps.get('component')!;
+      stringCalls.push({
+        key: key.text, component: component.text,
+        keyLine: key.startPosition.row, keyColumn: key.startPosition.column, keyIndex: key.startIndex,
+        index: fn.startIndex,
+      });
+    }
+
     const propertyAccesses: PropertyAccess[] = runMatches(this.queries.prop).map(({ caps }) => {
       const v = caps.get('var')!, p = caps.get('prop')!;
       return { varName: v.text, property: p.text, propLine: p.startPosition.row, propColumn: p.startPosition.column,
@@ -167,7 +190,7 @@ export class TreeSitterPhpSyntax implements PhpSyntax {
     // 반환하는 팩트 객체는 안전하다(트리 노드에 대한 참조를 들고 있지 않음). 호출마다 트리를 쌓아두지 않도록 해제한다.
     tree.delete();
 
-    return { assignments, foreachBindings, dataArgBindings, phpdocVars, propertyAccesses, plainAssignments };
+    return { assignments, foreachBindings, dataArgBindings, phpdocVars, propertyAccesses, plainAssignments, stringCalls };
   }
 }
 

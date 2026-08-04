@@ -5,6 +5,11 @@ export interface DataArgBinding { method: string; tableArg: string; dataVar: str
 export interface PhpdocVar { varName: string; typeText: string; index: number; scope: Scope; }
 export interface PropertyAccess { varName: string; property: string; propLine: number; propColumn: number; propIndex: number; index: number; scope: Scope; }
 export interface PlainAssignment { varName: string; index: number; scope: Scope; }
+export interface StringCall {
+  key: string; component: string;
+  keyLine: number; keyColumn: number; keyIndex: number;
+  index: number;
+}
 export interface DocumentFacts {
   assignments: RecordAssignment[];
   foreachBindings: ForeachBinding[];
@@ -12,4 +17,5 @@ export interface DocumentFacts {
   phpdocVars: PhpdocVar[];
   propertyAccesses: PropertyAccess[];
   plainAssignments: PlainAssignment[];
+  stringCalls: StringCall[];
 }

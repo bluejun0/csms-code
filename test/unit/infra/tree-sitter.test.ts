@@ -167,3 +167,35 @@ describe('TreeSitterPhpSyntax — plainAssignments 문법 고정(비캡처 형�
     assert.deepEqual(names, ['a']);
   });
 });
+
+// Plan 2: get_string 리터럴 호출 추출 (스펙 2026-08-04)
+const CODE5 = `<?php
+function s() {
+    $t = get_string('attendance_book', 'local_ubattend');
+    $u = get_string('attemptnum', 'local_ubattend', $count);
+    $v = get_string($dynamic, 'local_ubattend');
+    $w = other_string('not_me', 'local_ubattend');
+}
+`;
+
+describe('TreeSitterPhpSyntax — stringCalls (get_string)', () => {
+  let syn: TreeSitterPhpSyntax; let f: any;
+  before(async () => { syn = await TreeSitterPhpSyntax.create(); f = syn.facts(CODE5); });
+
+  it('리터럴 key/component 추출 + key 위치 정확성', () => {
+    const c = f.stringCalls.find((x: any) => x.key === 'attendance_book');
+    assert.ok(c, 'attendance_book 호출이 추출되어야 함');
+    assert.equal(c.component, 'local_ubattend');
+    assert.equal(CODE5.slice(c.keyIndex, c.keyIndex + c.key.length), 'attendance_book');
+    assert.ok(c.keyLine === 2 && c.keyColumn > 0);
+  });
+  it('3번째 인자($a)가 있어도 추출', () => {
+    assert.ok(f.stringCalls.some((x: any) => x.key === 'attemptnum'));
+  });
+  it('변수 키는 비추출(자연 침묵)', () => {
+    assert.equal(f.stringCalls.filter((x: any) => x.component === 'local_ubattend').length, 2);
+  });
+  it('get_string 아닌 함수는 제외', () => {
+    assert.ok(!f.stringCalls.some((x: any) => x.key === 'not_me'));
+  });
+});
