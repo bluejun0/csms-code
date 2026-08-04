@@ -12,7 +12,7 @@ Phase 1 (DB stdClass 인텔리전스)은 완료되었습니다. 아래는 종합
 
 ## Phase 2 후속 작업 (우선순위 순)
 1. ~~**kill-on-reassign 추론**~~ — ✅ 완료 (2026-07-31, 설계: `docs/superpowers/specs/2026-07-31-kill-on-reassign-design.md`). 재대입 오탐 제거 + foreach 가림 버그 수정.
-2. **진단 debounce + 파싱 공유**: 현재 keystroke마다 문서 전체 재파싱. debounce와 문서당 팩트 캐시 도입.
+2. ~~**진단 debounce + 파싱 공유**~~ — ✅ 완료 (2026-08-04, 설계: `docs/superpowers/specs/2026-08-04-diagnostics-debounce-facts-cache-design.md`). 문서별 300ms debounce + 텍스트 키 LRU 팩트 캐시(용량 8).
 3. **`get_recordset` 직접 바인딩 제거**: recordset 변수 자체에 컬럼 완성이 뜨는 오해 소지. foreach 항목에만 바인딩되도록 `RECORD_METHODS`에서 분리.
 4. **symlink 플러그인 디렉터리 색인**: `safeReaddir`가 `Dirent.isDirectory()`라 심볼릭 링크된 `local/*` 플러그인을 건너뜀 → `fs.statSync` 기반으로.
 5. **비동기 활성화 색인**: `buildFromRoot`가 동기 `readFileSync`. 스펙 §6의 비동기·프로그레스로.
