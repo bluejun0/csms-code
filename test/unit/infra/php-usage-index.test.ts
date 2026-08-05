@@ -21,7 +21,8 @@ describe('PhpUsageIndex', () => {
   });
   it('canonical 호출: 위치(줄·컬럼) 정확', () => {
     const refs = idx.referencesOf('local_ubattend', 'attendance_book');
-    assert.ok(refs.length >= 1, 'PHP와 JS에서 최소 1개 이상');
+    assert.equal(refs.length, 2, 'PHP 1건 + JS 1건');
+    assert.equal(refs.filter(r => r.uri.endsWith('view.php')).length, 1, 'PHP 파일에서 정확히 1건(중복 추출 방지)');
     const phpRef = refs.find(r => r.uri.endsWith('local/ubattend/view.php'));
     assert.ok(phpRef, 'PHP 파일의 참조가 있어야 함');
     assert.equal(phpRef.line, 1);        // 0-based — 2번째 줄
@@ -35,18 +36,19 @@ describe('PhpUsageIndex', () => {
     assert.equal(idx.referencesOf('core', 'ok').length, 1);
   });
   it('변수 키 호출은 미포착', () => {
-    // view.php의 local_ubattend 호출은 attendance_book(PHP에서 $dynamic 비포착) + JS에서 1건 = 최소 1건
-    const refs = idx.referencesOf('local_ubattend', 'attendance_book');
-    assert.ok(refs.length >= 1, 'attendance_book 참조 최소 1건');
-    assert.ok(!refs.some(r => r.uri.endsWith('view.php') && r.line === 4), '$dynamic 호출은 비포착이어야 함');
+    // view.php에는 local_ubattend 대상 get_string이 2건($dynamic 포함) 있지만 리터럴 1건만 잡혀야 한다
+    const fromPhp = idx.referencesOf('local_ubattend', 'attendance_book')
+      .filter(r => r.uri.endsWith('view.php'));
+    assert.equal(fromPhp.length, 1, '리터럴 호출 1건만');
+    assert.equal(fromPhp[0].line, 1, '$dynamic 줄(4)이 아니라 리터럴 줄(1)');
   });
   it('updateFileText: 항목 교체·제거(증분)', () => {
     const uri = join(root, 'local/ubattend/view.php');
     idx.updateFileText(uri, "<?php\necho get_string('attendance_rate', 'local_ubattend');\n");
     // PHP 파일의 attendance_book 제거 후 JS 파일의 것만 남아야 함
     const bookRefs = idx.referencesOf('local_ubattend', 'attendance_book');
-    assert.ok(!bookRefs.some(r => r.uri.endsWith('view.php')), 'PHP 파일의 attendance_book 제거됨');
-    assert.ok(bookRefs.some(r => r.uri.includes('amd/src')), 'JS 파일의 attendance_book은 남음');
+    assert.equal(bookRefs.length, 1, 'PHP 것만 제거되고 JS 것 1건만 남아야 함');
+    assert.ok(bookRefs[0].uri.includes(join('amd', 'src')), '남은 1건은 JS 파일');
     assert.equal(idx.referencesOf('local_ubattend', 'attendance_rate').length, 1, '새 항목 반영');
     idx.updateFileText(uri, '<?php\n');
     assert.equal(idx.referencesOf('local_ubattend', 'attendance_rate').length, 0, 'PHP 파일의 항목 제거');
