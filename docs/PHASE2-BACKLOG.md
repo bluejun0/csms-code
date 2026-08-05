@@ -29,4 +29,5 @@ Phase 1 (DB stdClass 인텔리전스)은 완료되었습니다. 아래는 종합
 
 ## Plan 2 (별도 계획 예정)
 - ~~**언어 문자열 인텔리전스**~~ — ✅ 완료 (2026-08-04, 설계: `docs/superpowers/specs/2026-08-04-lang-string-intelligence-design.md`). get_string 키 완성/정의 이동(ko·en)/hover(한국어 값)/누락 진단. 비목표: get_strings·lang_string·addHelpButton·AMD str, double-quoted/heredoc lang 값, component 이름 완성.
+- ~~**lang→참조 이동 + 해석 키 하이라이팅**~~ — ✅ 완료 (2026-08-05, 설계: `docs/superpowers/specs/2026-08-05-lang-references-highlight-design.md`). 사용처 색인은 lazy(첫 요청, 진행률) + 저장 단위 증분, 하이라이트는 textLink.foreground.
 - 이후 capability, Mustache 템플릿, JS/AMD 모듈, 웹서비스 등 mdlcode parity 확장.
