@@ -45,4 +45,11 @@ describe('StringUsageIndex', () => {
     idx.updateFileText(uri, '<?php\n');
     assert.equal(idx.referencesOf('local_ubattend', 'attendance_rate').length, 0, '전부 제거');
   });
+  it("키 'string'(get_string 접두부와 충돌)의 컬럼도 정확", () => {
+    const idx2 = new StringUsageIndex(() => false);
+    idx2.updateFileText('/x.php', "<?php\necho get_string('string', 'local_ubattend');\n");
+    const refs = idx2.referencesOf('local_ubattend', 'string');
+    assert.equal(refs.length, 1);
+    assert.equal(refs[0].column, 17);
+  });
 });

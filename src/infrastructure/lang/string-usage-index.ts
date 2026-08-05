@@ -53,7 +53,7 @@ export class StringUsageIndex implements StringUsageRepository {
       lastIdx = m.index;
       const component = m[2] ? normalizeComponent(m[2], this.hasCanonical) : 'core';
       const lineStart = text.lastIndexOf('\n', m.index) + 1;
-      const column = m.index - lineStart + m[0].indexOf(m[1]); // 키 리터럴 내용 시작 컬럼
+      const column = m.index - lineStart + m[0].search(/['"]/) + 1; // 키 리터럴 내용 시작 = 첫 따옴표 다음
       const e: UsageEntry = { component, key: m[1], loc: { uri, line: lastLine, column } };
       entries.push(e);
       this.addEntry(e);

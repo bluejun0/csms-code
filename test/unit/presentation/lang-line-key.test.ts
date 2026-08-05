@@ -12,4 +12,9 @@ describe('langKeyAt', () => {
     assert.equal(langKeyAt(LINE, LINE.indexOf('출석부')), null));
   it('$string 패턴 없는 줄 → null', () =>
     assert.equal(langKeyAt('echo $x;', 3), null));
+  it("키가 '$string[' 자신과 충돌('string')해도 정확", () => {
+    const line = "$string['string'] = 'x';";
+    assert.equal(langKeyAt(line, line.indexOf("'string'") + 3), 'string');
+    assert.equal(langKeyAt(line, 2), null); // $string[ 접두부는 키가 아님
+  });
 });
