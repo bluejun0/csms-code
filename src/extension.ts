@@ -119,7 +119,8 @@ export async function activate(ctx: vscode.ExtensionContext) {
   registerResolvedHighlight(ctx, [
     { setting: 'strings.highlightResolved', languages: ['php'], run: t => listResolved.run(t) },
     { setting: 'templates.highlightResolved', languages: ['php'], run: t => listResolvedTpl.run(t) },
-    { setting: 'strings.highlightResolved', languages: ['javascript'], run: t => listResolvedJs.run(t) },
+    { setting: 'strings.highlightResolved', languages: ['javascript'], run: t => listResolvedJs.runStrings(t) },
+    { setting: 'templates.highlightResolved', languages: ['javascript'], run: t => listResolvedJs.runTemplates(t) },
   ]);
 
   // install.xml 변경 시 증분 재색인

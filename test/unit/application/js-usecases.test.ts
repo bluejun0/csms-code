@@ -54,4 +54,13 @@ describe('JS 유즈케이스 (E2E)', () => {
     assert.deepEqual(r.map(x => x.length).sort((a, b) => a - b),
       ['attendance_book'.length, 'local_ubattend/setting'.length].sort((a, b) => a - b));
   });
+  it('해석 범위: 종류별로 분리 제공(설정 분리용)', () => {
+    const s = list.runStrings(CODE);
+    const t = list.runTemplates(CODE);
+    assert.equal(s.length, 1, '문자열 키 1건');
+    assert.equal(s[0].length, 'attendance_book'.length);
+    assert.equal(t.length, 1, '템플릿 ref 1건');
+    assert.equal(t[0].length, 'local_ubattend/setting'.length);
+    assert.equal(list.run(CODE).length, s.length + t.length, 'run은 둘의 합');
+  });
 });
