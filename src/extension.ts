@@ -22,7 +22,7 @@ import { RecordQuickFixProvider } from './presentation/providers/record-quickfix
 import { StringKeyCompletionProvider } from './presentation/providers/string-key-completion-provider';
 import { StringDefinitionProvider } from './presentation/providers/string-definition-provider';
 import { StringHoverProvider } from './presentation/providers/string-hover-provider';
-import { PhpUsageIndex, isIndexablePhpPath } from './infrastructure/usage/php-usage-index';
+import { PhpUsageIndex, isIndexableSourcePath } from './infrastructure/usage/php-usage-index';
 import { FindStringReferences } from './application/find-string-references';
 import { ListResolvedStringCalls } from './application/list-resolved-string-calls';
 import { LangReferenceProvider } from './presentation/providers/lang-reference-provider';
@@ -126,8 +126,7 @@ export async function activate(ctx: vscode.ExtensionContext) {
 
   // 사용처 색인 증분: lazy 빌드 이후에만, 저장된 파일 단위로 재추출
   ctx.subscriptions.push(vscode.workspace.onDidSaveTextDocument(d => {
-    if (d.languageId === 'php' && d.uri.scheme === 'file' && usageIndex.isBuilt
-        && isIndexablePhpPath(root, d.uri.fsPath)) {
+    if (d.uri.scheme === 'file' && usageIndex.isBuilt && isIndexableSourcePath(root, d.uri.fsPath)) {
       usageIndex.updateFileText(d.uri.fsPath, d.getText());
     }
   }));
