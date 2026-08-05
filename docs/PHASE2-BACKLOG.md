@@ -31,4 +31,5 @@ Phase 1 (DB stdClass 인텔리전스)은 완료되었습니다. 아래는 종합
 - ~~**언어 문자열 인텔리전스**~~ — ✅ 완료 (2026-08-04, 설계: `docs/superpowers/specs/2026-08-04-lang-string-intelligence-design.md`). get_string 키 완성/정의 이동(ko·en)/hover(한국어 값)/누락 진단. 비목표: get_strings·lang_string·addHelpButton·AMD str, double-quoted/heredoc lang 값, component 이름 완성.
 - ~~**lang→참조 이동 + 해석 키 하이라이팅**~~ — ✅ 완료 (2026-08-05, 설계: `docs/superpowers/specs/2026-08-05-lang-references-highlight-design.md`). 사용처 색인은 lazy(첫 요청, 진행률) + 저장 단위 증분, 하이라이트는 textLink.foreground.
 - ~~**Mustache 템플릿 인텔리전스**~~ — ✅ 완료 (2026-08-05, 같은 설계 문서). render_from_template 정의 이동(테마 오버라이드 포함)·템플릿에서 참조 이동·해석 참조 하이라이팅. 비목표: JS `Templates.render()`, 템플릿 이름 완성, .mustache 내부 인텔리전스.
+- ~~**JS/AMD 인텔리전스**~~ — ✅ 완료 (2026-08-05, 설계: `docs/superpowers/specs/2026-08-05-js-amd-intelligence-design.md`). amd/src의 get_string·Templates.render에 이동·hover·하이라이트, 참조 목록 통합. 비목표: JS 진단(AST 부재로 오탐 위험)·JS 자동완성·getStrings 배열·TypeScript.
 - 이후 capability, Mustache 템플릿, JS/AMD 모듈, 웹서비스 등 mdlcode parity 확장.
