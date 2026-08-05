@@ -16,6 +16,9 @@
 8. get_string('', 'local_ubattend')의 첫 인자 따옴표 안에서 입력 → 키 목록 + 한국어 값 미리보기
 9. 존재하는 키 위에서 F12 → lang/ko·lang/en 파일의 $string 줄로 이동(둘 다 있으면 피커), hover → 한국어+영어 값
 10. 존재하지 않는 키(예: get_string('attendance_bok', 'local_ubattend')) → 경고 + 가까운 키 제안. 색인에 없는 컴포넌트는 경고 없음 확인
+11. lang/ko/local_ubattend.php의 $string['attendance_book'] 줄에서 Shift+F12 → 사용처 목록(첫 요청 시 진행률 알림 ~20초, 이후 즉시)
+12. 사용처 파일에서 get_string 호출 추가/삭제 후 저장 → 참조 목록에 반영(증분)
+13. 해석되는 get_string 키가 링크 색상으로 표시되고, csmscode.strings.highlightResolved=false 설정 시 사라짐
 
 ## 알려진 제한 (Known limitations)
 
@@ -28,3 +31,5 @@ kill-on-reassign(2026-07-31)으로 추적되지만, 구조 분해(`[$a,$b] = …
 문자열 색인은 lang 파일의 단일 인용부호 관례(`$string['k'] = 'v';`)만 지원합니다 — 연결 연산·쌍따옴표
 항목은 색인되지 않아 해당 키 사용처에 누락 경고가 뜰 수 있고(진단 off로 회피), 한 인자 호출
 (`get_string('ok')`)과 쌍따옴표 호출은 인텔리전스가 침묵합니다.
+참조 색인은 저장된 파일 기준입니다(미저장 편집은 저장 시 반영). 변수 key/component 호출은
+참조·하이라이팅 모두에서 포착되지 않습니다.

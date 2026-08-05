@@ -6,6 +6,8 @@ import { CompleteStringKeys } from '../../../src/application/complete-string-key
 import { ResolveStringDefinition } from '../../../src/application/resolve-string-definition';
 import { DescribeString } from '../../../src/application/describe-string';
 import { ValidateStringKeys } from '../../../src/application/validate-string-keys';
+import { ListResolvedStringCalls } from '../../../src/application/list-resolved-string-calls';
+import { FindStringReferences } from '../../../src/application/find-string-references';
 
 const root = join(__dirname, '../../fixtures/mini-moodle');
 const store = new StringIndexStore();
@@ -55,5 +57,17 @@ describe('언어 문자열 유즈케이스 (E2E)', () => {
     const at = CODE.indexOf("'local_ubattend'") + 3;
     assert.equal(new DescribeString(syn, store).run(CODE, at), null);
     assert.deepEqual(new ResolveStringDefinition(syn, store).run(CODE, at), []);
+  });
+});
+
+describe('참조·하이라이트 유즈케이스', () => {
+  it('ListResolvedStringCalls: 해석되는 키 범위만 (누락 키·미색인 component 제외)', async () => {
+    const syn = await TreeSitterPhpSyntax.create();
+    const r = new ListResolvedStringCalls(syn, store).run(CODE);
+    assert.deepEqual(r, [{ line: 2, column0: CODE.split('\n')[2].indexOf('attendance_book'), length: 'attendance_book'.length }]);
+  });
+  it('FindStringReferences: 포트 위임', () => {
+    const fake = { referencesOf: (c: string, k: string) => [{ uri: `${c}/${k}`, line: 0, column: 0 }] };
+    assert.equal(new FindStringReferences(fake).run('local_ubattend', 'x')[0].uri, 'local_ubattend/x');
   });
 });

@@ -3,6 +3,7 @@ import { LangEntry, LangString } from '../../domain/lang-model/lang-string';
 import { StringRepository } from '../../domain/lang-model/ports/string-repository';
 import { parseLangFile } from './lang-file-parser';
 import { listLangFiles } from '../workspace/moodle-root-resolver';
+import { normalizeComponent } from '../../domain/lang-model/services/component-normalizer';
 
 export class StringIndexStore implements StringRepository {
   private byComponent = new Map<string, Map<string, LangString>>();
@@ -31,13 +32,8 @@ export class StringIndexStore implements StringRepository {
   }
   hasComponent(component: string): boolean { return this.byComponent.has(this.normalize(component)); }
 
-  /** raw component → canonical 색인 키. bare 이름은 코어 서브시스템 우선, 아니면 레거시 mod 단축. */
   private normalize(raw: string): string {
-    const s = raw.trim();
-    if (!s || s === 'moodle' || s === 'core') return 'core';
-    if (s.includes('_')) return s;
-    if (this.byComponent.has(`core_${s}`)) return `core_${s}`;
-    return `mod_${s}`;
+    return normalizeComponent(raw, c => this.byComponent.has(c));
   }
 }
 

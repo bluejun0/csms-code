@@ -84,3 +84,21 @@ function safeReaddirFiles(dir: string): string[] {
   try { return fs.readdirSync(dir, { withFileTypes: true }).filter(d => d.isFile()).map(d => d.name); }
   catch { return []; }
 }
+
+/** lang 파일 경로 → component (listLangFiles 규칙의 역함수 — 순수 경로 로직). 규칙 밖은 null. */
+export function componentOfLangFile(root: string, file: string): string | null {
+  const rel = path.relative(root, file);
+  if (rel.startsWith('..') || path.isAbsolute(rel)) return null;
+  const parts = rel.split(path.sep);
+  if (parts.length === 3 && parts[0] === 'lang' && parts[1] === 'en' && parts[2].endsWith('.php')) {
+    const base = parts[2].slice(0, -4);
+    return base === 'moodle' ? 'core' : `core_${base}`;
+  }
+  if (parts.length === 5 && parts[2] === 'lang' && LANG_LOCALES.includes(parts[3]) && parts[4].endsWith('.php')) {
+    const [type, name] = parts;
+    if (!PLUGIN_TYPES.includes(type)) return null;
+    const expected = type === 'mod' ? `${name}.php` : `${type}_${name}.php`;
+    return parts[4] === expected ? `${type}_${name}` : null;
+  }
+  return null;
+}

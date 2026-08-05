@@ -20,6 +20,10 @@
         "csmscode.diagnostics.enable": {
           "type": "boolean", "default": true,
           "description": "DB 레코드 컬럼 오타 진단을 켭니다."
+        },
+        "csmscode.strings.highlightResolved": {
+          "type": "boolean", "default": true,
+          "description": "해석되는 get_string 키를 링크 색상(textLink.foreground)으로 하이라이팅합니다."
         }
       }
     }

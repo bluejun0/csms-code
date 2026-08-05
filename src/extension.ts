@@ -4,7 +4,7 @@ import { IndexStore } from './infrastructure/indexing/index-store';
 import { StringIndexStore } from './infrastructure/lang/string-index-store';
 import { TreeSitterPhpSyntax } from './infrastructure/tree-sitter/tree-sitter-php-syntax';
 import { CachedPhpSyntax } from './infrastructure/caching/cached-php-syntax';
-import { findMoodleRoot } from './infrastructure/workspace/moodle-root-resolver';
+import { findMoodleRoot, componentOfLangFile } from './infrastructure/workspace/moodle-root-resolver';
 import { RecordTypeInference } from './domain/code-analysis/record-type-inference';
 import { ValidateRecordColumns } from './application/validate-record-columns';
 import { CompleteRecordColumns } from './application/complete-record-columns';
@@ -22,6 +22,11 @@ import { RecordQuickFixProvider } from './presentation/providers/record-quickfix
 import { StringKeyCompletionProvider } from './presentation/providers/string-key-completion-provider';
 import { StringDefinitionProvider } from './presentation/providers/string-definition-provider';
 import { StringHoverProvider } from './presentation/providers/string-hover-provider';
+import { StringUsageIndex, isIndexablePhpPath } from './infrastructure/lang/string-usage-index';
+import { FindStringReferences } from './application/find-string-references';
+import { ListResolvedStringCalls } from './application/list-resolved-string-calls';
+import { LangReferenceProvider } from './presentation/providers/lang-reference-provider';
+import { registerStringHighlight } from './presentation/string-highlight';
 
 export async function activate(ctx: vscode.ExtensionContext) {
   const folder = vscode.workspace.workspaceFolders?.[0];
@@ -57,6 +62,11 @@ export async function activate(ctx: vscode.ExtensionContext) {
   const describeStr = new DescribeString(syntax, strings);
   const validateStr = new ValidateStringKeys(syntax, strings);
 
+  const usageIndex = new StringUsageIndex(c => strings.hasComponent(c));
+  let usageBuild: Promise<void> | undefined;
+  const findRefs = new FindStringReferences(usageIndex);
+  const listResolved = new ListResolvedStringCalls(syntax, strings);
+
   const php: vscode.DocumentSelector = { language: 'php', scheme: 'file' };
   ctx.subscriptions.push(
     vscode.languages.registerCompletionItemProvider(php, new RecordColumnCompletionProvider(complete), '>'),
@@ -66,8 +76,15 @@ export async function activate(ctx: vscode.ExtensionContext) {
     vscode.languages.registerCompletionItemProvider(php, new StringKeyCompletionProvider(completeStr), "'", '"'),
     vscode.languages.registerDefinitionProvider(php, new StringDefinitionProvider(resolveStr)),
     vscode.languages.registerHoverProvider(php, new StringHoverProvider(describeStr)),
+    vscode.languages.registerReferenceProvider(
+      { language: 'php', scheme: 'file', pattern: '**/lang/*/*.php' },
+      new LangReferenceProvider(findRefs, {
+        built: () => usageIndex.isBuilt,
+        build: cb => usageBuild ?? (usageBuild = usageIndex.buildFromRoot(root, cb)),
+      }, file => componentOfLangFile(root, file))),
   );
   registerDiagnostics(ctx, validate, validateStr);
+  registerStringHighlight(ctx, listResolved);
 
   // install.xml 변경 시 증분 재색인
   const watcher = vscode.workspace.createFileSystemWatcher('**/db/install.xml');
@@ -78,5 +95,19 @@ export async function activate(ctx: vscode.ExtensionContext) {
   const langWatcher = vscode.workspace.createFileSystemWatcher('**/lang/*/*.php');
   const restring = () => strings.buildFromRoot(root);
   ctx.subscriptions.push(langWatcher, langWatcher.onDidChange(restring), langWatcher.onDidCreate(restring), langWatcher.onDidDelete(restring));
+
+  // 사용처 색인 증분: lazy 빌드 이후에만, 저장된 파일 단위로 재추출
+  ctx.subscriptions.push(vscode.workspace.onDidSaveTextDocument(d => {
+    if (d.languageId === 'php' && d.uri.scheme === 'file' && usageIndex.isBuilt
+        && isIndexablePhpPath(root, d.uri.fsPath)) {
+      usageIndex.updateFileText(d.uri.fsPath, d.getText());
+    }
+  }));
+
+  // 삭제된 파일의 참조는 저장 이벤트가 없어 자가치유되지 않는다 — 빈 텍스트로 증분 제거
+  ctx.subscriptions.push(vscode.workspace.onDidDeleteFiles(e => {
+    if (!usageIndex.isBuilt) return;
+    for (const f of e.files) usageIndex.updateFileText(f.fsPath, '');
+  }));
 }
 export function deactivate() { /* noop */ }

@@ -21,7 +21,7 @@ Moodle 코드는 DB 레코드를 대부분 `stdClass`로 다루기 때문에, �
   (전역 데이터플로우·크로스 함수 추론은 범위 밖).
 - **워크스페이스 자동 인식**: Moodle 루트와 core + 커스텀 플러그인을 자동으로 찾아 색인하며,
   파일 변경을 감지해 증분 갱신합니다.
-- **언어 문자열 인텔리전스**: `get_string('key', 'component')` 키 자동완성(한국어 값 미리보기)·정의로 이동(ko/en)·hover·누락 키 진단
+- **언어 문자열 인텔리전스**: `get_string('key', 'component')` 키 자동완성(한국어 값 미리보기)·정의로 이동(ko/en)·hover·누락 키 진단·해석 키 하이라이팅, lang 파일에서 사용처 참조 이동(Shift+F12)
 
 ## 설정
 
@@ -29,6 +29,7 @@ Moodle 코드는 DB 레코드를 대부분 `stdClass`로 다루기 때문에, �
 |---|---|---|---|
 | `csmscode.detectInSubfolders` | `string[]` | `[]` | Moodle 루트가 워크스페이스 하위 폴더에 있을 때 탐색할 폴더명 목록 (예: `["moodle"]`). |
 | `csmscode.diagnostics.enable` | `boolean` | `true` | DB 레코드 컬럼 오타 진단을 켭니다. `false`로 설정하면 진단이 즉시 사라집니다. |
+| `csmscode.strings.highlightResolved` | `boolean` | `true` | 해석되는 get_string 키를 링크 색상으로 하이라이팅 |
 
 ## 개발
 
