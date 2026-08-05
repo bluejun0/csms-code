@@ -39,8 +39,11 @@ JS 파일에서: **정의 이동**(문자열 키→lang 파일, 템플릿 ref→
 
 기존 자산 재사용이 핵심 — 새 색인은 만들지 않는다. `StringIndexStore`·`TemplateIndex`는 그대로 쓰고, JS는 **문서 스캐너**와 **사용처 스캔 확장**만 추가한다.
 
-### 2.1 JS 호출 스캐너 (`src/infrastructure/js/js-call-scanner.ts`)
-vscode·fs 무의존 순수 함수 — 유닛 테스트 대상.
+### 2.1 JS 호출 스캐너 (`src/domain/code-analysis/js-call-scanner.ts`)
+vscode·fs 무의존 순수 함수 — 유닛 테스트 대상. **도메인에 두는 이유**: eslint 계층 규칙이 application의
+`*/infrastructure/*` import를 금지하는데(§2.3의 유즈케이스 3개가 이 함수를 직접 쓴다), 이 스캐너는 외부
+의존이 전혀 없는 텍스트 분석이라 도메인 규칙(node·vscode·infrastructure 금지)을 그대로 만족한다.
+PHP 팩트 추출이 infrastructure인 것은 WASM 의존 때문이며, 여기엔 해당하지 않는다.
 ```ts
 export interface JsStringCall { key: string; component: string; keyLine: number; keyColumn: number; keyIndex: number; }
 export interface JsTemplateCall { ref: string; refLine: number; refColumn: number; refIndex: number; }
@@ -73,7 +76,7 @@ JS 파일 한 곳에 문자열·템플릿 호출이 섞이므로, 커서 위치�
 | `ResolveJsDefinition` | `run(text, atIndex): DefinitionResult[]` | 커서가 문자열 키 안 → lang 위치(ko·en), 템플릿 ref 안 → .mustache 위치(오버라이드 포함). 아니면 `[]` |
 | `DescribeJsSymbol` | `run(text, atIndex): HoverResult \| null` | 문자열: `**comp / key**` + ko/en 값. 템플릿: `**comp / name**` + 파일 경로 목록 |
 | `ListResolvedJsCalls` | `run(text): RangeItem[]` | 색인에 존재하는 문자열 키·템플릿 ref의 범위 |
-생성자는 셋 다 `(scanner 결과를 만드는 순수 함수는 직접 호출, strings: StringRepository, templates: TemplateRepository)` — `scanJsCalls`는 모듈 함수로 직접 import(포트로 감쌀 만큼 교체 가능성이 없다).
+생성자는 셋 다 `(strings: StringRepository, templates: TemplateRepository)`. `scanJsCalls`는 도메인 모듈 함수로 직접 import한다(포트로 감쌀 만큼 교체 가능성이 없고, 도메인이라 계층 규칙에도 걸리지 않는다).
 
 ### 2.4 프레젠테이션
 - `JsDefinitionProvider`·`JsHoverProvider` — 셀렉터 `{ language: 'javascript', scheme: 'file' }`.
