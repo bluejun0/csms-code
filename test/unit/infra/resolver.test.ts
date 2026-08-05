@@ -12,7 +12,7 @@ describe('MoodleRootResolver', () => {
     assert.equal(findMoodleRoot(join(root, 'local/ubattend/db')), root));
   it('install.xml 목록 + 컴포넌트명', () => {
     const list = listInstallXmlFiles(root).map(x => x.component).sort();
-    assert.deepEqual(list, ['core', 'local_ubattend']); // lib/db → core, local/ubattend/db → local_ubattend
+    assert.deepEqual(list, ['block_testblock', 'core', 'local_ubattend']);
   });
 });
 
@@ -55,7 +55,7 @@ describe('MoodleRootResolver — symlink 플러그인 색인', () => {
 describe('MoodleRootResolver — lang 파일 열거', () => {
   it('코어(en)·플러그인(en/ko)·mod 파일명 예외를 컴포넌트·locale과 함께 열거', () => {
     const list = listLangFiles(root).map(x => `${x.component}:${x.locale}`).sort();
-    assert.deepEqual(list, ['core:en', 'core_grades:en', 'local_ubattend:en', 'local_ubattend:ko', 'mod_testmod:en']);
+    assert.deepEqual(list, ['block_testblock:en', 'core:en', 'core_grades:en', 'local_ubattend:en', 'local_ubattend:ko', 'mod_testmod:en', 'tool_testtool:en']);
   });
 });
 
@@ -68,6 +68,10 @@ describe('MoodleRootResolver — componentOfLangFile (경로 역산)', () => {
     assert.equal(componentOfLangFile(root, join(root, 'local/ubattend/lang/ko/local_ubattend.php')), 'local_ubattend'));
   it('mod 파일명 예외: mod/testmod/lang/en/testmod.php → mod_testmod', () =>
     assert.equal(componentOfLangFile(root, join(root, 'mod/testmod/lang/en/testmod.php')), 'mod_testmod'));
+  it('blocks 디렉터리(타입명 block)도 역산', () =>
+    assert.equal(componentOfLangFile(root, join(root, 'blocks/testblock/lang/en/block_testblock.php')), 'block_testblock'));
+  it('중첩 디렉터리(admin/tool)도 역산', () =>
+    assert.equal(componentOfLangFile(root, join(root, 'admin/tool/testtool/lang/en/tool_testtool.php')), 'tool_testtool'));
   it('규칙 밖 파일명 → null', () =>
     assert.equal(componentOfLangFile(root, join(root, 'local/ubattend/lang/ko/wrong.php')), null));
   it('루트 밖 경로 → null', () =>

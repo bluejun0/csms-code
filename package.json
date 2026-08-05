@@ -2,12 +2,16 @@
   "name": "csms-code",
   "displayName": "CSMS Code",
   "description": "CSMS/Moodle 개발 지원 — DB 레코드 컬럼 인텔리전스",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "publisher": "bluesoft",
   "license": "MIT",
   "engines": { "vscode": "^1.85.0" },
   "categories": ["Programming Languages"],
-  "activationEvents": ["onLanguage:php"],
+  "activationEvents": [
+    "onLanguage:php",
+    "workspaceContains:version.php",
+    "workspaceContains:*/version.php"
+  ],
   "main": "./dist/extension.js",
   "contributes": {
     "configuration": {
@@ -24,6 +28,10 @@
         "csmscode.strings.highlightResolved": {
           "type": "boolean", "default": true,
           "description": "해석되는 get_string 키를 링크 색상(textLink.foreground)으로 하이라이팅합니다."
+        },
+        "csmscode.templates.highlightResolved": {
+          "type": "boolean", "default": true,
+          "description": "해석되는 render_from_template 참조를 링크 색상(textLink.foreground)으로 하이라이팅합니다."
         }
       }
     }

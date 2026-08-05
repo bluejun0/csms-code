@@ -17,8 +17,8 @@ Phase 1 (DB stdClass 인텔리전스)은 완료되었습니다. 아래는 종합
 2. ~~**진단 debounce + 파싱 공유**~~ — ✅ 완료 (2026-08-04, 설계: `docs/superpowers/specs/2026-08-04-diagnostics-debounce-facts-cache-design.md`). 문서별 300ms debounce + 텍스트 키 LRU 팩트 캐시(용량 8).
 3. ~~**`get_recordset` 직접 바인딩 제거**~~ — ✅ 완료 (2026-08-04, 설계: `docs/superpowers/specs/2026-08-04-recordset-scope-polish-design.md`). get_records(배열)까지 넓혀 직접 바인딩은 단일 레코드 메서드(get_record/get_record_select)로만 한정.
 4. ~~**symlink 플러그인 디렉터리 색인**~~ — ✅ 완료 (2026-08-04, 설계: `docs/superpowers/specs/2026-08-04-symlink-index-hardening-design.md`). 심볼릭 링크 엔트리만 statSync로 확인, 깨진 링크는 조용히 제외.
-5. **비동기 활성화 색인**: `buildFromRoot`(테이블·**문자열 색인 둘 다**)가 동기 `readFileSync`. 스펙 §6의 비동기·프로그레스로. `safeReaddir`의 statSync도 함께 비동기화(2026-08-04 최종 리뷰 메모).
-6. **nested subplugin 색인**: 현재 `root/<type>/<name>/db/install.xml`만. 서브플러그인 트리 미포함.
+5. **비동기 활성화 색인**: `buildFromRoot`(테이블·**문자열 색인 둘 다**)가 동기 `readFileSync`. 스펙 §6의 비동기·프로그레스로. `safeReaddir`의 statSync도 함께 비동기화(2026-08-04 최종 리뷰 메모). 2026-08-05 activationEvents에 workspaceContains가 추가되어 Moodle 워크스페이스를 열기만 해도 동기 콜드 빌드가 돌므로 우선순위가 올라갔다(PLUGIN_DIRS 수정으로 색인 대상 파일도 늘었다).
+6. ~~**nested subplugin 색인**~~ — ✅ 대부분 완료 (2026-08-05, 설계: `docs/superpowers/specs/2026-08-05-mustache-template-intelligence-design.md`). `PLUGIN_DIRS` 매핑으로 block(blocks)·tool(admin/tool)·qtype(question/type) 등 30개 타입이 실제 디렉터리로 해석된다. **남은 것(전부 코어 타입, 각각 한 줄 매핑 추가로 해결)**: `qbank`→`question/bank`(csms45 기준 20개), `tiny`→`lib/editor/tiny/plugins`(15개 — 4.5의 현행 에디터인데 미매핑이고, 매핑된 레거시 `tinymce` 디렉터리는 4.5에 존재하지 않음), `quizaccess`(12), `assignsubmission`·`assignfeedback`(각 8), `dataformat`(7), `media`(5), 그 외 `logstore`·`antivirus`·`fileconverter`·`search`·`paygw`·`calendartype`·`qbehaviour`·`qformat`·`booktool`·`ltisource`. assignsubmission·quizaccess는 대학 LMS 커스터마이즈에서 흔한 대상이라 우선순위 높음(2026-08-05 최종 리뷰 실측).
 7. **dead code 정리 또는 결선**: `parseFrankenstyle`, `TableRepository.allTableNames()`, `IndexStore.updateFile/removeFile`(워처가 전체 재색인이라 미사용), `RecordAssignment.receiver`.
 8. **resolve/describe 중복 제거**: 프로퍼티 접근 lookup을 `findPropertyAccessAt(facts, atIndex)` 헬퍼로 추출.
 9. **테스트 커버리지 보강**: `sameScope` 크로스스코프(추가됨), `parseFrankenstyle` null, `closestColumn` 비기본/동점, 다중 TABLE install.xml, `updateFile/removeFile/safeParse` 실패 경로.
@@ -30,4 +30,5 @@ Phase 1 (DB stdClass 인텔리전스)은 완료되었습니다. 아래는 종합
 ## Plan 2 (별도 계획 예정)
 - ~~**언어 문자열 인텔리전스**~~ — ✅ 완료 (2026-08-04, 설계: `docs/superpowers/specs/2026-08-04-lang-string-intelligence-design.md`). get_string 키 완성/정의 이동(ko·en)/hover(한국어 값)/누락 진단. 비목표: get_strings·lang_string·addHelpButton·AMD str, double-quoted/heredoc lang 값, component 이름 완성.
 - ~~**lang→참조 이동 + 해석 키 하이라이팅**~~ — ✅ 완료 (2026-08-05, 설계: `docs/superpowers/specs/2026-08-05-lang-references-highlight-design.md`). 사용처 색인은 lazy(첫 요청, 진행률) + 저장 단위 증분, 하이라이트는 textLink.foreground.
+- ~~**Mustache 템플릿 인텔리전스**~~ — ✅ 완료 (2026-08-05, 같은 설계 문서). render_from_template 정의 이동(테마 오버라이드 포함)·템플릿에서 참조 이동·해석 참조 하이라이팅. 비목표: JS `Templates.render()`, 템플릿 이름 완성, .mustache 내부 인텔리전스.
 - 이후 capability, Mustache 템플릿, JS/AMD 모듈, 웹서비스 등 mdlcode parity 확장.

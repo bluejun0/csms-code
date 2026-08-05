@@ -1,11 +1,14 @@
 import * as vscode from 'vscode';
-import { ListResolvedStringCalls } from '../application/list-resolved-string-calls';
+import { RangeItem } from '../application/dto';
 import { KeyedDebouncer } from './keyed-debouncer';
 
 const HIGHLIGHT_DEBOUNCE_MS = 300;
 
-/** 해석되는 get_string 키를 링크 색상으로 장식 — csmscode.strings.highlightResolved(기본 true) */
-export function registerStringHighlight(ctx: vscode.ExtensionContext, uc: ListResolvedStringCalls) {
+/** 하이라이트 범위 공급자 — 설정 키(csmscode 하위)와 범위 계산을 함께 넘긴다. */
+export interface HighlightSource { setting: string; run(text: string): RangeItem[]; }
+
+/** 해석되는 참조(문자열 키·템플릿)를 링크 색상으로 장식 — 데코레이션·디바운서는 하나로 공유한다. */
+export function registerResolvedHighlight(ctx: vscode.ExtensionContext, sources: HighlightSource[]) {
   const deco = vscode.window.createTextEditorDecorationType({ color: new vscode.ThemeColor('textLink.foreground') });
   const debouncer = new KeyedDebouncer(HIGHLIGHT_DEBOUNCE_MS);
   ctx.subscriptions.push(debouncer, deco);
@@ -13,11 +16,12 @@ export function registerStringHighlight(ctx: vscode.ExtensionContext, uc: ListRe
   const refresh = (editor: vscode.TextEditor) => {
     const doc = editor.document;
     if (doc.uri.scheme !== 'file' || doc.languageId !== 'php') return;
-    if (!vscode.workspace.getConfiguration('csmscode').get('strings.highlightResolved', true)) {
-      editor.setDecorations(deco, []);
-      return;
-    }
-    const ranges = uc.run(doc.getText()).map(r => new vscode.Range(r.line, r.column0, r.line, r.column0 + r.length));
+    const cfg = vscode.workspace.getConfiguration('csmscode');
+    const text = doc.getText();
+    const ranges = sources
+      .filter(s => cfg.get(s.setting, true))
+      .flatMap(s => s.run(text))
+      .map(r => new vscode.Range(r.line, r.column0, r.line, r.column0 + r.length));
     editor.setDecorations(deco, ranges);
   };
 
@@ -31,7 +35,9 @@ export function registerStringHighlight(ctx: vscode.ExtensionContext, uc: ListRe
       });
     }),
     vscode.workspace.onDidChangeConfiguration(e => {
-      if (e.affectsConfiguration('csmscode.strings.highlightResolved')) vscode.window.visibleTextEditors.forEach(refresh);
+      if (sources.some(s => e.affectsConfiguration(`csmscode.${s.setting}`))) {
+        vscode.window.visibleTextEditors.forEach(refresh);
+      }
     }),
   );
 }

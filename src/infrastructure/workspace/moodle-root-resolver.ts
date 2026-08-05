@@ -1,7 +1,21 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
-const PLUGIN_TYPES = ['mod','local','block','tool','report','enrol','auth','theme','format','qtype','filter','repository','portfolio','message','availability','customfield','contenttype','mlbackend','editor','atto','tinymce','profilefield','datafield','datapreset','gradeexport','gradeimport','gradereport','webservice','cachestore','cachelock'];
+/** 플러그인 타입 → 루트 기준 상대 디렉터리. 타입명과 디렉터리명이 다르거나(block→blocks)
+ *  중첩된(tool→admin/tool) 경우가 많아 매핑이 필요하다 — 2026-08-05 hlulxp 실측 검증. */
+export const PLUGIN_DIRS: Record<string, string> = {
+  mod: 'mod', local: 'local', block: 'blocks', report: 'report', enrol: 'enrol',
+  auth: 'auth', theme: 'theme', filter: 'filter', repository: 'repository',
+  portfolio: 'portfolio', webservice: 'webservice',
+  tool: 'admin/tool', format: 'course/format', qtype: 'question/type',
+  gradereport: 'grade/report', gradeexport: 'grade/export', gradeimport: 'grade/import',
+  message: 'message/output', availability: 'availability/condition',
+  customfield: 'customfield/field', contenttype: 'contentbank/contenttype',
+  profilefield: 'user/profile/field', datafield: 'mod/data/field', datapreset: 'mod/data/preset',
+  cachestore: 'cache/stores', cachelock: 'cache/locks',
+  editor: 'lib/editor', atto: 'lib/editor/atto/plugins', tinymce: 'lib/editor/tinymce/plugins',
+  mlbackend: 'lib/mlbackend',
+};
 
 export function findMoodleRoot(startDir: string, detectInSubfolders: string[] = []): string | undefined {
   let dir = startDir;
@@ -28,8 +42,8 @@ export function listInstallXmlFiles(root: string): { file: string; component: st
   const out: { file: string; component: string }[] = [];
   const core = path.join(root, 'lib', 'db', 'install.xml');
   if (fs.existsSync(core)) out.push({ file: core, component: 'core' });
-  for (const type of PLUGIN_TYPES) {
-    const typeDir = path.join(root, type);
+  for (const [type, relDir] of Object.entries(PLUGIN_DIRS)) {
+    const typeDir = path.join(root, relDir);
     if (!fs.existsSync(typeDir)) continue;
     for (const name of safeReaddir(typeDir)) {
       const f = path.join(typeDir, name, 'db', 'install.xml');
@@ -66,8 +80,8 @@ export function listLangFiles(root: string): LangFileRef[] {
     const base = f.slice(0, -4);
     out.push({ file: path.join(coreDir, f), component: base === 'moodle' ? 'core' : `core_${base}`, locale: 'en' });
   }
-  for (const type of PLUGIN_TYPES) {
-    const typeDir = path.join(root, type);
+  for (const [type, relDir] of Object.entries(PLUGIN_DIRS)) {
+    const typeDir = path.join(root, relDir);
     if (!fs.existsSync(typeDir)) continue;
     for (const name of safeReaddir(typeDir)) {
       const expected = type === 'mod' ? `${name}.php` : `${type}_${name}.php`;
@@ -85,6 +99,22 @@ function safeReaddirFiles(dir: string): string[] {
   catch { return []; }
 }
 
+/** 루트 기준 상대경로에서 플러그인 타입·이름·나머지를 역산 — 다중 세그먼트 디렉터리 대응,
+ *  최장 relDir 우선(예: `mod/data/field/x/…`는 datafield이지 mod가 아님). 규칙 밖은 null. */
+export function pluginTypeOfRel(rel: string): { type: string; name: string; rest: string } | null {
+  const parts = rel.split(path.sep);
+  let best: { type: string; name: string; rest: string; depth: number } | null = null;
+  for (const [type, relDir] of Object.entries(PLUGIN_DIRS)) {
+    const dirParts = relDir.split('/');
+    if (parts.length < dirParts.length + 2) continue;
+    if (!dirParts.every((seg, i) => parts[i] === seg)) continue;
+    const depth = dirParts.length;
+    if (best && best.depth >= depth) continue;
+    best = { type, name: parts[depth], rest: parts.slice(depth + 1).join('/'), depth };
+  }
+  return best ? { type: best.type, name: best.name, rest: best.rest } : null;
+}
+
 /** lang 파일 경로 → component (listLangFiles 규칙의 역함수 — 순수 경로 로직). 규칙 밖은 null. */
 export function componentOfLangFile(root: string, file: string): string | null {
   const rel = path.relative(root, file);
@@ -94,11 +124,66 @@ export function componentOfLangFile(root: string, file: string): string | null {
     const base = parts[2].slice(0, -4);
     return base === 'moodle' ? 'core' : `core_${base}`;
   }
-  if (parts.length === 5 && parts[2] === 'lang' && LANG_LOCALES.includes(parts[3]) && parts[4].endsWith('.php')) {
-    const [type, name] = parts;
-    if (!PLUGIN_TYPES.includes(type)) return null;
-    const expected = type === 'mod' ? `${name}.php` : `${type}_${name}.php`;
-    return parts[4] === expected ? `${type}_${name}` : null;
+  const hit = pluginTypeOfRel(rel);
+  if (!hit) return null;
+  const restParts = hit.rest.split('/');
+  if (restParts.length !== 3 || restParts[0] !== 'lang' || !LANG_LOCALES.includes(restParts[1])) return null;
+  const expected = hit.type === 'mod' ? `${hit.name}.php` : `${hit.type}_${hit.name}.php`;
+  return restParts[2] === expected ? `${hit.type}_${hit.name}` : null;
+}
+
+export interface TemplateFileRef { file: string; component: string; name: string; }
+
+/** 컴포넌트꼴이면 테마 오버라이드 대상 컴포넌트로 본다(`local_ubattend`, `core`). */
+function looksLikeComponent(seg: string): boolean { return seg === 'core' || seg.includes('_'); }
+
+/** 템플릿 파일 경로 → { component, name } 역산. 규칙 밖(코어 서브시스템 등)은 null. */
+export function componentOfTemplateFile(root: string, file: string): { component: string; name: string } | null {
+  const rel = path.relative(root, file);
+  if (rel.startsWith('..') || path.isAbsolute(rel) || !rel.endsWith('.mustache')) return null;
+  const parts = rel.split(path.sep);
+  if (parts[0] === 'lib' && parts[1] === 'templates' && parts.length >= 3) {
+    return { component: 'core', name: stripMustache(parts.slice(2).join('/')) };
   }
-  return null;
+  const hit = pluginTypeOfRel(rel);
+  if (!hit) return null;
+  const restParts = hit.rest.split('/');
+  if (restParts[0] !== 'templates' || restParts.length < 2) return null;
+  const inner = restParts.slice(1);
+  // 테마의 `templates/<component>/…`는 그 컴포넌트의 오버라이드
+  if (hit.type === 'theme' && inner.length >= 2 && looksLikeComponent(inner[0])) {
+    return { component: inner[0], name: stripMustache(inner.slice(1).join('/')) };
+  }
+  return { component: `${hit.type}_${hit.name}`, name: stripMustache(inner.join('/')) };
+}
+
+function stripMustache(s: string): string { return s.endsWith('.mustache') ? s.slice(0, -9) : s; }
+
+/** 코어 + 모든 플러그인의 템플릿 파일 열거(하위 디렉터리 포함). */
+export function listTemplateFiles(root: string): TemplateFileRef[] {
+  const out: TemplateFileRef[] = [];
+  const push = (file: string) => {
+    const ref = componentOfTemplateFile(root, file);
+    if (ref) out.push({ file, component: ref.component, name: ref.name });
+  };
+  const seen = new Set<string>();
+  const walk = (dir: string) => {
+    let real: string;
+    try { real = fs.realpathSync(dir); } catch { return; }  // 깨진 링크 무시
+    if (seen.has(real)) return;                              // 순환 가드 — 같은 파일 중복 수집 방지
+    seen.add(real);
+    for (const f of safeReaddirFiles(dir)) if (f.endsWith('.mustache')) push(path.join(dir, f));
+    for (const d of safeReaddir(dir)) walk(path.join(dir, d));
+  };
+  const coreDir = path.join(root, 'lib', 'templates');
+  if (fs.existsSync(coreDir)) walk(coreDir);
+  for (const relDir of Object.values(PLUGIN_DIRS)) {
+    const typeDir = path.join(root, relDir);
+    if (!fs.existsSync(typeDir)) continue;
+    for (const name of safeReaddir(typeDir)) {
+      const tdir = path.join(typeDir, name, 'templates');
+      if (fs.existsSync(tdir)) walk(tdir);
+    }
+  }
+  return out;
 }

@@ -2,21 +2,27 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { SourceLocation } from '../../domain/shared/value-objects';
 import { StringUsageRepository } from '../../domain/lang-model/ports/string-usage-repository';
+import { TemplateUsageRepository } from '../../domain/template-model/ports/template-usage-repository';
 import { normalizeComponent } from '../../domain/lang-model/services/component-normalizer';
 
 // 리터럴 key(+선택적 리터럴 component) — 변수/보간은 비매칭(침묵 원칙)
 const USAGE_RE = /get_string\(\s*['"]([\w:./-]+)['"]\s*(?:,\s*['"](\w+)['"])?/g;
+// 템플릿 사용처 — 같은 스캔에서 함께 수집한다(23초 스캔을 두 번 돌리지 않기 위해)
+const TEMPLATE_USAGE_RE = /render_from_template\(\s*['"]([\w:./-]+)['"]/g;
 // 'lang'은 lang 팩 자체 — 사용처가 아니고, 값 텍스트 속 "get_string(" 유령 매치 방지를 겸한다
 const SKIP_DIRS = new Set(['node_modules', 'vendor', '.git', '.superpowers', 'dist', 'lang']);
 const YIELD_EVERY = 200;
 
 interface UsageEntry { component: string; key: string; loc: SourceLocation; }
+interface TemplateEntry { ref: string; loc: SourceLocation; }
 
-/** get_string 사용처의 워크스페이스 색인 — lazy 빌드 + 저장 시 파일 단위 증분.
- *  메모리: 호출당 항목 1개(수만 건 × ~100B = 수 MB). */
-export class StringUsageIndex implements StringUsageRepository {
+/** get_string·render_from_template 사용처의 워크스페이스 색인 — lazy 빌드 + 저장/삭제 시 파일 단위 증분.
+ *  두 종류를 한 번의 파일 읽기에서 함께 추출한다(스캔 중복 방지). */
+export class PhpUsageIndex implements StringUsageRepository, TemplateUsageRepository {
   private byComponent = new Map<string, Map<string, SourceLocation[]>>();
   private byFile = new Map<string, UsageEntry[]>();
+  private byTemplateRef = new Map<string, SourceLocation[]>();
+  private templatesByFile = new Map<string, TemplateEntry[]>();
   private builtFlag = false;
 
   constructor(private hasCanonical: (c: string) => boolean) {}
@@ -59,10 +65,30 @@ export class StringUsageIndex implements StringUsageRepository {
       this.addEntry(e);
     }
     if (entries.length) this.byFile.set(uri, entries);
+
+    const prevT = this.templatesByFile.get(uri);
+    if (prevT) { for (const e of prevT) this.removeTemplateEntry(e); this.templatesByFile.delete(uri); }
+    const tEntries: TemplateEntry[] = [];
+    TEMPLATE_USAGE_RE.lastIndex = 0;
+    let tLastIdx = 0, tLastLine = 0;
+    while ((m = TEMPLATE_USAGE_RE.exec(text))) {
+      for (let i = tLastIdx; i < m.index; i++) if (text.charCodeAt(i) === 10) tLastLine++;
+      tLastIdx = m.index;
+      const lineStart = text.lastIndexOf('\n', m.index) + 1;
+      const column = m.index - lineStart + m[0].search(/['"]/) + 1;
+      const e: TemplateEntry = { ref: m[1], loc: { uri, line: tLastLine, column } };
+      tEntries.push(e);
+      this.addTemplateEntry(e);
+    }
+    if (tEntries.length) this.templatesByFile.set(uri, tEntries);
   }
 
   referencesOf(component: string, key: string): SourceLocation[] {
     return this.byComponent.get(component)?.get(key) ?? [];
+  }
+
+  templateRefsOf(component: string, name: string): SourceLocation[] {
+    return this.byTemplateRef.get(`${component}/${name}`) ?? [];
   }
 
   private addEntry(e: UsageEntry): void {
@@ -74,6 +100,16 @@ export class StringUsageIndex implements StringUsageRepository {
   }
   private removeEntry(e: UsageEntry): void {
     const arr = this.byComponent.get(e.component)?.get(e.key);
+    if (!arr) return;
+    const i = arr.indexOf(e.loc);
+    if (i >= 0) arr.splice(i, 1);
+  }
+  private addTemplateEntry(e: TemplateEntry): void {
+    const arr = this.byTemplateRef.get(e.ref);
+    if (arr) arr.push(e.loc); else this.byTemplateRef.set(e.ref, [e.loc]);
+  }
+  private removeTemplateEntry(e: TemplateEntry): void {
+    const arr = this.byTemplateRef.get(e.ref);
     if (!arr) return;
     const i = arr.indexOf(e.loc);
     if (i >= 0) arr.splice(i, 1);

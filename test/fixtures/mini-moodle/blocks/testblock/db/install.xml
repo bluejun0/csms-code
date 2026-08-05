@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<XMLDB PATH="blocks/testblock/db" VERSION="20260805">
+  <TABLES>
+    <TABLE NAME="block_testblock" COMMENT="블록 테스트 테이블">
+      <FIELDS>
+        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true" COMMENT="고유번호"/>
+      </FIELDS>
+    </TABLE>
+  </TABLES>
+</XMLDB>
