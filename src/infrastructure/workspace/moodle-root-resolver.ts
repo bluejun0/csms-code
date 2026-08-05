@@ -166,7 +166,12 @@ export function listTemplateFiles(root: string): TemplateFileRef[] {
     const ref = componentOfTemplateFile(root, file);
     if (ref) out.push({ file, component: ref.component, name: ref.name });
   };
+  const seen = new Set<string>();
   const walk = (dir: string) => {
+    let real: string;
+    try { real = fs.realpathSync(dir); } catch { return; }  // 깨진 링크 무시
+    if (seen.has(real)) return;                              // 순환 가드 — 같은 파일 중복 수집 방지
+    seen.add(real);
     for (const f of safeReaddirFiles(dir)) if (f.endsWith('.mustache')) push(path.join(dir, f));
     for (const d of safeReaddir(dir)) walk(path.join(dir, d));
   };

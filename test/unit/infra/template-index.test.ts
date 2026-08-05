@@ -10,11 +10,11 @@ idx.buildFromRoot(root); // 동기 — 모듈 로드 시 1회
 describe('TemplateIndex', () => {
   it('코어: lib/templates → core', () => {
     assert.equal(idx.locationsOf('core', 'core_tmpl').length, 1);
-    assert.ok(idx.locationsOf('core', 'core_tmpl')[0].uri.endsWith('lib/templates/core_tmpl.mustache'));
+    assert.ok(idx.locationsOf('core', 'core_tmpl')[0].uri.endsWith(join('lib', 'templates', 'core_tmpl.mustache')));
   });
   it('플러그인 + 하위 경로 이름', () => {
     assert.equal(idx.has('local_ubattend', 'svg/icon/hyflex'), true);
-    assert.ok(idx.locationsOf('local_ubattend', 'svg/icon/hyflex')[0].uri.endsWith('svg/icon/hyflex.mustache'));
+    assert.ok(idx.locationsOf('local_ubattend', 'svg/icon/hyflex')[0].uri.endsWith(join('svg', 'icon', 'hyflex.mustache')));
   });
   it('테마 오버라이드: 원본 + 오버라이드 둘 다 반환', () => {
     const locs = idx.locationsOf('local_ubattend', 'setting');
