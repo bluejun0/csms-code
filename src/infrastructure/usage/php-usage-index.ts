@@ -4,6 +4,7 @@ import { SourceLocation } from '../../domain/shared/value-objects';
 import { StringUsageRepository } from '../../domain/lang-model/ports/string-usage-repository';
 import { TemplateUsageRepository } from '../../domain/template-model/ports/template-usage-repository';
 import { normalizeComponent } from '../../domain/lang-model/services/component-normalizer';
+import { scanJsCalls } from '../../domain/code-analysis/js-call-scanner';
 
 // 리터럴 key(+선택적 리터럴 component) — 변수/보간은 비매칭(침묵 원칙)
 const USAGE_RE = /get_string\(\s*['"]([\w:./-]+)['"]\s*(?:,\s*['"](\w+)['"])?/g;
@@ -30,7 +31,7 @@ export class PhpUsageIndex implements StringUsageRepository, TemplateUsageReposi
   get isBuilt(): boolean { return this.builtFlag; }
 
   async buildFromRoot(root: string, onProgress?: (done: number, total: number) => void): Promise<void> {
-    const files = await listPhpFiles(root);
+    const files = await listSourceFiles(root);
     let done = 0;
     for (const f of files) {
       let text: string;
@@ -46,41 +47,61 @@ export class PhpUsageIndex implements StringUsageRepository, TemplateUsageReposi
     this.builtFlag = true;
   }
 
-  /** 파일 단위 증분: 기존 항목 제거 후 재추출 (저장 시 호출) */
+  /** 파일 단위 증분: 기존 항목 제거 후 재추출 (저장 시 호출). 확장자로 PHP/JS 추출기를 고른다. */
   updateFileText(uri: string, text: string): void {
     const prev = this.byFile.get(uri);
     if (prev) { for (const e of prev) this.removeEntry(e); this.byFile.delete(uri); }
-    const entries: UsageEntry[] = [];
-    USAGE_RE.lastIndex = 0;
-    let m: RegExpExecArray | null;
-    let lastIdx = 0, lastLine = 0; // 증분 라인 계산 — 전체 접두부 재스캔(O(n²)) 금지
-    while ((m = USAGE_RE.exec(text))) {
-      for (let i = lastIdx; i < m.index; i++) if (text.charCodeAt(i) === 10) lastLine++;
-      lastIdx = m.index;
-      const component = m[2] ? normalizeComponent(m[2], this.hasCanonical) : 'core';
-      const lineStart = text.lastIndexOf('\n', m.index) + 1;
-      const column = m.index - lineStart + m[0].search(/['"]/) + 1; // 키 리터럴 내용 시작 = 첫 따옴표 다음
-      const e: UsageEntry = { component, key: m[1], loc: { uri, line: lastLine, column } };
-      entries.push(e);
-      this.addEntry(e);
-    }
-    if (entries.length) this.byFile.set(uri, entries);
-
     const prevT = this.templatesByFile.get(uri);
     if (prevT) { for (const e of prevT) this.removeTemplateEntry(e); this.templatesByFile.delete(uri); }
-    const tEntries: TemplateEntry[] = [];
-    TEMPLATE_USAGE_RE.lastIndex = 0;
-    let tLastIdx = 0, tLastLine = 0;
-    while ((m = TEMPLATE_USAGE_RE.exec(text))) {
-      for (let i = tLastIdx; i < m.index; i++) if (text.charCodeAt(i) === 10) tLastLine++;
-      tLastIdx = m.index;
-      const lineStart = text.lastIndexOf('\n', m.index) + 1;
-      const column = m.index - lineStart + m[0].search(/['"]/) + 1;
-      const e: TemplateEntry = { ref: m[1], loc: { uri, line: tLastLine, column } };
-      tEntries.push(e);
-      this.addTemplateEntry(e);
-    }
+
+    const { entries, tEntries } = uri.endsWith('.js')
+      ? this.extractJs(uri, text)
+      : this.extractPhp(uri, text);
+
+    for (const e of entries) this.addEntry(e);
+    for (const e of tEntries) this.addTemplateEntry(e);
+    if (entries.length) this.byFile.set(uri, entries);
     if (tEntries.length) this.templatesByFile.set(uri, tEntries);
+  }
+
+  private extractPhp(uri: string, text: string): { entries: UsageEntry[]; tEntries: TemplateEntry[] } {
+    const entries: UsageEntry[] = [];
+    const tEntries: TemplateEntry[] = [];
+    USAGE_RE.lastIndex = 0;
+    let m: RegExpExecArray | null;
+    let lastIdx = 0, lastLine = 0, lastLineStart = 0; // 증분 라인 계산 — 전체 접두부 재스캔(O(n²)) 금지
+    while ((m = USAGE_RE.exec(text))) {
+      for (let i = lastIdx; i < m.index; i++) {
+        if (text.charCodeAt(i) === 10) { lastLine++; lastLineStart = i + 1; }
+      }
+      lastIdx = m.index;
+      const component = m[2] ? normalizeComponent(m[2], this.hasCanonical) : 'core';
+      const column = m.index - lastLineStart + m[0].search(/['"]/) + 1; // 키 리터럴 내용 시작 = 첫 따옴표 다음
+      entries.push({ component, key: m[1], loc: { uri, line: lastLine, column } });
+    }
+    TEMPLATE_USAGE_RE.lastIndex = 0;
+    let tLastIdx = 0, tLastLine = 0, tLastLineStart = 0;
+    while ((m = TEMPLATE_USAGE_RE.exec(text))) {
+      for (let i = tLastIdx; i < m.index; i++) {
+        if (text.charCodeAt(i) === 10) { tLastLine++; tLastLineStart = i + 1; }
+      }
+      tLastIdx = m.index;
+      const column = m.index - tLastLineStart + m[0].search(/['"]/) + 1;
+      tEntries.push({ ref: m[1], loc: { uri, line: tLastLine, column } });
+    }
+    return { entries, tEntries };
+  }
+
+  private extractJs(uri: string, text: string): { entries: UsageEntry[]; tEntries: TemplateEntry[] } {
+    const calls = scanJsCalls(text);
+    return {
+      entries: calls.stringCalls.map(c => ({
+        component: normalizeComponent(c.component, this.hasCanonical),
+        key: c.key,
+        loc: { uri, line: c.keyLine, column: c.keyColumn },
+      })),
+      tEntries: calls.templateCalls.map(c => ({ ref: c.ref, loc: { uri, line: c.refLine, column: c.refColumn } })),
+    };
   }
 
   referencesOf(component: string, key: string): SourceLocation[] {
@@ -116,8 +137,9 @@ export class PhpUsageIndex implements StringUsageRepository, TemplateUsageReposi
   }
 }
 
-/** 루트 재귀 PHP 파일 열거 — realpath 기준 순환 가드로 symlink 디렉터리도 안전하게 추적 */
-async function listPhpFiles(root: string): Promise<string[]> {
+/** 루트 재귀 소스 파일(.php/.js) 열거 — realpath 순환 가드, 채택 여부는 isIndexableSourcePath로 통일해
+ *  콜드 스캔과 저장 증분의 제외 규칙이 갈라지지 않게 한다. */
+async function listSourceFiles(root: string): Promise<string[]> {
   const out: string[] = [];
   const seen = new Set<string>();
   async function walk(dir: string): Promise<void> {
@@ -133,17 +155,21 @@ async function listPhpFiles(root: string): Promise<string[]> {
       if (d.isDirectory()) await walk(p);
       else if (d.isSymbolicLink()) {
         try { if ((await fs.promises.stat(p)).isDirectory()) await walk(p); } catch { /* 깨진 링크 무시 */ }
-      } else if (d.isFile() && d.name.endsWith('.php')) out.push(p);
+      } else if (d.isFile() && isIndexableSourcePath(root, p)) out.push(p);
     }
   }
   await walk(root);
   return out;
 }
 
-/** 저장 증분이 콜드 스캔과 같은 제외 규칙을 따르게 하는 가드 — 루트 밖·SKIP_DIRS 경로는 색인 대상 아님 */
-export function isIndexablePhpPath(root: string, fsPath: string): boolean {
-  if (!fsPath.endsWith('.php')) return false;
+/** 콜드 스캔과 저장 증분이 같은 제외 규칙을 쓰게 하는 단일 술어.
+ *  amd/build는 amd/src의 미니파이 사본이라 색인하면 참조가 중복되고 생성 파일로 점프한다. */
+export function isIndexableSourcePath(root: string, fsPath: string): boolean {
+  if (!fsPath.endsWith('.php') && !fsPath.endsWith('.js')) return false;
+  if (fsPath.endsWith('.min.js')) return false;
   const rel = path.relative(root, fsPath);
   if (rel.startsWith('..') || path.isAbsolute(rel)) return false;
-  return !rel.split(path.sep).some(seg => SKIP_DIRS.has(seg));
+  const segs = rel.split(path.sep);
+  if (segs.some(seg => SKIP_DIRS.has(seg))) return false;
+  return !segs.some((seg, i) => seg === 'build' && segs[i - 1] === 'amd');
 }

@@ -24,6 +24,9 @@
 16. 존재하는 템플릿 참조가 링크 색상으로 표시되고, csmscode.templates.highlightResolved=false 시 사라짐
 17. blocks/ 플러그인(예: block_html)의 컬럼 완성·문자열 기능이 동작 — 이전에는 blocks 디렉터리가 색인되지 않았음
 18. VS Code로 폴더만 열고(PHP 파일은 열지 않은 채) .mustache 파일을 먼저 연 뒤 Shift+F12 → 사용처 목록이 뜸(활성화 이벤트 검증 — 이전에는 조용히 무동작)
+19. `local/*/amd/src/*.js`에서 `M.util.get_string('key','local_x')`의 키 위에 F12 → lang 파일로 이동, hover → 한국어 값
+20. 같은 파일에서 `Templates.render('local_x/name')`의 리터럴에 F12 → .mustache로 이동
+21. lang 파일에서 Shift+F12 → PHP 호출처와 함께 JS 호출처도 목록에 나타남(단, `amd/build`의 미니파이 사본은 나타나지 않아야 함)
 
 ## 알려진 제한 (Known limitations)
 
@@ -43,3 +46,7 @@ kill-on-reassign(2026-07-31)으로 추적되지만, 구조 분해(`[$a,$b] = …
 (`grade/templates` 등)과 JS의 `Templates.render()` 호출, 동적 인자 호출은 침묵합니다. 문자열과 마찬가지로 겹따옴표 리터럴(`render_from_template("a/b")`)은 정의 이동·하이라이팅에서
 인식되지 않습니다(참조 목록에는 나타납니다 — 사용처 색인은 두 따옴표를 모두 훑습니다. 실측:
 커스텀 코드에서 홑따옴표 444건 대 겹따옴표 1건).
+
+JS/AMD는 AST가 아닌 정규식으로 인식하므로 주석이나 문자열 안의 호출도 이동·hover 대상이 될 수 있습니다
+(그래서 JS에는 진단을 제공하지 않습니다). `getStrings([...])` 배열 형태와 TypeScript 소스는 지원하지 않습니다. 컴포넌트를 생략한 한 인자 호출
+(`getString('ok')` — core로 해석되는 형태)도 JS에서는 인식하지 않습니다(실측 39건, PHP에서는 인식됨).

@@ -23,6 +23,7 @@ Moodle 코드는 DB 레코드를 대부분 `stdClass`로 다루기 때문에, �
   파일 변경을 감지해 증분 갱신합니다.
 - **언어 문자열 인텔리전스**: `get_string('key', 'component')` 키 자동완성(한국어 값 미리보기)·정의로 이동(ko/en)·hover·누락 키 진단·해석 키 하이라이팅, lang 파일에서 사용처 참조 이동(Shift+F12)
 - **Mustache 템플릿 인텔리전스**: `render_from_template('component/name', …)`에서 `.mustache` 파일로 이동(테마 오버라이드가 있으면 함께 표시)·템플릿 파일에서 사용처 참조 이동(Shift+F12)·해석되는 참조 하이라이팅
+- **JS/AMD 인텔리전스**: `amd/src`의 `get_string`(`M.util.`·`core/str` 모두)·`Templates.render` 리터럴에 정의 이동·hover·하이라이팅, lang/템플릿 참조 목록에 JS 호출처 포함 (`amd/build`·`.min.js`는 생성물이라 제외)
 
 ## 설정
 
