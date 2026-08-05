@@ -33,6 +33,11 @@ import { FindTemplateReferences } from './application/find-template-references';
 import { ListResolvedTemplateCalls } from './application/list-resolved-template-calls';
 import { TemplateDefinitionProvider } from './presentation/providers/template-definition-provider';
 import { TemplateReferenceProvider } from './presentation/providers/template-reference-provider';
+import { ResolveJsDefinition } from './application/resolve-js-definition';
+import { DescribeJsSymbol } from './application/describe-js-symbol';
+import { ListResolvedJsCalls } from './application/list-resolved-js-calls';
+import { JsDefinitionProvider } from './presentation/providers/js-definition-provider';
+import { JsHoverProvider } from './presentation/providers/js-hover-provider';
 
 export async function activate(ctx: vscode.ExtensionContext) {
   const folder = vscode.workspace.workspaceFolders?.[0];
@@ -80,6 +85,11 @@ export async function activate(ctx: vscode.ExtensionContext) {
   const findTplRefs = new FindTemplateReferences(usageIndex);
   const listResolvedTpl = new ListResolvedTemplateCalls(syntax, templates);
 
+  const resolveJs = new ResolveJsDefinition(strings, templates);
+  const describeJs = new DescribeJsSymbol(strings, templates);
+  const listResolvedJs = new ListResolvedJsCalls(strings, templates);
+  const js: vscode.DocumentSelector = { language: 'javascript', scheme: 'file' };
+
   const php: vscode.DocumentSelector = { language: 'php', scheme: 'file' };
   ctx.subscriptions.push(
     vscode.languages.registerCompletionItemProvider(php, new RecordColumnCompletionProvider(complete), '>'),
@@ -102,11 +112,14 @@ export async function activate(ctx: vscode.ExtensionContext) {
         built: () => usageIndex.isBuilt,
         build: cb => usageBuild ?? (usageBuild = usageIndex.buildFromRoot(root, cb)),
       }, file => componentOfTemplateFile(root, file))),
+    vscode.languages.registerDefinitionProvider(js, new JsDefinitionProvider(resolveJs)),
+    vscode.languages.registerHoverProvider(js, new JsHoverProvider(describeJs)),
   );
   registerDiagnostics(ctx, validate, validateStr);
   registerResolvedHighlight(ctx, [
-    { setting: 'strings.highlightResolved', run: t => listResolved.run(t) },
-    { setting: 'templates.highlightResolved', run: t => listResolvedTpl.run(t) },
+    { setting: 'strings.highlightResolved', languages: ['php'], run: t => listResolved.run(t) },
+    { setting: 'templates.highlightResolved', languages: ['php'], run: t => listResolvedTpl.run(t) },
+    { setting: 'strings.highlightResolved', languages: ['javascript'], run: t => listResolvedJs.run(t) },
   ]);
 
   // install.xml 변경 시 증분 재색인
