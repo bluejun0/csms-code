@@ -10,6 +10,11 @@ export interface StringCall {
   keyLine: number; keyColumn: number; keyIndex: number;
   index: number;
 }
+export interface TemplateCall {
+  ref: string;
+  refLine: number; refColumn: number; refIndex: number;
+  index: number;
+}
 export interface DocumentFacts {
   assignments: RecordAssignment[];
   foreachBindings: ForeachBinding[];
@@ -18,4 +23,5 @@ export interface DocumentFacts {
   propertyAccesses: PropertyAccess[];
   plainAssignments: PlainAssignment[];
   stringCalls: StringCall[];
+  templateCalls: TemplateCall[];
 }

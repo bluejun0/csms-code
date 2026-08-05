@@ -199,3 +199,33 @@ describe('TreeSitterPhpSyntax — stringCalls (get_string)', () => {
     assert.ok(!f.stringCalls.some((x: any) => x.key === 'not_me'));
   });
 });
+
+// Mustache: render_from_template 리터럴 호출 (스펙 2026-08-05)
+const CODE6 = `<?php
+function r() {
+    echo $OUTPUT->render_from_template('local_ubattend/setting', $data);
+    echo $this->render_from_template('local_ubattend/svg/icon/hyflex', []);
+    echo $renderer->render_from_template('theme_coursemos/own', []);
+    echo $OUTPUT->render_from_template($dynamic, []);
+    echo $OUTPUT->other_method('local_ubattend/nope', []);
+}
+`;
+
+describe('TreeSitterPhpSyntax — templateCalls (render_from_template)', () => {
+  let syn: TreeSitterPhpSyntax; let f: any;
+  before(async () => { syn = await TreeSitterPhpSyntax.create(); f = syn.facts(CODE6); });
+
+  it('수신자 무관 추출($OUTPUT/$this/기타) — 3건', () => {
+    const refs = f.templateCalls.map((x: any) => x.ref).sort();
+    assert.deepEqual(refs, ['local_ubattend/setting', 'local_ubattend/svg/icon/hyflex', 'theme_coursemos/own']);
+  });
+  it('ref 위치 정확성', () => {
+    const c = f.templateCalls.find((x: any) => x.ref === 'local_ubattend/setting');
+    assert.equal(CODE6.slice(c.refIndex, c.refIndex + c.ref.length), 'local_ubattend/setting');
+    assert.equal(c.refLine, 2);
+  });
+  it('동적 인자·다른 메서드는 비추출', () => {
+    assert.ok(!f.templateCalls.some((x: any) => x.ref === 'local_ubattend/nope'));
+    assert.equal(f.templateCalls.length, 3);
+  });
+});
