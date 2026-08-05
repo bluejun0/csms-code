@@ -131,3 +131,54 @@ export function componentOfLangFile(root: string, file: string): string | null {
   const expected = hit.type === 'mod' ? `${hit.name}.php` : `${hit.type}_${hit.name}.php`;
   return restParts[2] === expected ? `${hit.type}_${hit.name}` : null;
 }
+
+export interface TemplateFileRef { file: string; component: string; name: string; }
+
+/** 컴포넌트꼴이면 테마 오버라이드 대상 컴포넌트로 본다(`local_ubattend`, `core`). */
+function looksLikeComponent(seg: string): boolean { return seg === 'core' || seg.includes('_'); }
+
+/** 템플릿 파일 경로 → { component, name } 역산. 규칙 밖(코어 서브시스템 등)은 null. */
+export function componentOfTemplateFile(root: string, file: string): { component: string; name: string } | null {
+  const rel = path.relative(root, file);
+  if (rel.startsWith('..') || path.isAbsolute(rel) || !rel.endsWith('.mustache')) return null;
+  const parts = rel.split(path.sep);
+  if (parts[0] === 'lib' && parts[1] === 'templates' && parts.length >= 3) {
+    return { component: 'core', name: stripMustache(parts.slice(2).join('/')) };
+  }
+  const hit = pluginTypeOfRel(rel);
+  if (!hit) return null;
+  const restParts = hit.rest.split('/');
+  if (restParts[0] !== 'templates' || restParts.length < 2) return null;
+  const inner = restParts.slice(1);
+  // 테마의 `templates/<component>/…`는 그 컴포넌트의 오버라이드
+  if (hit.type === 'theme' && inner.length >= 2 && looksLikeComponent(inner[0])) {
+    return { component: inner[0], name: stripMustache(inner.slice(1).join('/')) };
+  }
+  return { component: `${hit.type}_${hit.name}`, name: stripMustache(inner.join('/')) };
+}
+
+function stripMustache(s: string): string { return s.endsWith('.mustache') ? s.slice(0, -9) : s; }
+
+/** 코어 + 모든 플러그인의 템플릿 파일 열거(하위 디렉터리 포함). */
+export function listTemplateFiles(root: string): TemplateFileRef[] {
+  const out: TemplateFileRef[] = [];
+  const push = (file: string) => {
+    const ref = componentOfTemplateFile(root, file);
+    if (ref) out.push({ file, component: ref.component, name: ref.name });
+  };
+  const walk = (dir: string) => {
+    for (const f of safeReaddirFiles(dir)) if (f.endsWith('.mustache')) push(path.join(dir, f));
+    for (const d of safeReaddir(dir)) walk(path.join(dir, d));
+  };
+  const coreDir = path.join(root, 'lib', 'templates');
+  if (fs.existsSync(coreDir)) walk(coreDir);
+  for (const relDir of Object.values(PLUGIN_DIRS)) {
+    const typeDir = path.join(root, relDir);
+    if (!fs.existsSync(typeDir)) continue;
+    for (const name of safeReaddir(typeDir)) {
+      const tdir = path.join(typeDir, name, 'templates');
+      if (fs.existsSync(tdir)) walk(tdir);
+    }
+  }
+  return out;
+}
