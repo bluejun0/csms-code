@@ -23,6 +23,7 @@
 15. .mustache 파일 안에서 Shift+F12 → 그 템플릿을 쓰는 render_from_template 호출 목록(첫 요청 시 진행률, 이후 즉시)
 16. 존재하는 템플릿 참조가 링크 색상으로 표시되고, csmscode.templates.highlightResolved=false 시 사라짐
 17. blocks/ 플러그인(예: block_html)의 컬럼 완성·문자열 기능이 동작 — 이전에는 blocks 디렉터리가 색인되지 않았음
+18. VS Code로 폴더만 열고(PHP 파일은 열지 않은 채) .mustache 파일을 먼저 연 뒤 Shift+F12 → 사용처 목록이 뜸(활성화 이벤트 검증 — 이전에는 조용히 무동작)
 
 ## 알려진 제한 (Known limitations)
 
@@ -39,6 +40,6 @@ kill-on-reassign(2026-07-31)으로 추적되지만, 구조 분해(`[$a,$b] = …
 참조·하이라이팅 모두에서 포착되지 않습니다.
 
 템플릿 색인은 플러그인·코어(lib/templates)·테마 경로 규칙만 따릅니다 — 코어 서브시스템 템플릿
-(`grade/templates` 등)과 JS의 `Templates.render()` 호출, 동적 인자 호출은 침묵합니다. 문자열과
-마찬가지로 겹따옴표 리터럴(`render_from_template("a/b")`)도 인식되지 않습니다(실측: 커스텀 코드에서
-홑따옴표 444건 대 겹따옴표 1건).
+(`grade/templates` 등)과 JS의 `Templates.render()` 호출, 동적 인자 호출은 침묵합니다. 문자열과 마찬가지로 겹따옴표 리터럴(`render_from_template("a/b")`)은 정의 이동·하이라이팅에서
+인식되지 않습니다(참조 목록에는 나타납니다 — 사용처 색인은 두 따옴표를 모두 훑습니다. 실측:
+커스텀 코드에서 홑따옴표 444건 대 겹따옴표 1건).
