@@ -20,19 +20,19 @@ export function scanJsCalls(text: string): JsCalls {
   };
 }
 
-/** 공통 순회 — 증분 라인 계산(O(n²) 금지) + 첫 따옴표 다음이 리터럴 내용 시작 */
+/** 공통 순회 — 라인·컬럼 모두 증분 계산(전체를 한 번만 훑는다) + 첫 따옴표 다음이 리터럴 내용 시작 */
 function scan<T>(text: string, re: RegExp, make: (m: RegExpExecArray, line: number, column: number, index: number) => T): T[] {
   const out: T[] = [];
   re.lastIndex = 0;
   let m: RegExpExecArray | null;
-  let lastIdx = 0, lastLine = 0;
+  let lastIdx = 0, lastLine = 0, lastLineStart = 0;
   while ((m = re.exec(text))) {
-    for (let i = lastIdx; i < m.index; i++) if (text.charCodeAt(i) === 10) lastLine++;
+    for (let i = lastIdx; i < m.index; i++) {
+      if (text.charCodeAt(i) === 10) { lastLine++; lastLineStart = i + 1; }
+    }
     lastIdx = m.index;
-    const quoteOffset = m[0].search(/['"]/);
-    const contentIndex = m.index + quoteOffset + 1;
-    const lineStart = text.lastIndexOf('\n', m.index) + 1;
-    out.push(make(m, lastLine, contentIndex - lineStart, contentIndex));
+    const contentIndex = m.index + m[0].search(/['"]/) + 1;
+    out.push(make(m, lastLine, contentIndex - lastLineStart, contentIndex));
   }
   return out;
 }

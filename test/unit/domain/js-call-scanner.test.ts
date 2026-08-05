@@ -46,4 +46,13 @@ describe('scanJsCalls', () => {
     assert.deepEqual(e.stringCalls, []);
     assert.deepEqual(e.templateCalls, []);
   });
+  it('한 줄에 호출이 여러 개여도 컬럼이 각각 정확', () => {
+    const line = `x(); M.util.get_string('a_key', 'local_x'); str.get_string('b_key', 'local_x');`;
+    const r2 = scanJsCalls(line);
+    assert.equal(r2.stringCalls.length, 2);
+    for (const c of r2.stringCalls) {
+      assert.equal(c.keyLine, 0);
+      assert.equal(line.slice(c.keyColumn, c.keyColumn + c.key.length), c.key, `컬럼이 키를 정확히 가리켜야 함: ${c.key}`);
+    }
+  });
 });
