@@ -1,13 +1,13 @@
 import { strict as assert } from 'assert';
 import { join } from 'path';
-import { StringUsageIndex, isIndexablePhpPath } from '../../../src/infrastructure/lang/string-usage-index';
+import { PhpUsageIndex, isIndexablePhpPath } from '../../../src/infrastructure/usage/php-usage-index';
 
 const root = join(__dirname, '../../fixtures/mini-moodle');
 // 픽스처 기준 canonical 존재 판정: 코어 서브시스템은 core_grades뿐
 const hasCanonical = (c: string) => ['core', 'core_grades', 'local_ubattend', 'mod_testmod'].includes(c);
 
-describe('StringUsageIndex', () => {
-  const idx = new StringUsageIndex(hasCanonical);
+describe('PhpUsageIndex', () => {
+  const idx = new PhpUsageIndex(hasCanonical);
   let progressed = 0;
   before(async function () {
     assert.equal(idx.isBuilt, false, '빌드 전 isBuilt=false');
@@ -46,7 +46,7 @@ describe('StringUsageIndex', () => {
     assert.equal(idx.referencesOf('local_ubattend', 'attendance_rate').length, 0, '전부 제거');
   });
   it("키 'string'(get_string 접두부와 충돌)의 컬럼도 정확", () => {
-    const idx2 = new StringUsageIndex(() => false);
+    const idx2 = new PhpUsageIndex(() => false);
     idx2.updateFileText('/x.php', "<?php\necho get_string('string', 'local_ubattend');\n");
     const refs = idx2.referencesOf('local_ubattend', 'string');
     assert.equal(refs.length, 1);
@@ -61,5 +61,29 @@ describe('StringUsageIndex', () => {
     assert.equal(isIndexablePhpPath(root, join(root, 'vendor/x.php')), false);
     assert.equal(isIndexablePhpPath(root, '/etc/x.php'), false);
     assert.equal(isIndexablePhpPath(root, join(root, 'local/a.txt')), false);
+  });
+});
+
+describe('PhpUsageIndex — 템플릿 참조(같은 스캔에서 수집)', () => {
+  const tidx = new PhpUsageIndex(() => false);
+  before(async () => { await tidx.buildFromRoot(root); });
+
+  it('render_from_template 사용처를 component/name으로 조회', () => {
+    const refs = tidx.templateRefsOf('local_ubattend', 'setting');
+    assert.equal(refs.length, 1);
+    assert.ok(refs[0].uri.endsWith('local/ubattend/view.php'));
+  });
+  it('하위 경로 이름도 조회', () =>
+    assert.equal(tidx.templateRefsOf('local_ubattend', 'svg/icon/hyflex').length, 1));
+  it('한 번의 스캔이 문자열·템플릿 색인을 모두 채운다', () => {
+    assert.equal(tidx.referencesOf('local_ubattend', 'attendance_book').length, 1);
+    assert.equal(tidx.templateRefsOf('local_ubattend', 'setting').length, 1);
+  });
+  it('증분 교체가 두 색인 모두에 반영', () => {
+    const uri = join(root, 'local/ubattend/view.php');
+    tidx.updateFileText(uri, "<?php\necho $OUTPUT->render_from_template('local_ubattend/other', []);\n");
+    assert.equal(tidx.templateRefsOf('local_ubattend', 'setting').length, 0, '이전 템플릿 참조 제거');
+    assert.equal(tidx.templateRefsOf('local_ubattend', 'other').length, 1, '새 참조 반영');
+    assert.equal(tidx.referencesOf('local_ubattend', 'attendance_book').length, 0, '문자열 참조도 함께 교체');
   });
 });

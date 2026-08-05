@@ -22,7 +22,7 @@ import { RecordQuickFixProvider } from './presentation/providers/record-quickfix
 import { StringKeyCompletionProvider } from './presentation/providers/string-key-completion-provider';
 import { StringDefinitionProvider } from './presentation/providers/string-definition-provider';
 import { StringHoverProvider } from './presentation/providers/string-hover-provider';
-import { StringUsageIndex, isIndexablePhpPath } from './infrastructure/lang/string-usage-index';
+import { PhpUsageIndex, isIndexablePhpPath } from './infrastructure/usage/php-usage-index';
 import { FindStringReferences } from './application/find-string-references';
 import { ListResolvedStringCalls } from './application/list-resolved-string-calls';
 import { LangReferenceProvider } from './presentation/providers/lang-reference-provider';
@@ -62,7 +62,7 @@ export async function activate(ctx: vscode.ExtensionContext) {
   const describeStr = new DescribeString(syntax, strings);
   const validateStr = new ValidateStringKeys(syntax, strings);
 
-  const usageIndex = new StringUsageIndex(c => strings.hasComponent(c));
+  const usageIndex = new PhpUsageIndex(c => strings.hasComponent(c));
   let usageBuild: Promise<void> | undefined;
   const findRefs = new FindStringReferences(usageIndex);
   const listResolved = new ListResolvedStringCalls(syntax, strings);
