@@ -1,6 +1,6 @@
 import { strict as assert } from 'assert';
 import { join } from 'path';
-import { StringUsageIndex } from '../../../src/infrastructure/lang/string-usage-index';
+import { StringUsageIndex, isIndexablePhpPath } from '../../../src/infrastructure/lang/string-usage-index';
 
 const root = join(__dirname, '../../fixtures/mini-moodle');
 // 픽스처 기준 canonical 존재 판정: 코어 서브시스템은 core_grades뿐
@@ -51,5 +51,15 @@ describe('StringUsageIndex', () => {
     const refs = idx2.referencesOf('local_ubattend', 'string');
     assert.equal(refs.length, 1);
     assert.equal(refs[0].column, 17);
+  });
+  it("lang 디렉터리는 스캔에서 제외 — 값/노트 속 get_string 유령 매치 방지", () => {
+    assert.equal(idx.referencesOf('local_ubattend', 'ghost_key').length, 0);
+  });
+  it('isIndexablePhpPath: 스캔 제외 규칙과 패리티', () => {
+    assert.equal(isIndexablePhpPath(root, join(root, 'local/ubattend/view.php')), true);
+    assert.equal(isIndexablePhpPath(root, join(root, 'local/ubattend/lang/en/local_ubattend.php')), false);
+    assert.equal(isIndexablePhpPath(root, join(root, 'vendor/x.php')), false);
+    assert.equal(isIndexablePhpPath(root, '/etc/x.php'), false);
+    assert.equal(isIndexablePhpPath(root, join(root, 'local/a.txt')), false);
   });
 });

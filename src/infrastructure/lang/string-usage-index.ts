@@ -103,3 +103,11 @@ async function listPhpFiles(root: string): Promise<string[]> {
   await walk(root);
   return out;
 }
+
+/** 저장 증분이 콜드 스캔과 같은 제외 규칙을 따르게 하는 가드 — 루트 밖·SKIP_DIRS 경로는 색인 대상 아님 */
+export function isIndexablePhpPath(root: string, fsPath: string): boolean {
+  if (!fsPath.endsWith('.php')) return false;
+  const rel = path.relative(root, fsPath);
+  if (rel.startsWith('..') || path.isAbsolute(rel)) return false;
+  return !rel.split(path.sep).some(seg => SKIP_DIRS.has(seg));
+}

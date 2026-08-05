@@ -29,6 +29,7 @@ Moodle 코드는 DB 레코드를 대부분 `stdClass`로 다루기 때문에, �
 |---|---|---|---|
 | `csmscode.detectInSubfolders` | `string[]` | `[]` | Moodle 루트가 워크스페이스 하위 폴더에 있을 때 탐색할 폴더명 목록 (예: `["moodle"]`). |
 | `csmscode.diagnostics.enable` | `boolean` | `true` | DB 레코드 컬럼 오타 진단을 켭니다. `false`로 설정하면 진단이 즉시 사라집니다. |
+| `csmscode.strings.highlightResolved` | `boolean` | `true` | 해석되는 get_string 키를 링크 색상으로 하이라이팅 |
 
 ## 개발
 
