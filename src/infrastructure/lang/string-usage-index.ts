@@ -5,7 +5,7 @@ import { StringUsageRepository } from '../../domain/lang-model/ports/string-usag
 import { normalizeComponent } from '../../domain/lang-model/services/component-normalizer';
 
 // 리터럴 key(+선택적 리터럴 component) — 변수/보간은 비매칭(침묵 원칙)
-const USAGE_RE = /get_string\(\s*['"]([\w:.\/-]+)['"]\s*(?:,\s*['"](\w+)['"])?/g;
+const USAGE_RE = /get_string\(\s*['"]([\w:./-]+)['"]\s*(?:,\s*['"](\w+)['"])?/g;
 // 'lang'은 lang 팩 자체 — 사용처가 아니고, 값 텍스트 속 "get_string(" 유령 매치 방지를 겸한다
 const SKIP_DIRS = new Set(['node_modules', 'vendor', '.git', '.superpowers', 'dist', 'lang']);
 const YIELD_EVERY = 200;
