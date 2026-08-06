@@ -187,3 +187,109 @@ export function listTemplateFiles(root: string): TemplateFileRef[] {
   }
   return out;
 }
+
+export const INDEX_YIELD_EVERY = 200;
+
+/** 이벤트 루프 양보 — 색인 루프가 확장 호스트를 막지 않게 한다. */
+export function yieldNow(): Promise<void> {
+  return new Promise<void>(r => setImmediate(r));
+}
+
+async function existsAsync(p: string): Promise<boolean> {
+  try { await fs.promises.access(p); return true; } catch { return false; }
+}
+
+/** 디렉터리(심볼릭 링크 대상이 디렉터리인 것 포함) 이름 목록 */
+async function safeReaddirAsync(dir: string): Promise<string[]> {
+  let entries: fs.Dirent[];
+  try { entries = await fs.promises.readdir(dir, { withFileTypes: true }); } catch { return []; }
+  const out: string[] = [];
+  for (const d of entries) {
+    if (d.isDirectory()) { out.push(d.name); continue; }
+    if (!d.isSymbolicLink()) continue;
+    try { if ((await fs.promises.stat(path.join(dir, d.name))).isDirectory()) out.push(d.name); } catch { /* 깨진 링크 무시 */ }
+  }
+  return out;
+}
+
+async function safeReaddirFilesAsync(dir: string): Promise<string[]> {
+  try {
+    return (await fs.promises.readdir(dir, { withFileTypes: true })).filter(d => d.isFile()).map(d => d.name);
+  } catch { return []; }
+}
+
+/** listInstallXmlFiles의 비동기 판 — 규칙은 동일 함수(pluginTypeOfRel 계열)를 쓰므로 갈라질 수 없다. */
+export async function listInstallXmlFilesAsync(root: string): Promise<{ file: string; component: string }[]> {
+  const out: { file: string; component: string }[] = [];
+  const core = path.join(root, 'lib', 'db', 'install.xml');
+  if (await existsAsync(core)) out.push({ file: core, component: 'core' });
+  let n = 0;
+  for (const [type, relDir] of Object.entries(PLUGIN_DIRS)) {
+    const typeDir = path.join(root, relDir);
+    if (!await existsAsync(typeDir)) continue;
+    for (const name of await safeReaddirAsync(typeDir)) {
+      const f = path.join(typeDir, name, 'db', 'install.xml');
+      if (await existsAsync(f)) out.push({ file: f, component: `${type}_${name}` });
+      if (++n % INDEX_YIELD_EVERY === 0) await yieldNow();
+    }
+  }
+  return out;
+}
+
+/** listLangFiles의 비동기 판 */
+export async function listLangFilesAsync(root: string): Promise<LangFileRef[]> {
+  const out: LangFileRef[] = [];
+  const coreDir = path.join(root, 'lang', 'en');
+  for (const f of await safeReaddirFilesAsync(coreDir)) {
+    if (!f.endsWith('.php')) continue;
+    const base = f.slice(0, -4);
+    out.push({ file: path.join(coreDir, f), component: base === 'moodle' ? 'core' : `core_${base}`, locale: 'en' });
+  }
+  let n = 0;
+  for (const [type, relDir] of Object.entries(PLUGIN_DIRS)) {
+    const typeDir = path.join(root, relDir);
+    if (!await existsAsync(typeDir)) continue;
+    for (const name of await safeReaddirAsync(typeDir)) {
+      const expected = type === 'mod' ? `${name}.php` : `${type}_${name}.php`;
+      for (const locale of LANG_LOCALES) {
+        const f = path.join(typeDir, name, 'lang', locale, expected);
+        if (await existsAsync(f)) out.push({ file: f, component: `${type}_${name}`, locale });
+      }
+      if (++n % INDEX_YIELD_EVERY === 0) await yieldNow();
+    }
+  }
+  return out;
+}
+
+/** listTemplateFiles의 비동기 판 — realpath 순환 가드도 동일하게 유지 */
+export async function listTemplateFilesAsync(root: string): Promise<TemplateFileRef[]> {
+  const out: TemplateFileRef[] = [];
+  const seen = new Set<string>();
+  let n = 0;
+  const push = (file: string) => {
+    const ref = componentOfTemplateFile(root, file);
+    if (ref) out.push({ file, component: ref.component, name: ref.name });
+  };
+  const walk = async (dir: string): Promise<void> => {
+    let real: string;
+    try { real = await fs.promises.realpath(dir); } catch { return; }
+    if (seen.has(real)) return;
+    seen.add(real);
+    for (const f of await safeReaddirFilesAsync(dir)) {
+      if (f.endsWith('.mustache')) push(path.join(dir, f));
+      if (++n % INDEX_YIELD_EVERY === 0) await yieldNow();
+    }
+    for (const d of await safeReaddirAsync(dir)) await walk(path.join(dir, d));
+  };
+  const coreDir = path.join(root, 'lib', 'templates');
+  if (await existsAsync(coreDir)) await walk(coreDir);
+  for (const relDir of Object.values(PLUGIN_DIRS)) {
+    const typeDir = path.join(root, relDir);
+    if (!await existsAsync(typeDir)) continue;
+    for (const name of await safeReaddirAsync(typeDir)) {
+      const tdir = path.join(typeDir, name, 'templates');
+      if (await existsAsync(tdir)) await walk(tdir);
+    }
+  }
+  return out;
+}

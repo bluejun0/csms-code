@@ -2,7 +2,8 @@ import { strict as assert } from 'assert';
 import { join } from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
-import { findMoodleRoot, listInstallXmlFiles, listLangFiles, componentOfLangFile } from '../../../src/infrastructure/workspace/moodle-root-resolver';
+import { findMoodleRoot, listInstallXmlFiles, listLangFiles, componentOfLangFile, listInstallXmlFilesAsync, listLangFilesAsync, listTemplateFilesAsync, listTemplateFiles } from '../../../src/infrastructure/workspace/moodle-root-resolver';
+import { LangFileRef, TemplateFileRef } from '../../../src/infrastructure/workspace/moodle-root-resolver';
 
 const root = join(__dirname, '../../fixtures/mini-moodle');
 
@@ -76,4 +77,20 @@ describe('MoodleRootResolver — componentOfLangFile (경로 역산)', () => {
     assert.equal(componentOfLangFile(root, join(root, 'local/ubattend/lang/ko/wrong.php')), null));
   it('루트 밖 경로 → null', () =>
     assert.equal(componentOfLangFile(root, '/etc/passwd'), null));
+});
+
+describe('MoodleRootResolver — 비동기 열거는 동기와 동일 결과', () => {
+  const norm = (xs: { file: string }[]) => xs.map(x => x.file).sort();
+
+  it('listInstallXmlFilesAsync ≡ listInstallXmlFiles', async () => {
+    assert.deepEqual(norm(await listInstallXmlFilesAsync(root)), norm(listInstallXmlFiles(root)));
+  });
+  it('listLangFilesAsync ≡ listLangFiles (component·locale 포함)', async () => {
+    const key = (xs: LangFileRef[]) => xs.map(x => `${x.component}:${x.locale}:${x.file}`).sort();
+    assert.deepEqual(key(await listLangFilesAsync(root)), key(listLangFiles(root)));
+  });
+  it('listTemplateFilesAsync ≡ listTemplateFiles (component·name 포함)', async () => {
+    const key = (xs: TemplateFileRef[]) => xs.map(x => `${x.component}/${x.name}:${x.file}`).sort();
+    assert.deepEqual(key(await listTemplateFilesAsync(root)), key(listTemplateFiles(root)));
+  });
 });
