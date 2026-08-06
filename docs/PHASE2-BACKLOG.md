@@ -33,8 +33,17 @@ Phase 1 (DB stdClass 인텔리전스)은 완료되었습니다. 아래는 종합
     - **실측(hlulxp 커스텀 PHP 3,370개, tree-sitter로 함수 스코프 단위)**: 순수 stdClass 변수 **275개**(서로 다른 스코프 217개), 대입된 고유 필드 **1,237개**(변수당 p50 3·p90 10·max 24), `return $obj`로 나가는 것 88개, `(object)` 캐스트 30개. ※ 파일 단위 정규식으로 세면 639변수/4,310필드로 2배 이상 과대 계상된다(`$data`·`$record` 변수명이 함수마다 재사용되므로). 스코프 단위 숫자를 쓸 것.
     - **진단은 비목표**(오탐 필연): stdClass 필드 집합은 닫히지 않는다 — 참조 인자로 채우기(`function fill(&$o)`), 동적 이름(`$o->$k` — 실측 336곳), `(object)$array`. 다만 "쓰지 않은 필드를 읽는" 변수는 실측 3개(필드 4개)뿐이라 **완성·hover·F12의 정확도는 충분하다**.
     - **설계 방향**: ① `facts.ts`에 `PropertyWrite { varName, property, index, scope }` 추가 — 기존 `Q_PROP`은 대입 좌·우변을 구분하지 못하므로 `(assignment_expression left: (member_access_expression object: (variable_name (name) @var) name: (name) @prop))` 쿼리가 따로 필요하다. ② stdClass 여부 판정에 새 경로를 만들지 말고 기존 `plainAssignments` + `nearestPreceding`(kill-on-reassign 기계)을 재사용해 "가장 가까운 선행 대입의 RHS가 `new stdClass`/`(object)` 캐스트인가"만 추가로 알면 된다. ③ **병합 의미는 합집합으로 확정**: 테이블 바인딩과 로컬 필드 쓰기가 둘 다 있는 변수(실측 43개 — `$rec = $DB->get_record(…); $rec->extra = 1;`)는 컬럼 ∪ 로컬 필드를 출처 구분해 표시한다. 이건 `complete-record-columns.ts`와 기존 dataarg 동작을 건드리므로 스펙에서 확정하고 들어갈 것.
-    - **스파이크 완료**: 위 3개 쿼리(`PropertyWrite`·`object_creation_expression`·`cast_expression type: (cast_type)`)가 현재 grammar에서 컴파일·매칭됨을 2026-08-06에 확인했다.
-15. **알려진 전역·함수의 테이블 바인딩** (14번과 함께 검토, 보류): `$USER`→`user`, `$COURSE`/`$SITE`→`course`, `get_course()`→`course`, `get_coursemodule_from_id()`/`_from_instance()`→`course_modules`. 실측 접근 `$USER->` 636회(그중 **87%가 실제 user 컬럼과 일치**)·`$COURSE->` 43(100%)·`$SITE->` 78(100%), 함수 쪽 45회. **여기도 진단은 제외**: `$USER`의 불일치 81건은 사이트가 주입하는 런타임 필드(`ubion` 62·`access`·`editing`·`realuser`)라 경고를 붙이면 즉시 오탐이 된다. `$CFG->`는 1,531회로 가장 많지만 config 키-값이라 테이블이 없어 대상 아님.
+    - **스파이크 완료**: 아래 3개 쿼리가 현재 grammar(`tree-sitter-wasms/out/tree-sitter-php.wasm`)에서 컴파일·매칭됨을 2026-08-06에 확인했다. 실측도 이 쿼리로 했으므로 그대로 쓰면 된다.
+      ```
+      (assignment_expression left: (member_access_expression
+        object: (variable_name (name) @var) name: (name) @prop))          ; 프로퍼티 쓰기
+      (assignment_expression left: (variable_name (name) @var)
+        right: (object_creation_expression (name) @cls))                  ; new stdClass
+      (assignment_expression left: (variable_name (name) @var)
+        right: (cast_expression type: (cast_type) @ctype))                ; (object) 캐스트
+      ```
+      동적 프로퍼티 접근은 `(member_access_expression object: (variable_name (name)) name: (variable_name))`로 세었다(집합이 닫히지 않는다는 근거).
+15. **알려진 전역·함수의 테이블 바인딩** (14번과 함께 검토, 보류): `$USER`→`user`, `$COURSE`/`$SITE`→`course`, `get_course()`→`course`, `get_coursemodule_from_id()`/`_from_instance()`→`course_modules`. 실측 접근 `$USER->` 636회(그중 **87%가 실제 user 컬럼과 일치**)·`$COURSE->` 43(100%)·`$SITE->` 78(100%), 함수 쪽 45회. **100%를 과신하지 말 것** — 표본이 43·78건뿐이고 대부분 `->id`/`->fullname`/`->shortname`이다. `$SITE`는 사이트 코스 레코드(id=1)라 `course` 행이 맞지만, `$COURSE`는 부트스트랩 경로에서 필드 일부만 채워진 부분 객체일 수 있다. 따라서 완성 후보로만 쓴다. **15번 전체에서 진단은 제외**: `$USER`의 불일치 81건은 사이트가 주입하는 런타임 필드(`ubion` 62·`access`·`editing`·`realuser`)라 경고를 붙이면 즉시 오탐이 된다. `$CFG->`는 1,531회로 가장 많지만 config 키-값이라 테이블이 없어 대상 아님.
 16. **`get_record_sql` SQL 리터럴에서 테이블 추출** (별도 사이클 — 14·15번보다 위험): 실측 `get_record_sql`+`get_records_sql` 836회 중 호출부 리터럴에서 `{table}`이 1개만 나오는 건 244회, 조인 77회, **리터럴에서 아예 못 찾는 게 515회**(대부분 `$sql`을 위에서 조립해 넘김 → 변수 해석이 선행돼야 실질 커버리지가 나온다). 조인·별칭이 있으면 반환 필드는 테이블 컬럼이 아니라 select 목록이므로 `SELECT *`(198회)만 안전하다.
 
 ## Plan 2 (별도 계획 예정)
