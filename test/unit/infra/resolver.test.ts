@@ -2,8 +2,8 @@ import { strict as assert } from 'assert';
 import { join } from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
-import { findMoodleRoot, listInstallXmlFiles, listLangFiles, componentOfLangFile, componentOfInstallXmlFile, listInstallXmlFilesAsync, listLangFilesAsync, listTemplateFilesAsync, listTemplateFiles, langFileMetaOf } from '../../../src/infrastructure/workspace/moodle-root-resolver';
-import { LangFileRef, TemplateFileRef } from '../../../src/infrastructure/workspace/moodle-root-resolver';
+import { findMoodleRoot, listInstallXmlFiles, listLangFiles, componentOfLangFile, componentOfInstallXmlFile, listInstallXmlFilesAsync, listLangFilesAsync, listTemplateFilesAsync, listTemplateFiles, langFileMetaOf, listAmdFiles, listAmdFilesAsync, componentOfAmdFile, coreSubsystemDirs } from '../../../src/infrastructure/workspace/moodle-root-resolver';
+import { LangFileRef, TemplateFileRef, AmdFileRef } from '../../../src/infrastructure/workspace/moodle-root-resolver';
 
 const root = join(__dirname, '../../fixtures/mini-moodle');
 
@@ -152,5 +152,44 @@ describe('MoodleRootResolver — componentOfInstallXmlFile', () => {
   it('규칙 밖 → null', () => {
     assert.equal(componentOfInstallXmlFile(root, join(root, 'local/ubattend/db/other.xml')), null);
     assert.equal(componentOfInstallXmlFile(root, '/etc/install.xml'), null);
+  });
+});
+
+describe('MoodleRootResolver — AMD 모듈 열거', () => {
+  it('플러그인·코어·코어 서브시스템을 component/name으로 열거하고 amd/build는 제외', () => {
+    const list = listAmdFiles(root).map(x => `${x.component}/${x.name}`).sort();
+    assert.deepEqual(list, [
+      'core/notification', 'core_form/submit',
+      'local_ubattend/setting', 'local_ubattend/sub/nested', 'local_ubattend/view',
+    ]);
+  });
+
+  it('비동기 열거는 동기와 동일', async () => {
+    const key = (xs: AmdFileRef[]) => xs.map(x => `${x.component}/${x.name}:${x.file}`).sort();
+    assert.deepEqual(key(await listAmdFilesAsync(root)), key(listAmdFiles(root)));
+  });
+
+  it('componentOfAmdFile: 열거 결과를 되돌린다', () => {
+    for (const ref of listAmdFiles(root)) {
+      assert.deepEqual(componentOfAmdFile(root, ref.file), { component: ref.component, name: ref.name });
+    }
+  });
+
+  it('componentOfAmdFile: amd/build·규칙 밖·루트 밖은 null', () => {
+    assert.equal(componentOfAmdFile(root, join(root, 'local/ubattend/amd/build/setting.min.js')), null);
+    assert.equal(componentOfAmdFile(root, join(root, 'local/ubattend/classes/thing.php')), null);
+    assert.equal(componentOfAmdFile(root, '/etc/passwd'), null);
+  });
+
+  it('coreSubsystemDirs: null 값은 제외', () => {
+    const m = coreSubsystemDirs(root);
+    assert.equal(m.get('form'), 'lib/form');
+    assert.ok(!m.has('access'));
+  });
+
+  it('coreSubsystemDirs: components.json이 없으면 빈 Map', () => {
+    const tmp = fs.mkdtempSync(join(os.tmpdir(), 'csms-nocomp-'));
+    assert.equal(coreSubsystemDirs(tmp).size, 0);
+    fs.rmSync(tmp, { recursive: true, force: true });
   });
 });

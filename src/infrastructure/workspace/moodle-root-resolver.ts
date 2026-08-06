@@ -210,6 +210,87 @@ export function listTemplateFiles(root: string): TemplateFileRef[] {
   return out;
 }
 
+export interface AmdFileRef { file: string; component: string; name: string; }
+
+/** `lib/components.json`의 서브시스템 → 루트 기준 디렉터리. 코어 서브시스템은 컴포넌트명에서
+ *  디렉터리를 유도할 수 없다(`core_form` → `lib/form`). 값이 null인 항목은 디렉터리가 없는
+ *  서브시스템이라 제외한다. 이 파일이 없는 버전에서는 빈 Map이고, 그러면 코어 서브시스템
+ *  모듈만 해석되지 않는다(플러그인 모듈은 영향 없음). */
+export function coreSubsystemDirs(root: string): Map<string, string> {
+  const out = new Map<string, string>();
+  try {
+    const raw = JSON.parse(fs.readFileSync(path.join(root, 'lib', 'components.json'), 'utf8'));
+    for (const [name, dir] of Object.entries(raw?.subsystems ?? {})) {
+      if (typeof dir === 'string' && dir) out.set(name, dir);
+    }
+  } catch { /* 파일 없음·JSON 파손 → 빈 Map */ }
+  return out;
+}
+
+/** AMD 모듈이 놓이는 `amd/src` 디렉터리와 그 컴포넌트 — 코어·코어 서브시스템·플러그인 순. */
+function amdRoots(root: string): { dir: string; component: string }[] {
+  const out = [{ dir: path.join(root, 'lib', 'amd', 'src'), component: 'core' }];
+  for (const [sub, rel] of coreSubsystemDirs(root)) {
+    out.push({ dir: path.join(root, rel, 'amd', 'src'), component: `core_${sub}` });
+  }
+  for (const [type, relDir] of Object.entries(PLUGIN_DIRS)) {
+    const typeDir = path.join(root, relDir);
+    if (!fs.existsSync(typeDir)) continue;
+    for (const name of safeReaddir(typeDir)) {
+      out.push({ dir: path.join(typeDir, name, 'amd', 'src'), component: `${type}_${name}` });
+    }
+  }
+  return out;
+}
+
+/** `amd/src` 이하 경로에서 확장자를 뗀 모듈 이름. 구분자는 항상 `/` — 참조 문자열과 같은 형태여야 한다. */
+function amdNameOf(srcDir: string, file: string): string {
+  return path.relative(srcDir, file).split(path.sep).join('/').replace(/\.js$/, '');
+}
+
+/** 코어 + 코어 서브시스템 + 모든 플러그인의 `amd/src` JS 파일 열거(하위 디렉터리 포함).
+ *  `amd/build`는 미니파이 사본이라 대상이 아니다. */
+export function listAmdFiles(root: string): AmdFileRef[] {
+  const out: AmdFileRef[] = [];
+  // 순환 가드는 한 루트 안에서만 유효해야 한다 — 루트끼리 공유하면 두 컴포넌트가 같은
+  // 디렉터리를 가리킬 때(심볼릭 링크) 먼저 도달한 쪽만 열거된다.
+  const walk = (dir: string, srcDir: string, component: string, seen: Set<string>) => {
+    let real: string;
+    try { real = fs.realpathSync(dir); } catch { return; }
+    if (seen.has(real)) return;
+    seen.add(real);
+    for (const f of safeReaddirFiles(dir)) {
+      if (!f.endsWith('.js')) continue;
+      const file = path.join(dir, f);
+      out.push({ file, component, name: amdNameOf(srcDir, file) });
+    }
+    for (const d of safeReaddir(dir)) walk(path.join(dir, d), srcDir, component, seen);
+  };
+  for (const { dir, component } of amdRoots(root)) walk(dir, dir, component, new Set());
+  return out;
+}
+
+/** `amd/src` 파일 → { component, name } (listAmdFiles 규칙의 역함수). 규칙 밖은 null. */
+export function componentOfAmdFile(root: string, file: string): { component: string; name: string } | null {
+  if (!file.endsWith('.js')) return null;
+  const rel = path.relative(root, file);
+  if (rel.startsWith('..') || path.isAbsolute(rel)) return null;
+  const parts = rel.split(path.sep);
+  const i = parts.findIndex((seg, k) => seg === 'src' && parts[k - 1] === 'amd');
+  if (i < 1) return null;
+  const name = parts.slice(i + 1).join('/').replace(/\.js$/, '');
+  if (!name) return null;
+  const prefix = parts.slice(0, i - 1).join('/');
+  if (prefix === 'lib') return { component: 'core', name };
+  for (const [sub, relDir] of coreSubsystemDirs(root)) {
+    if (prefix === relDir) return { component: `core_${sub}`, name };
+  }
+  // pluginTypeOfRel은 타입 디렉터리·플러그인 이름 뒤에 최소 한 세그먼트를 더 요구하므로
+  // 플러그인 디렉터리까지만 남은 경로에는 더미 세그먼트를 붙여 호출한다.
+  const hit = pluginTypeOfRel(path.join(...parts.slice(0, i - 1), 'x'));
+  return hit ? { component: `${hit.type}_${hit.name}`, name } : null;
+}
+
 export const INDEX_YIELD_EVERY = 200;
 
 /** 이벤트 루프 양보 — 색인 루프가 확장 호스트를 막지 않게 한다. */
@@ -281,6 +362,56 @@ export async function listLangFilesAsync(root: string): Promise<LangFileRef[]> {
       if (++n % INDEX_YIELD_EVERY === 0) await yieldNow();
     }
   }
+  return out;
+}
+
+/** amdRoots의 비동기 판 — 컴포넌트 조합 규칙은 동기판과 같고 I/O만 비동기다.
+ *  활성화 경로가 확장 호스트를 막지 않으려면 여기서도 동기 fs를 쓰지 않아야 한다. */
+async function amdRootsAsync(root: string): Promise<{ dir: string; component: string }[]> {
+  const out = [{ dir: path.join(root, 'lib', 'amd', 'src'), component: 'core' }];
+  for (const [sub, rel] of await coreSubsystemDirsAsync(root)) {
+    out.push({ dir: path.join(root, rel, 'amd', 'src'), component: `core_${sub}` });
+  }
+  for (const [type, relDir] of Object.entries(PLUGIN_DIRS)) {
+    const typeDir = path.join(root, relDir);
+    if (!await existsAsync(typeDir)) continue;
+    for (const name of await safeReaddirAsync(typeDir)) {
+      out.push({ dir: path.join(typeDir, name, 'amd', 'src'), component: `${type}_${name}` });
+    }
+  }
+  return out;
+}
+
+/** coreSubsystemDirs의 비동기 판 — 파싱·필터 규칙은 동기판과 동일하다. */
+async function coreSubsystemDirsAsync(root: string): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  try {
+    const raw = JSON.parse(await fs.promises.readFile(path.join(root, 'lib', 'components.json'), 'utf8'));
+    for (const [name, dir] of Object.entries(raw?.subsystems ?? {})) {
+      if (typeof dir === 'string' && dir) out.set(name, dir);
+    }
+  } catch { /* 파일 없음·JSON 파손 → 빈 Map */ }
+  return out;
+}
+
+/** listAmdFiles의 비동기 판 — 열거 대상(amdRoots)·이름 규칙(amdNameOf)을 동기판과 공유한다. */
+export async function listAmdFilesAsync(root: string): Promise<AmdFileRef[]> {
+  const out: AmdFileRef[] = [];
+  let n = 0;
+  const walk = async (dir: string, srcDir: string, component: string, seen: Set<string>): Promise<void> => {
+    let real: string;
+    try { real = await fs.promises.realpath(dir); } catch { return; }
+    if (seen.has(real)) return;
+    seen.add(real);
+    for (const f of await safeReaddirFilesAsync(dir)) {
+      if (!f.endsWith('.js')) continue;
+      const file = path.join(dir, f);
+      out.push({ file, component, name: amdNameOf(srcDir, file) });
+      if (++n % INDEX_YIELD_EVERY === 0) await yieldNow();
+    }
+    for (const d of await safeReaddirAsync(dir)) await walk(path.join(dir, d), srcDir, component, seen);
+  };
+  for (const { dir, component } of await amdRootsAsync(root)) await walk(dir, dir, component, new Set());
   return out;
 }
 
