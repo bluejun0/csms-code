@@ -14,6 +14,7 @@ import { CompleteStringKeys } from './application/complete-string-keys';
 import { ResolveStringDefinition } from './application/resolve-string-definition';
 import { DescribeString } from './application/describe-string';
 import { ValidateStringKeys } from './application/validate-string-keys';
+import { KeyedDebouncer } from './presentation/keyed-debouncer';
 import { registerDiagnostics } from './presentation/providers/record-diagnostics';
 import { RecordColumnCompletionProvider } from './presentation/providers/record-column-completion-provider';
 import { RecordDefinitionProvider } from './presentation/providers/record-definition-provider';
@@ -118,6 +119,11 @@ export async function activate(ctx: vscode.ExtensionContext) {
     { setting: 'templates.highlightResolved', languages: ['javascript'], run: t => listResolvedJs.runTemplates(t) },
   ]);
   const refreshAll = () => { diagnostics.refreshAll(); highlight.refreshAll(); };
+  // 워처 폭주(예: git checkout으로 lang 수백 개 변경) 시 이벤트마다 전체 갱신하면 낭비가 N배로 쌓인다 —
+  // 마지막 한 번만 의미가 있으므로 합친다. 초기 빌드 완료 후 갱신은 단발이라 즉시 호출한다.
+  const refreshDebouncer = new KeyedDebouncer(200);
+  ctx.subscriptions.push(refreshDebouncer);
+  const scheduleRefresh = () => refreshDebouncer.schedule('all', refreshAll);
 
   // 색인은 비동기로 — 활성화가 확장 호스트를 막지 않는다(실측 콜드 ~1.7초).
   // 빌드 완료 전 조회는 빈 결과(침묵 원칙)이고, 완료 후 열린 문서를 한 번 갱신한다.
@@ -153,7 +159,7 @@ export async function activate(ctx: vscode.ExtensionContext) {
    *  apply가 실제로 색인을 바꿨을 때만 갱신한다. */
   const applyIncremental = (apply: () => boolean) => {
     if (indexing) { pendingReindex = true; return; }
-    if (apply()) refreshAll();
+    if (apply()) scheduleRefresh();
   };
 
   // install.xml 변경 → 그 파일만 갱신
@@ -171,7 +177,7 @@ export async function activate(ctx: vscode.ExtensionContext) {
     watcher.onDidCreate(u => onXml(u, false)),
     watcher.onDidDelete(u => onXml(u, true)));
 
-  // lang 파일 변경 → 그 파일만 갱신(실측 전체 재색인 122ms → ~1ms)
+  // lang 파일 변경 → 그 파일만 갱신(실측 전체 재색인 122ms → ~6ms)
   const langWatcher = vscode.workspace.createFileSystemWatcher('**/lang/*/*.php');
   const onLang = (uri: vscode.Uri, removed: boolean) => applyIncremental(() => {
     const meta = langFileMetaOf(root, uri.fsPath);

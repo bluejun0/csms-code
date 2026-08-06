@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 활성화 시 확장 호스트를 막는 동기 색인(콜드 ~1,730ms)을 비동기화하고, 파일 하나 변경에 전체를 다시 읽는 워처를 파일 단위 증분으로 바꾼다(lang 저장 122ms → ~1ms).
+**Goal:** 활성화 시 확장 호스트를 막는 동기 색인(콜드 ~1,730ms)을 비동기화하고, 파일 하나 변경에 전체를 다시 읽는 워처를 파일 단위 증분으로 바꾼다(lang 저장 실측 122ms → 한 자릿수 ms).
 
-**Architecture:** 열거(741ms)와 읽기 모두 `fs.promises` + 200항목마다 `setImmediate` 양보로 비동기화한다. 동기·비동기 두 경로가 갈라지지 않도록 "파일 → 색인 구조" 조립을 한 함수로 뽑아 두 경로가 그것만 호출하고, 픽스처에서 두 경로가 같은 결과를 내는지 등가성 테스트로 고정한다. 워처는 경로 역산으로 메타를 구해 파일 단위로 갱신하고, 역산이 실패하면 전체 재빌드로 폴백한다.
+**Architecture:** 열거(741ms)와 읽기 모두 `fs.promises` + 200항목마다 `setImmediate` 양보로 비동기화한다. 동기·비동기 두 경로가 갈라지지 않도록 "파일 → 색인 구조" 조립을 한 함수로 뽑아 두 경로가 그것만 호출하고, 픽스처에서 두 경로가 같은 결과를 내는지 등가성 테스트로 고정한다. 워처는 경로 역산으로 메타를 구해 파일 단위로 갱신하고, 역산이 실패하면 전체 재빌드로 폴백한다. (주: 착수 시점 설계였던 "역산 실패 시 전체 재빌드 폴백"은 Task 5 리뷰에서 무용함이 증명되어 제거됐다 — 현행 동작은 스펙 §3.5가 권위다.)
 
 **Tech Stack:** TypeScript (strict), `fs.promises`, mocha + ts-node.
 
