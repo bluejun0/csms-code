@@ -130,3 +130,33 @@ describe('PhpUsageIndex — JS 사용처(같은 스캔에서 수집)', () => {
     assert.equal(jidx.templateRefsOf('local_ubattend', 'setting').filter(r => r.uri.endsWith('view.js')).length, 0);
   });
 });
+
+describe('PhpUsageIndex — js_call_amd 사용처', () => {
+  const CODE = `<?php\n$PAGE->requires->js_call_amd('local_x/mod', 'init');\n`;
+
+  it('위치와 함께 담고, 같은 파일 재갱신에 중복되지 않는다', () => {
+    const idx = new PhpUsageIndex(() => true);
+    const uri = '/w/local/x/index.php';
+    idx.updateFileText(uri, CODE);
+    const refs = idx.amdRefsOf('local_x', 'mod');
+    assert.equal(refs.length, 1);
+    assert.equal(refs[0].line, 1);
+    const line = CODE.split('\n')[1];
+    assert.equal(line.slice(refs[0].column, refs[0].column + 'local_x/mod'.length), 'local_x/mod');
+    idx.updateFileText(uri, CODE);
+    assert.equal(idx.amdRefsOf('local_x', 'mod').length, 1);
+  });
+
+  it('참조가 사라지면 목록에서 빠진다', () => {
+    const idx = new PhpUsageIndex(() => true);
+    idx.updateFileText('/w/a.php', CODE);
+    idx.updateFileText('/w/a.php', '<?php\n');
+    assert.equal(idx.amdRefsOf('local_x', 'mod').length, 0);
+  });
+
+  it('JS 파일에서는 수집하지 않는다(모듈 로딩은 import·require)', () => {
+    const idx = new PhpUsageIndex(() => true);
+    idx.updateFileText('/w/amd/src/a.js', "require(['local_x/mod'], function () {});\n");
+    assert.equal(idx.amdRefsOf('local_x', 'mod').length, 0);
+  });
+});

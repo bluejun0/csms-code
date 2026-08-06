@@ -3,6 +3,7 @@ import * as path from 'path';
 import { SourceLocation } from '../../domain/shared/value-objects';
 import { StringUsageRepository } from '../../domain/lang-model/ports/string-usage-repository';
 import { TemplateUsageRepository } from '../../domain/template-model/ports/template-usage-repository';
+import { AmdUsageRepository } from '../../domain/amd-model/ports/amd-usage-repository';
 import { normalizeComponent } from '../../domain/lang-model/services/component-normalizer';
 import { scanJsCalls } from '../../domain/code-analysis/js-call-scanner';
 
@@ -10,20 +11,25 @@ import { scanJsCalls } from '../../domain/code-analysis/js-call-scanner';
 const USAGE_RE = /get_string\(\s*['"]([\w:./-]+)['"]\s*(?:,\s*['"](\w+)['"])?/g;
 // 템플릿 사용처 — 같은 스캔에서 함께 수집한다(23초 스캔을 두 번 돌리지 않기 위해)
 const TEMPLATE_USAGE_RE = /render_from_template\(\s*['"]([\w:./-]+)['"]/g;
+// AMD 모듈 사용처 — 같은 스캔에서 함께 수집한다
+const AMD_USAGE_RE = /js_call_amd\(\s*['"]([\w:./-]+)['"]/g;
 // 'lang'은 lang 팩 자체 — 사용처가 아니고, 값 텍스트 속 "get_string(" 유령 매치 방지를 겸한다
 const SKIP_DIRS = new Set(['node_modules', 'vendor', '.git', '.superpowers', 'dist', 'lang']);
 const YIELD_EVERY = 200;
 
 interface UsageEntry { component: string; key: string; loc: SourceLocation; }
 interface TemplateEntry { ref: string; loc: SourceLocation; }
+interface AmdEntry { ref: string; loc: SourceLocation; }
 
-/** get_string·render_from_template 사용처의 워크스페이스 색인 — lazy 빌드 + 저장/삭제 시 파일 단위 증분.
- *  두 종류를 한 번의 파일 읽기에서 함께 추출한다(스캔 중복 방지). */
-export class PhpUsageIndex implements StringUsageRepository, TemplateUsageRepository {
+/** get_string·render_from_template·js_call_amd 사용처의 워크스페이스 색인 — lazy 빌드 + 저장/삭제 시
+ *  파일 단위 증분. 세 종류를 한 번의 파일 읽기에서 함께 추출한다(스캔 중복 방지). */
+export class PhpUsageIndex implements StringUsageRepository, TemplateUsageRepository, AmdUsageRepository {
   private byComponent = new Map<string, Map<string, SourceLocation[]>>();
   private byFile = new Map<string, UsageEntry[]>();
   private byTemplateRef = new Map<string, SourceLocation[]>();
   private templatesByFile = new Map<string, TemplateEntry[]>();
+  private byAmdRef = new Map<string, SourceLocation[]>();
+  private amdByFile = new Map<string, AmdEntry[]>();
   private builtFlag = false;
 
   constructor(private hasCanonical: (c: string) => boolean) {}
@@ -53,20 +59,25 @@ export class PhpUsageIndex implements StringUsageRepository, TemplateUsageReposi
     if (prev) { for (const e of prev) this.removeEntry(e); this.byFile.delete(uri); }
     const prevT = this.templatesByFile.get(uri);
     if (prevT) { for (const e of prevT) this.removeTemplateEntry(e); this.templatesByFile.delete(uri); }
+    const prevA = this.amdByFile.get(uri);
+    if (prevA) { for (const e of prevA) this.removeAmdEntry(e); this.amdByFile.delete(uri); }
 
-    const { entries, tEntries } = uri.endsWith('.js')
+    const { entries, tEntries, aEntries } = uri.endsWith('.js')
       ? this.extractJs(uri, text)
       : this.extractPhp(uri, text);
 
     for (const e of entries) this.addEntry(e);
     for (const e of tEntries) this.addTemplateEntry(e);
+    for (const e of aEntries) this.addAmdEntry(e);
     if (entries.length) this.byFile.set(uri, entries);
     if (tEntries.length) this.templatesByFile.set(uri, tEntries);
+    if (aEntries.length) this.amdByFile.set(uri, aEntries);
   }
 
-  private extractPhp(uri: string, text: string): { entries: UsageEntry[]; tEntries: TemplateEntry[] } {
+  private extractPhp(uri: string, text: string): { entries: UsageEntry[]; tEntries: TemplateEntry[]; aEntries: AmdEntry[] } {
     const entries: UsageEntry[] = [];
     const tEntries: TemplateEntry[] = [];
+    const aEntries: AmdEntry[] = [];
     USAGE_RE.lastIndex = 0;
     let m: RegExpExecArray | null;
     let lastIdx = 0, lastLine = 0, lastLineStart = 0; // 증분 라인 계산 — 전체 접두부 재스캔(O(n²)) 금지
@@ -89,12 +100,24 @@ export class PhpUsageIndex implements StringUsageRepository, TemplateUsageReposi
       const column = m.index - tLastLineStart + m[0].search(/['"]/) + 1;
       tEntries.push({ ref: m[1], loc: { uri, line: tLastLine, column } });
     }
-    return { entries, tEntries };
+    AMD_USAGE_RE.lastIndex = 0;
+    let aLastIdx = 0, aLastLine = 0, aLastLineStart = 0;
+    while ((m = AMD_USAGE_RE.exec(text))) {
+      for (let i = aLastIdx; i < m.index; i++) {
+        if (text.charCodeAt(i) === 10) { aLastLine++; aLastLineStart = i + 1; }
+      }
+      aLastIdx = m.index;
+      const column = m.index - aLastLineStart + m[0].search(/['"]/) + 1;
+      aEntries.push({ ref: m[1], loc: { uri, line: aLastLine, column } });
+    }
+    return { entries, tEntries, aEntries };
   }
 
-  private extractJs(uri: string, text: string): { entries: UsageEntry[]; tEntries: TemplateEntry[] } {
+  /** JS에는 js_call_amd가 없다(모듈 로딩은 import·require) — aEntries는 항상 비어 있다. */
+  private extractJs(uri: string, text: string): { entries: UsageEntry[]; tEntries: TemplateEntry[]; aEntries: AmdEntry[] } {
     const calls = scanJsCalls(text);
     return {
+      aEntries: [],
       entries: calls.stringCalls.map(c => ({
         component: normalizeComponent(c.component, this.hasCanonical),
         key: c.key,
@@ -110,6 +133,10 @@ export class PhpUsageIndex implements StringUsageRepository, TemplateUsageReposi
 
   templateRefsOf(component: string, name: string): SourceLocation[] {
     return this.byTemplateRef.get(`${component}/${name}`) ?? [];
+  }
+
+  amdRefsOf(component: string, name: string): SourceLocation[] {
+    return this.byAmdRef.get(`${component}/${name}`) ?? [];
   }
 
   private addEntry(e: UsageEntry): void {
@@ -131,6 +158,16 @@ export class PhpUsageIndex implements StringUsageRepository, TemplateUsageReposi
   }
   private removeTemplateEntry(e: TemplateEntry): void {
     const arr = this.byTemplateRef.get(e.ref);
+    if (!arr) return;
+    const i = arr.indexOf(e.loc);
+    if (i >= 0) arr.splice(i, 1);
+  }
+  private addAmdEntry(e: AmdEntry): void {
+    const arr = this.byAmdRef.get(e.ref);
+    if (arr) arr.push(e.loc); else this.byAmdRef.set(e.ref, [e.loc]);
+  }
+  private removeAmdEntry(e: AmdEntry): void {
+    const arr = this.byAmdRef.get(e.ref);
     if (!arr) return;
     const i = arr.indexOf(e.loc);
     if (i >= 0) arr.splice(i, 1);
