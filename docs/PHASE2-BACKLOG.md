@@ -11,15 +11,17 @@ Phase 1 (DB stdClass 인텔리전스)은 완료되었습니다. 아래는 종합
 - **dataarg 위치 무관**: insert/update 힌트는 스코프 전역이라 재대입과 무관하게 폴백으로 평가된다(다중 테이블 모호 시 null 가드 유지). `new stdClass` 후 insert 패턴 보존을 위한 의도된 동작.
 - **빈 클로저 스코프 미인식**: 팩트가 하나도 없는 클로저(대입·접근·foreach·phpdoc 전무)는 완성의 스코프 축소에 보이지 않아 바깥 스코프로 폴백한다(2026-08-04 최종 리뷰 잔여 갭 — 실코드에서 극히 드묾).
 - **symlink 플러그인 watcher 미감지**: `**/db/install.xml` watcher는 심볼릭 링크된 디렉터리 내부의 파일 변경을 감지하지 못할 수 있다 — 링크된 플러그인의 install.xml 수정 후에는 창 재시작으로 재색인 필요. 초기 색인은 정상(2026-08-04 최종 리뷰).
+- **템플릿 생성 순서에 따른 표시 순서 발산**: 이미 색인된 템플릿의 갱신은 위치 순서를 보존하지만, 새로 생성된 파일은 배열 끝에 추가된다. 열거 순서상 앞자리인 파일(예: 테마 오버라이드가 이미 있는 상태에서 원본을 새로 만드는 경우)이 나중에 생성되면 F12·hover의 표시 순서가 새 창에서 본 것과 달라질 수 있다(내용은 동일, 다음 전체 재색인 시 정렬됨 — 2026-08-05 최종 리뷰).
+- **lang 증분의 제거 비용**: `StringIndexStore.removeFile`이 색인 전체를 스캔하므로 lang 저장 시 증분이 ~6ms(최악 ~10ms)다. 전체 재색인(122ms)보다 훨씬 빠르지만 1ms 미만은 아니다. uri→key 역인덱스를 도입하면 더 줄일 수 있다.
 
 ## Phase 2 후속 작업 (우선순위 순)
 1. ~~**kill-on-reassign 추론**~~ — ✅ 완료 (2026-07-31, 설계: `docs/superpowers/specs/2026-07-31-kill-on-reassign-design.md`). 재대입 오탐 제거 + foreach 가림 버그 수정.
 2. ~~**진단 debounce + 파싱 공유**~~ — ✅ 완료 (2026-08-04, 설계: `docs/superpowers/specs/2026-08-04-diagnostics-debounce-facts-cache-design.md`). 문서별 300ms debounce + 텍스트 키 LRU 팩트 캐시(용량 8).
 3. ~~**`get_recordset` 직접 바인딩 제거**~~ — ✅ 완료 (2026-08-04, 설계: `docs/superpowers/specs/2026-08-04-recordset-scope-polish-design.md`). get_records(배열)까지 넓혀 직접 바인딩은 단일 레코드 메서드(get_record/get_record_select)로만 한정.
 4. ~~**symlink 플러그인 디렉터리 색인**~~ — ✅ 완료 (2026-08-04, 설계: `docs/superpowers/specs/2026-08-04-symlink-index-hardening-design.md`). 심볼릭 링크 엔트리만 statSync로 확인, 깨진 링크는 조용히 제외.
-5. **비동기 활성화 색인**: `buildFromRoot`(테이블·**문자열 색인 둘 다**)가 동기 `readFileSync`. 스펙 §6의 비동기·프로그레스로. `safeReaddir`의 statSync도 함께 비동기화(2026-08-04 최종 리뷰 메모). 2026-08-05 activationEvents에 workspaceContains가 추가되어 Moodle 워크스페이스를 열기만 해도 동기 콜드 빌드가 돌므로 우선순위가 올라갔다(PLUGIN_DIRS 수정으로 색인 대상 파일도 늘었다).
+5. ~~**비동기 활성화 색인**~~ — ✅ 완료 (2026-08-05, 설계: `docs/superpowers/specs/2026-08-05-indexing-performance-design.md`). 열거·읽기 모두 `fs.promises` + 200항목마다 양보, 상태바 진행률. 실측 활성화 블로킹 콜드 ~1,730ms → 0(비동기). 워처도 전체 재색인에서 파일 단위 증분으로(lang 저장 실측 122ms → 한 자릿수 ms, 최악 ~10ms).
 6. ~~**nested subplugin 색인**~~ — ✅ 대부분 완료 (2026-08-05, 설계: `docs/superpowers/specs/2026-08-05-mustache-template-intelligence-design.md`). `PLUGIN_DIRS` 매핑으로 block(blocks)·tool(admin/tool)·qtype(question/type) 등 30개 타입이 실제 디렉터리로 해석된다. **남은 것(전부 코어 타입, 각각 한 줄 매핑 추가로 해결)**: `qbank`→`question/bank`(csms45 기준 20개), `tiny`→`lib/editor/tiny/plugins`(15개 — 4.5의 현행 에디터인데 미매핑이고, 매핑된 레거시 `tinymce` 디렉터리는 4.5에 존재하지 않음), `quizaccess`(12), `assignsubmission`·`assignfeedback`(각 8), `dataformat`(7), `media`(5), 그 외 `logstore`·`antivirus`·`fileconverter`·`search`·`paygw`·`calendartype`·`qbehaviour`·`qformat`·`booktool`·`ltisource`. assignsubmission·quizaccess는 대학 LMS 커스터마이즈에서 흔한 대상이라 우선순위 높음(2026-08-05 최종 리뷰 실측).
-7. **dead code 정리 또는 결선**: `parseFrankenstyle`, `TableRepository.allTableNames()`, `IndexStore.updateFile/removeFile`(워처가 전체 재색인이라 미사용), `RecordAssignment.receiver`.
+7. **dead code 정리 또는 결선**: `parseFrankenstyle`, `TableRepository.allTableNames()`, `RecordAssignment.receiver`. (`IndexStore.updateFile/removeFile`은 2026-08-05 증분 워처에 결선되어 해소됨.)
 8. **resolve/describe 중복 제거**: 프로퍼티 접근 lookup을 `findPropertyAccessAt(facts, atIndex)` 헬퍼로 추출.
 9. **테스트 커버리지 보강**: `sameScope` 크로스스코프(추가됨), `parseFrankenstyle` null, `closestColumn` 비기본/동점, 다중 TABLE install.xml, `updateFile/removeFile/safeParse` 실패 경로.
 10. **.vsix 정리**: `.gitignore`/`.mocharc.json`/`tsconfig.test.json` 등 dev 파일 제외.

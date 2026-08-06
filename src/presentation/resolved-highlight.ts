@@ -8,7 +8,7 @@ const HIGHLIGHT_DEBOUNCE_MS = 300;
 export interface HighlightSource { setting: string; languages: string[]; run(text: string): RangeItem[]; }
 
 /** 해석되는 참조(문자열 키·템플릿)를 링크 색상으로 장식 — 데코레이션·디바운서는 하나로 공유한다. */
-export function registerResolvedHighlight(ctx: vscode.ExtensionContext, sources: HighlightSource[]) {
+export function registerResolvedHighlight(ctx: vscode.ExtensionContext, sources: HighlightSource[]): { refreshAll(): void } {
   const deco = vscode.window.createTextEditorDecorationType({ color: new vscode.ThemeColor('textLink.foreground') });
   const debouncer = new KeyedDebouncer(HIGHLIGHT_DEBOUNCE_MS);
   ctx.subscriptions.push(debouncer, deco);
@@ -43,4 +43,5 @@ export function registerResolvedHighlight(ctx: vscode.ExtensionContext, sources:
       }
     }),
   );
+  return { refreshAll: () => vscode.window.visibleTextEditors.forEach(refresh) };
 }

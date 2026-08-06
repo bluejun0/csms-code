@@ -70,6 +70,12 @@ function statIsDirectory(p: string): boolean {
 export interface LangFileRef { file: string; component: string; locale: string; }
 const LANG_LOCALES = ['en', 'ko'];
 
+/** 플러그인 lang 파일명 규칙 — mod만 `<name>.php`, 그 외는 `<type>_<name>.php`(Moodle 규칙).
+ *  순방향 열거(동기·비동기)와 역방향 역산이 모두 이 함수를 쓴다. */
+export function langFileNameFor(type: string, name: string): string {
+  return type === 'mod' ? `${name}.php` : `${type}_${name}.php`;
+}
+
 /** 코어(lang/en/*.php — ko 언어팩은 저장소 밖) + 플러그인(lang/{en,ko})의 lang 파일 열거.
  *  mod 플러그인만 파일명이 `<name>.php`, 그 외는 `<type>_<name>.php` (Moodle 규칙). */
 export function listLangFiles(root: string): LangFileRef[] {
@@ -84,7 +90,7 @@ export function listLangFiles(root: string): LangFileRef[] {
     const typeDir = path.join(root, relDir);
     if (!fs.existsSync(typeDir)) continue;
     for (const name of safeReaddir(typeDir)) {
-      const expected = type === 'mod' ? `${name}.php` : `${type}_${name}.php`;
+      const expected = langFileNameFor(type, name);
       for (const locale of LANG_LOCALES) {
         const f = path.join(typeDir, name, 'lang', locale, expected);
         if (fs.existsSync(f)) out.push({ file: f, component: `${type}_${name}`, locale });
@@ -115,21 +121,37 @@ export function pluginTypeOfRel(rel: string): { type: string; name: string; rest
   return best ? { type: best.type, name: best.name, rest: best.rest } : null;
 }
 
-/** lang 파일 경로 → component (listLangFiles 규칙의 역함수 — 순수 경로 로직). 규칙 밖은 null. */
-export function componentOfLangFile(root: string, file: string): string | null {
+/** install.xml 경로 → component (listInstallXmlFiles 규칙의 역함수). 규칙 밖은 null. */
+export function componentOfInstallXmlFile(root: string, file: string): string | null {
+  const rel = path.relative(root, file);
+  if (rel.startsWith('..') || path.isAbsolute(rel)) return null;
+  const parts = rel.split(path.sep);
+  if (parts.length === 3 && parts[0] === 'lib' && parts[1] === 'db' && parts[2] === 'install.xml') return 'core';
+  const hit = pluginTypeOfRel(rel);
+  if (!hit) return null;
+  return hit.rest === 'db/install.xml' ? `${hit.type}_${hit.name}` : null;
+}
+
+/** lang 파일 경로 → { component, locale }. 규칙 밖은 null. */
+export function langFileMetaOf(root: string, file: string): { component: string; locale: string } | null {
   const rel = path.relative(root, file);
   if (rel.startsWith('..') || path.isAbsolute(rel)) return null;
   const parts = rel.split(path.sep);
   if (parts.length === 3 && parts[0] === 'lang' && parts[1] === 'en' && parts[2].endsWith('.php')) {
     const base = parts[2].slice(0, -4);
-    return base === 'moodle' ? 'core' : `core_${base}`;
+    return { component: base === 'moodle' ? 'core' : `core_${base}`, locale: 'en' };
   }
   const hit = pluginTypeOfRel(rel);
   if (!hit) return null;
   const restParts = hit.rest.split('/');
   if (restParts.length !== 3 || restParts[0] !== 'lang' || !LANG_LOCALES.includes(restParts[1])) return null;
-  const expected = hit.type === 'mod' ? `${hit.name}.php` : `${hit.type}_${hit.name}.php`;
-  return restParts[2] === expected ? `${hit.type}_${hit.name}` : null;
+  const expected = langFileNameFor(hit.type, hit.name);
+  return restParts[2] === expected ? { component: `${hit.type}_${hit.name}`, locale: restParts[1] } : null;
+}
+
+/** lang 파일 경로 → component (listLangFiles 규칙의 역함수 — 순수 경로 로직). 규칙 밖은 null. */
+export function componentOfLangFile(root: string, file: string): string | null {
+  return langFileMetaOf(root, file)?.component ?? null;
 }
 
 export interface TemplateFileRef { file: string; component: string; name: string; }
@@ -183,6 +205,113 @@ export function listTemplateFiles(root: string): TemplateFileRef[] {
     for (const name of safeReaddir(typeDir)) {
       const tdir = path.join(typeDir, name, 'templates');
       if (fs.existsSync(tdir)) walk(tdir);
+    }
+  }
+  return out;
+}
+
+export const INDEX_YIELD_EVERY = 200;
+
+/** 이벤트 루프 양보 — 색인 루프가 확장 호스트를 막지 않게 한다. */
+export function yieldNow(): Promise<void> {
+  return new Promise<void>(r => setImmediate(r));
+}
+
+async function existsAsync(p: string): Promise<boolean> {
+  try { await fs.promises.access(p); return true; } catch { return false; }
+}
+
+/** 디렉터리(심볼릭 링크 대상이 디렉터리인 것 포함) 이름 목록 */
+async function safeReaddirAsync(dir: string): Promise<string[]> {
+  let entries: fs.Dirent[];
+  try { entries = await fs.promises.readdir(dir, { withFileTypes: true }); } catch { return []; }
+  const out: string[] = [];
+  for (const d of entries) {
+    if (d.isDirectory()) { out.push(d.name); continue; }
+    if (!d.isSymbolicLink()) continue;
+    try { if ((await fs.promises.stat(path.join(dir, d.name))).isDirectory()) out.push(d.name); } catch { /* 깨진 링크 무시 */ }
+  }
+  return out;
+}
+
+async function safeReaddirFilesAsync(dir: string): Promise<string[]> {
+  try {
+    return (await fs.promises.readdir(dir, { withFileTypes: true })).filter(d => d.isFile()).map(d => d.name);
+  } catch { return []; }
+}
+
+/** listInstallXmlFiles의 비동기 판 — 열거 방향(PLUGIN_DIRS 순회)·컴포넌트 조합 규칙은 동기판과 동일하고,
+ *  등가성은 resolver.test.ts의 sync/async 비교 테스트가 고정한다. */
+export async function listInstallXmlFilesAsync(root: string): Promise<{ file: string; component: string }[]> {
+  const out: { file: string; component: string }[] = [];
+  const core = path.join(root, 'lib', 'db', 'install.xml');
+  if (await existsAsync(core)) out.push({ file: core, component: 'core' });
+  let n = 0;
+  for (const [type, relDir] of Object.entries(PLUGIN_DIRS)) {
+    const typeDir = path.join(root, relDir);
+    if (!await existsAsync(typeDir)) continue;
+    for (const name of await safeReaddirAsync(typeDir)) {
+      const f = path.join(typeDir, name, 'db', 'install.xml');
+      if (await existsAsync(f)) out.push({ file: f, component: `${type}_${name}` });
+      if (++n % INDEX_YIELD_EVERY === 0) await yieldNow();
+    }
+  }
+  return out;
+}
+
+/** listLangFiles의 비동기 판 — 파일명 규칙은 langFileNameFor를 공유한다. */
+export async function listLangFilesAsync(root: string): Promise<LangFileRef[]> {
+  const out: LangFileRef[] = [];
+  const coreDir = path.join(root, 'lang', 'en');
+  for (const f of await safeReaddirFilesAsync(coreDir)) {
+    if (!f.endsWith('.php')) continue;
+    const base = f.slice(0, -4);
+    out.push({ file: path.join(coreDir, f), component: base === 'moodle' ? 'core' : `core_${base}`, locale: 'en' });
+  }
+  let n = 0;
+  for (const [type, relDir] of Object.entries(PLUGIN_DIRS)) {
+    const typeDir = path.join(root, relDir);
+    if (!await existsAsync(typeDir)) continue;
+    for (const name of await safeReaddirAsync(typeDir)) {
+      const expected = langFileNameFor(type, name);
+      for (const locale of LANG_LOCALES) {
+        const f = path.join(typeDir, name, 'lang', locale, expected);
+        if (await existsAsync(f)) out.push({ file: f, component: `${type}_${name}`, locale });
+      }
+      if (++n % INDEX_YIELD_EVERY === 0) await yieldNow();
+    }
+  }
+  return out;
+}
+
+/** listTemplateFiles의 비동기 판 — realpath 순환 가드도 동일하게 유지 */
+export async function listTemplateFilesAsync(root: string): Promise<TemplateFileRef[]> {
+  const out: TemplateFileRef[] = [];
+  const seen = new Set<string>();
+  let n = 0;
+  const push = (file: string) => {
+    const ref = componentOfTemplateFile(root, file);
+    if (ref) out.push({ file, component: ref.component, name: ref.name });
+  };
+  const walk = async (dir: string): Promise<void> => {
+    let real: string;
+    try { real = await fs.promises.realpath(dir); } catch { return; }
+    if (seen.has(real)) return;
+    seen.add(real);
+    for (const f of await safeReaddirFilesAsync(dir)) {
+      if (f.endsWith('.mustache')) push(path.join(dir, f));
+      if (++n % INDEX_YIELD_EVERY === 0) await yieldNow();
+    }
+    for (const d of await safeReaddirAsync(dir)) await walk(path.join(dir, d));
+  };
+  const coreDir = path.join(root, 'lib', 'templates');
+  if (await existsAsync(coreDir)) await walk(coreDir);
+  for (const relDir of Object.values(PLUGIN_DIRS)) {
+    const typeDir = path.join(root, relDir);
+    if (!await existsAsync(typeDir)) continue;
+    for (const name of await safeReaddirAsync(typeDir)) {
+      const tdir = path.join(typeDir, name, 'templates');
+      if (await existsAsync(tdir)) await walk(tdir);
     }
   }
   return out;

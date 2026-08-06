@@ -4,7 +4,7 @@ import { IndexStore } from './infrastructure/indexing/index-store';
 import { StringIndexStore } from './infrastructure/lang/string-index-store';
 import { TreeSitterPhpSyntax } from './infrastructure/tree-sitter/tree-sitter-php-syntax';
 import { CachedPhpSyntax } from './infrastructure/caching/cached-php-syntax';
-import { findMoodleRoot, componentOfLangFile, componentOfTemplateFile } from './infrastructure/workspace/moodle-root-resolver';
+import { findMoodleRoot, componentOfLangFile, componentOfTemplateFile, componentOfInstallXmlFile, langFileMetaOf } from './infrastructure/workspace/moodle-root-resolver';
 import { RecordTypeInference } from './domain/code-analysis/record-type-inference';
 import { ValidateRecordColumns } from './application/validate-record-columns';
 import { CompleteRecordColumns } from './application/complete-record-columns';
@@ -14,6 +14,7 @@ import { CompleteStringKeys } from './application/complete-string-keys';
 import { ResolveStringDefinition } from './application/resolve-string-definition';
 import { DescribeString } from './application/describe-string';
 import { ValidateStringKeys } from './application/validate-string-keys';
+import { KeyedDebouncer } from './presentation/keyed-debouncer';
 import { registerDiagnostics } from './presentation/providers/record-diagnostics';
 import { RecordColumnCompletionProvider } from './presentation/providers/record-column-completion-provider';
 import { RecordDefinitionProvider } from './presentation/providers/record-definition-provider';
@@ -47,13 +48,8 @@ export async function activate(ctx: vscode.ExtensionContext) {
   if (!root) { console.log('CSMS Code: Moodle 루트를 찾지 못했습니다.'); return; }
 
   const store = new IndexStore();
-  store.buildFromRoot(root);
-
   const strings = new StringIndexStore();
-  strings.buildFromRoot(root);
-
   const templates = new TemplateIndex();
-  templates.buildFromRoot(root);
 
   // 번들 시 dist에 tree-sitter.wasm + tree-sitter-php.wasm 복사됨
   let syntax: CachedPhpSyntax;
@@ -115,28 +111,97 @@ export async function activate(ctx: vscode.ExtensionContext) {
     vscode.languages.registerDefinitionProvider(js, new JsDefinitionProvider(resolveJs)),
     vscode.languages.registerHoverProvider(js, new JsHoverProvider(describeJs)),
   );
-  registerDiagnostics(ctx, validate, validateStr);
-  registerResolvedHighlight(ctx, [
+  const diagnostics = registerDiagnostics(ctx, validate, validateStr);
+  const highlight = registerResolvedHighlight(ctx, [
     { setting: 'strings.highlightResolved', languages: ['php'], run: t => listResolved.run(t) },
     { setting: 'templates.highlightResolved', languages: ['php'], run: t => listResolvedTpl.run(t) },
     { setting: 'strings.highlightResolved', languages: ['javascript'], run: t => listResolvedJs.runStrings(t) },
     { setting: 'templates.highlightResolved', languages: ['javascript'], run: t => listResolvedJs.runTemplates(t) },
   ]);
+  const refreshAll = () => { diagnostics.refreshAll(); highlight.refreshAll(); };
+  // 워처 폭주(예: git checkout으로 lang 수백 개 변경) 시 이벤트마다 전체 갱신하면 낭비가 N배로 쌓인다 —
+  // 마지막 한 번만 의미가 있으므로 합친다. 초기 빌드 완료 후 갱신은 단발이라 즉시 호출한다.
+  const refreshDebouncer = new KeyedDebouncer(200);
+  ctx.subscriptions.push(refreshDebouncer);
+  const scheduleRefresh = () => refreshDebouncer.schedule('all', refreshAll);
 
-  // install.xml 변경 시 증분 재색인
+  // 색인은 비동기로 — 활성화가 확장 호스트를 막지 않는다(실측 콜드 ~1.7초).
+  // 빌드 완료 전 조회는 빈 결과(침묵 원칙)이고, 완료 후 열린 문서를 한 번 갱신한다.
+  // 알림이 아니라 상태바(Window) — 워크스페이스를 열 때마다 뜨는 알림은 소음이다.
+  let indexing = false;
+  let pendingReindex = false;
+  const buildAll = async () => {
+    await store.buildFromRootAsync(root);
+    await strings.buildFromRootAsync(root);
+    await templates.buildFromRootAsync(root);
+  };
+
+  /** 전체 재빌드는 항상 이 게이트를 통과한다.
+   *  빌드 중 도착한 증분은 적용해도 마지막 맵 교체에 덮이므로 pendingReindex로 미루고,
+   *  빌드가 끝났을 때 미뤄진 것이 있으면 없어질 때까지 반복한다(단발이면 2차 이벤트가 유실된다).
+   *  예외가 나도 finally로 게이트를 반드시 내린다 — 안 내리면 증분 동기화가 세션 내내 죽는다. */
+  const gatedRebuild = () => vscode.window.withProgress(
+    { location: vscode.ProgressLocation.Window, title: 'CSMS Code: 색인 중…' },
+    async () => {
+      indexing = true;
+      try {
+        do { pendingReindex = false; await buildAll(); } while (pendingReindex);
+      } catch (err) {
+        console.error('CSMS Code: 색인에 실패했습니다.', err);
+      } finally {
+        indexing = false;
+      }
+      refreshAll();
+    });
+  void gatedRebuild();
+
+  /** 워처 공통 게이트 — 빌드 중이면 증분을 적용하지 않고 재빌드로 미룬다(적용해도 덮어써진다).
+   *  apply가 실제로 색인을 바꿨을 때만 갱신한다. */
+  const applyIncremental = (apply: () => boolean) => {
+    if (indexing) { pendingReindex = true; return; }
+    if (apply()) scheduleRefresh();
+  };
+
+  // install.xml 변경 → 그 파일만 갱신
   const watcher = vscode.workspace.createFileSystemWatcher('**/db/install.xml');
-  const reindex = () => store.buildFromRoot(root); // 단순: 전체 재색인(파일 수가 많지 않음). 최적화는 후속.
-  ctx.subscriptions.push(watcher, watcher.onDidChange(reindex), watcher.onDidCreate(reindex), watcher.onDidDelete(reindex));
+  const onXml = (uri: vscode.Uri, removed: boolean) => applyIncremental(() => {
+    const component = componentOfInstallXmlFile(root, uri.fsPath);
+    // 역산 실패 = 우리 색인 규칙 밖의 경로. 전체 재빌드도 같은 규칙으로 열거하므로 이 파일을 담을 수 없다 —
+    // 재빌드는 이득 없이 증분을 덮어쓸 위험만 있으므로 침묵한다.
+    if (!component) return false;
+    if (removed) store.removeFile(uri.fsPath); else store.updateFile(uri.fsPath, component);
+    return true;
+  });
+  ctx.subscriptions.push(watcher,
+    watcher.onDidChange(u => onXml(u, false)),
+    watcher.onDidCreate(u => onXml(u, false)),
+    watcher.onDidDelete(u => onXml(u, true)));
 
-  // lang 파일 변경 시 문자열 전체 재색인(단순화 — install.xml 워처와 동일 패턴)
+  // lang 파일 변경 → 그 파일만 갱신(실측 전체 재색인 122ms → ~6ms)
   const langWatcher = vscode.workspace.createFileSystemWatcher('**/lang/*/*.php');
-  const restring = () => strings.buildFromRoot(root);
-  ctx.subscriptions.push(langWatcher, langWatcher.onDidChange(restring), langWatcher.onDidCreate(restring), langWatcher.onDidDelete(restring));
+  const onLang = (uri: vscode.Uri, removed: boolean) => applyIncremental(() => {
+    const meta = langFileMetaOf(root, uri.fsPath);
+    if (!meta) return false; // 규칙 밖 — 침묵(재빌드도 담을 수 없다)
+    if (removed) strings.removeFile(uri.fsPath); else strings.updateFile(uri.fsPath, meta.component, meta.locale);
+    return true;
+  });
+  ctx.subscriptions.push(langWatcher,
+    langWatcher.onDidChange(u => onLang(u, false)),
+    langWatcher.onDidCreate(u => onLang(u, false)),
+    langWatcher.onDidDelete(u => onLang(u, true)));
 
-  // 템플릿 파일 변경 시 전체 재색인(기존 워처들과 동일 단순화)
+  // 템플릿 변경 → 그 파일만 갱신
   const tplWatcher = vscode.workspace.createFileSystemWatcher('**/templates/**/*.mustache');
-  const retemplate = () => templates.buildFromRoot(root);
-  ctx.subscriptions.push(tplWatcher, tplWatcher.onDidChange(retemplate), tplWatcher.onDidCreate(retemplate), tplWatcher.onDidDelete(retemplate));
+  const onTpl = (uri: vscode.Uri, removed: boolean) => applyIncremental(() => {
+    const ref = componentOfTemplateFile(root, uri.fsPath);
+    if (!ref) return false; // 규칙 밖 — 침묵(재빌드도 담을 수 없다)
+    if (removed) templates.removeFile(uri.fsPath); else templates.updateFile(uri.fsPath, ref.component, ref.name);
+    return true;
+  });
+  ctx.subscriptions.push(tplWatcher,
+    tplWatcher.onDidChange(u => onTpl(u, false)),
+    tplWatcher.onDidCreate(u => onTpl(u, false)),
+    tplWatcher.onDidDelete(u => onTpl(u, true)));
 
   // 사용처 색인 증분: lazy 빌드 이후에만, 저장된 파일 단위로 재추출
   ctx.subscriptions.push(vscode.workspace.onDidSaveTextDocument(d => {

@@ -38,3 +38,47 @@ describe('StringIndexStore', () => {
     assert.deepEqual(keys, ['attendance_book', 'attendance_rate']);
   });
 });
+
+describe('StringIndexStore — 비동기 빌드·증분', () => {
+  const ubKo = join(root, 'local/ubattend/lang/ko/local_ubattend.php');
+
+  it('async 빌드가 sync와 동일 결과', async () => {
+    const a = new StringIndexStore(); a.buildFromRoot(root);
+    const b = new StringIndexStore(); await b.buildFromRootAsync(root);
+    const dump = (s: StringIndexStore) => s.keysOf('local_ubattend')
+      .map(x => `${x.key}|${x.ko?.value ?? ''}|${x.en?.value ?? ''}`).sort();
+    assert.deepEqual(dump(b), dump(a));
+    assert.equal(b.getString('core', 'ok')!.en!.value, a.getString('core', 'ok')!.en!.value);
+  });
+  it('진행률 콜백이 최소 1회 호출되고 done ≤ total', async () => {
+    const s = new StringIndexStore();
+    const calls: [number, number][] = [];
+    await s.buildFromRootAsync(root, (d, t) => calls.push([d, t]));
+    assert.ok(calls.length >= 1);
+    assert.ok(calls.every(([d, t]) => d <= t));
+  });
+  it('removeFile: 해당 locale만 사라지고 en은 남는다', async () => {
+    const s = new StringIndexStore(); await s.buildFromRootAsync(root);
+    assert.ok(s.getString('local_ubattend', 'attendance_book')!.ko, '사전 조건: ko 존재');
+    s.removeFile(ubKo);
+    const after = s.getString('local_ubattend', 'attendance_book')!;
+    assert.equal(after.ko, undefined, 'ko 제거');
+    assert.ok(after.en, 'en은 유지');
+  });
+  it('removeFile: 두 locale 모두 사라진 키는 제거된다', async () => {
+    const s = new StringIndexStore(); await s.buildFromRootAsync(root);
+    s.removeFile(ubKo);
+    s.removeFile(join(root, 'local/ubattend/lang/en/local_ubattend.php'));
+    assert.equal(s.getString('local_ubattend', 'attendance_book'), undefined);
+    assert.equal(s.hasComponent('local_ubattend'), false, '빈 컴포넌트 맵도 제거');
+  });
+  it('증분(update)이 전체 재빌드와 같은 상태로 수렴', async () => {
+    const s = new StringIndexStore(); await s.buildFromRootAsync(root);
+    s.removeFile(ubKo);
+    s.updateFile(ubKo, 'local_ubattend', 'ko');
+    const full = new StringIndexStore(); await full.buildFromRootAsync(root);
+    const dump = (x: StringIndexStore) => x.keysOf('local_ubattend')
+      .map(v => `${v.key}|${v.ko?.value ?? ''}|${v.en?.value ?? ''}`).sort();
+    assert.deepEqual(dump(s), dump(full));
+  });
+});

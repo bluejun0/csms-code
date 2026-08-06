@@ -49,3 +49,53 @@ describe('componentOfTemplateFile (경로 역산)', () => {
   it('루트 밖 → null', () =>
     assert.equal(componentOfTemplateFile(root, '/etc/x.mustache'), null));
 });
+
+describe('TemplateIndex — 비동기 빌드·증분', () => {
+  const override = join(root, 'theme/coursemos/templates/local_ubattend/setting.mustache');
+
+  it('async 빌드가 sync와 동일 결과', async () => {
+    const a = new TemplateIndex(); a.buildFromRoot(root);
+    const b = new TemplateIndex(); await b.buildFromRootAsync(root);
+    const dump = (s: TemplateIndex) => s.locationsOf('local_ubattend', 'setting').map(l => l.uri).sort();
+    assert.deepEqual(dump(b), dump(a));
+    assert.equal(b.has('core', 'core_tmpl'), a.has('core', 'core_tmpl'));
+  });
+  it('진행률 콜백이 최소 1회 호출되고 done ≤ total', async () => {
+    const s = new TemplateIndex();
+    const calls: [number, number][] = [];
+    await s.buildFromRootAsync(root, (d, t) => calls.push([d, t]));
+    assert.ok(calls.length >= 1);
+    assert.ok(calls.every(([d, t]) => d <= t));
+  });
+  it('removeFile: 오버라이드만 제거하면 원본이 남는다', async () => {
+    const s = new TemplateIndex(); await s.buildFromRootAsync(root);
+    assert.equal(s.locationsOf('local_ubattend', 'setting').length, 2, '사전 조건');
+    s.removeFile(override);
+    const left = s.locationsOf('local_ubattend', 'setting');
+    assert.equal(left.length, 1);
+    assert.ok(left[0].uri.includes(join('local', 'ubattend', 'templates')));
+  });
+  it('removeFile: 마지막 위치가 사라지면 키도 사라진다', async () => {
+    const s = new TemplateIndex(); await s.buildFromRootAsync(root);
+    s.removeFile(join(root, 'lib/templates/core_tmpl.mustache'));
+    assert.equal(s.has('core', 'core_tmpl'), false);
+  });
+  it('증분(update)이 전체 재빌드와 순서까지 동일하게 수렴', async () => {
+    const originalFile = join(root, 'local/ubattend/templates/setting.mustache');
+    const s = new TemplateIndex(); await s.buildFromRootAsync(root);
+    // 원본(자연 순서상 앞자리)을 갱신해도 순서가 뒤집히지 않아야 한다 — F12·hover 표시 순서에 그대로 노출된다
+    s.updateFile(originalFile, 'local_ubattend', 'setting');
+    const full = new TemplateIndex(); await full.buildFromRootAsync(root);
+    assert.deepEqual(
+      s.locationsOf('local_ubattend', 'setting').map(l => l.uri),
+      full.locationsOf('local_ubattend', 'setting').map(l => l.uri),
+      'sort 없이 raw 순서까지 같아야 함');
+  });
+  it('다른 키로 이동한 템플릿은 옛 키에서 제거된다', async () => {
+    const originalFile = join(root, 'local/ubattend/templates/setting.mustache');
+    const s = new TemplateIndex(); await s.buildFromRootAsync(root);
+    s.updateFile(originalFile, 'local_ubattend', 'renamed');
+    assert.ok(!s.locationsOf('local_ubattend', 'setting').some(l => l.uri === originalFile), '옛 키에서 제거');
+    assert.ok(s.locationsOf('local_ubattend', 'renamed').some(l => l.uri === originalFile), '새 키에 등록');
+  });
+});

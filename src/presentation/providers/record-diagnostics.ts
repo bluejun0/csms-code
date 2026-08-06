@@ -5,7 +5,7 @@ import { KeyedDebouncer } from '../keyed-debouncer';
 
 const CHANGE_DEBOUNCE_MS = 300;
 
-export function registerDiagnostics(ctx: vscode.ExtensionContext, uc: ValidateRecordColumns, ucStrings: ValidateStringKeys) {
+export function registerDiagnostics(ctx: vscode.ExtensionContext, uc: ValidateRecordColumns, ucStrings: ValidateStringKeys): { refreshAll(): void } {
   const coll = vscode.languages.createDiagnosticCollection('csmscode');
   const debouncer = new KeyedDebouncer(CHANGE_DEBOUNCE_MS);
   ctx.subscriptions.push(debouncer, coll);
@@ -40,4 +40,5 @@ export function registerDiagnostics(ctx: vscode.ExtensionContext, uc: ValidateRe
       }
     }),
   );
+  return { refreshAll: () => vscode.workspace.textDocuments.forEach(refresh) };
 }

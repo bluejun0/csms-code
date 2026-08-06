@@ -2,7 +2,8 @@ import { strict as assert } from 'assert';
 import { join } from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
-import { findMoodleRoot, listInstallXmlFiles, listLangFiles, componentOfLangFile } from '../../../src/infrastructure/workspace/moodle-root-resolver';
+import { findMoodleRoot, listInstallXmlFiles, listLangFiles, componentOfLangFile, componentOfInstallXmlFile, listInstallXmlFilesAsync, listLangFilesAsync, listTemplateFilesAsync, listTemplateFiles, langFileMetaOf } from '../../../src/infrastructure/workspace/moodle-root-resolver';
+import { LangFileRef, TemplateFileRef } from '../../../src/infrastructure/workspace/moodle-root-resolver';
 
 const root = join(__dirname, '../../fixtures/mini-moodle');
 
@@ -50,6 +51,13 @@ describe('MoodleRootResolver — symlink 플러그인 색인', () => {
     const list = listInstallXmlFiles(join(tmp, 'root')).map(x => x.component).sort();
     assert.deepEqual(list, ['core', 'local_linked']);
   });
+  it('비동기 열거도 심볼릭 링크를 동일하게 처리', async () => {
+    const r = join(tmp, 'root');
+    const sync = listInstallXmlFiles(r).map(x => x.component).sort();
+    const async_ = (await listInstallXmlFilesAsync(r)).map(x => x.component).sort();
+    assert.deepEqual(async_, sync, '동기와 동일해야 함');
+    assert.deepEqual(async_, ['core', 'local_linked'], '링크된 플러그인 포함·깨진 링크 제외');
+  });
 });
 
 describe('MoodleRootResolver — lang 파일 열거', () => {
@@ -57,6 +65,16 @@ describe('MoodleRootResolver — lang 파일 열거', () => {
     const list = listLangFiles(root).map(x => `${x.component}:${x.locale}`).sort();
     assert.deepEqual(list, ['block_testblock:en', 'core:en', 'core_grades:en', 'local_ubattend:en', 'local_ubattend:ko', 'mod_testmod:en', 'tool_testtool:en']);
   });
+});
+
+describe('MoodleRootResolver — langFileMetaOf', () => {
+  it('플러그인 ko', () =>
+    assert.deepEqual(langFileMetaOf(root, join(root, 'local/ubattend/lang/ko/local_ubattend.php')),
+      { component: 'local_ubattend', locale: 'ko' }));
+  it('코어 en', () =>
+    assert.deepEqual(langFileMetaOf(root, join(root, 'lang/en/moodle.php')), { component: 'core', locale: 'en' }));
+  it('규칙 밖 → null', () =>
+    assert.equal(langFileMetaOf(root, join(root, 'local/ubattend/lang/ko/wrong.php')), null));
 });
 
 describe('MoodleRootResolver — componentOfLangFile (경로 역산)', () => {
@@ -76,4 +94,33 @@ describe('MoodleRootResolver — componentOfLangFile (경로 역산)', () => {
     assert.equal(componentOfLangFile(root, join(root, 'local/ubattend/lang/ko/wrong.php')), null));
   it('루트 밖 경로 → null', () =>
     assert.equal(componentOfLangFile(root, '/etc/passwd'), null));
+});
+
+describe('MoodleRootResolver — 비동기 열거는 동기와 동일 결과', () => {
+  const norm = (xs: { file: string }[]) => xs.map(x => x.file).sort();
+
+  it('listInstallXmlFilesAsync ≡ listInstallXmlFiles', async () => {
+    assert.deepEqual(norm(await listInstallXmlFilesAsync(root)), norm(listInstallXmlFiles(root)));
+  });
+  it('listLangFilesAsync ≡ listLangFiles (component·locale 포함)', async () => {
+    const key = (xs: LangFileRef[]) => xs.map(x => `${x.component}:${x.locale}:${x.file}`).sort();
+    assert.deepEqual(key(await listLangFilesAsync(root)), key(listLangFiles(root)));
+  });
+  it('listTemplateFilesAsync ≡ listTemplateFiles (component·name 포함)', async () => {
+    const key = (xs: TemplateFileRef[]) => xs.map(x => `${x.component}/${x.name}:${x.file}`).sort();
+    assert.deepEqual(key(await listTemplateFilesAsync(root)), key(listTemplateFiles(root)));
+  });
+});
+
+describe('MoodleRootResolver — componentOfInstallXmlFile', () => {
+  it('코어', () =>
+    assert.equal(componentOfInstallXmlFile(root, join(root, 'lib/db/install.xml')), 'core'));
+  it('플러그인', () =>
+    assert.equal(componentOfInstallXmlFile(root, join(root, 'local/ubattend/db/install.xml')), 'local_ubattend'));
+  it('blocks 디렉터리(타입명 block)', () =>
+    assert.equal(componentOfInstallXmlFile(root, join(root, 'blocks/testblock/db/install.xml')), 'block_testblock'));
+  it('규칙 밖 → null', () => {
+    assert.equal(componentOfInstallXmlFile(root, join(root, 'local/ubattend/db/other.xml')), null);
+    assert.equal(componentOfInstallXmlFile(root, '/etc/install.xml'), null);
+  });
 });
