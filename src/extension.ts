@@ -122,37 +122,49 @@ export async function activate(ctx: vscode.ExtensionContext) {
   // 색인은 비동기로 — 활성화가 확장 호스트를 막지 않는다(실측 콜드 ~1.7초).
   // 빌드 완료 전 조회는 빈 결과(침묵 원칙)이고, 완료 후 열린 문서를 한 번 갱신한다.
   // 알림이 아니라 상태바(Window) — 워크스페이스를 열 때마다 뜨는 알림은 소음이다.
-  let indexing = true;
+  let indexing = false;
   let pendingReindex = false;
   const buildAll = async () => {
     await store.buildFromRootAsync(root);
     await strings.buildFromRootAsync(root);
     await templates.buildFromRootAsync(root);
   };
-  const runInitialBuild = () => vscode.window.withProgress(
+
+  /** 전체 재빌드는 항상 이 게이트를 통과한다.
+   *  빌드 중 도착한 증분은 적용해도 마지막 맵 교체에 덮이므로 pendingReindex로 미루고,
+   *  빌드가 끝났을 때 미뤄진 것이 있으면 없어질 때까지 반복한다(단발이면 2차 이벤트가 유실된다).
+   *  예외가 나도 finally로 게이트를 반드시 내린다 — 안 내리면 증분 동기화가 세션 내내 죽는다. */
+  const gatedRebuild = () => vscode.window.withProgress(
     { location: vscode.ProgressLocation.Window, title: 'CSMS Code: 색인 중…' },
     async () => {
-      await buildAll();
-      // 빌드 중 워처가 놓친 변경이 있으면 한 번 더 — 빌드의 마지막 교체가 증분을 덮어쓰기 때문
-      if (pendingReindex) { pendingReindex = false; await buildAll(); }
-      indexing = false;
+      indexing = true;
+      try {
+        do { pendingReindex = false; await buildAll(); } while (pendingReindex);
+      } catch (err) {
+        console.error('CSMS Code: 색인에 실패했습니다.', err);
+      } finally {
+        indexing = false;
+      }
       refreshAll();
     });
-  void runInitialBuild();
+  void gatedRebuild();
 
-  /** 워처 공통 게이트 — 빌드 중이면 증분을 적용하지 않고 재빌드로 미룬다(적용해도 덮어써진다). */
-  const applyIncremental = (apply: () => void) => {
+  /** 워처 공통 게이트 — 빌드 중이면 증분을 적용하지 않고 재빌드로 미룬다(적용해도 덮어써진다).
+   *  apply가 실제로 색인을 바꿨을 때만 갱신한다. */
+  const applyIncremental = (apply: () => boolean) => {
     if (indexing) { pendingReindex = true; return; }
-    apply();
-    refreshAll();
+    if (apply()) refreshAll();
   };
 
-  // install.xml 변경 → 그 파일만 갱신. 역산 실패(규칙 밖)면 전체 재빌드로 폴백해 색인이 조용히 낡지 않게 한다.
+  // install.xml 변경 → 그 파일만 갱신
   const watcher = vscode.workspace.createFileSystemWatcher('**/db/install.xml');
   const onXml = (uri: vscode.Uri, removed: boolean) => applyIncremental(() => {
     const component = componentOfInstallXmlFile(root, uri.fsPath);
-    if (!component) { void store.buildFromRootAsync(root).then(refreshAll); return; }
+    // 역산 실패 = 우리 색인 규칙 밖의 경로. 전체 재빌드도 같은 규칙으로 열거하므로 이 파일을 담을 수 없다 —
+    // 재빌드는 이득 없이 증분을 덮어쓸 위험만 있으므로 침묵한다.
+    if (!component) return false;
     if (removed) store.removeFile(uri.fsPath); else store.updateFile(uri.fsPath, component);
+    return true;
   });
   ctx.subscriptions.push(watcher,
     watcher.onDidChange(u => onXml(u, false)),
@@ -163,8 +175,9 @@ export async function activate(ctx: vscode.ExtensionContext) {
   const langWatcher = vscode.workspace.createFileSystemWatcher('**/lang/*/*.php');
   const onLang = (uri: vscode.Uri, removed: boolean) => applyIncremental(() => {
     const meta = langFileMetaOf(root, uri.fsPath);
-    if (!meta) { void strings.buildFromRootAsync(root).then(refreshAll); return; }
+    if (!meta) return false; // 규칙 밖 — 침묵(재빌드도 담을 수 없다)
     if (removed) strings.removeFile(uri.fsPath); else strings.updateFile(uri.fsPath, meta.component, meta.locale);
+    return true;
   });
   ctx.subscriptions.push(langWatcher,
     langWatcher.onDidChange(u => onLang(u, false)),
@@ -175,8 +188,9 @@ export async function activate(ctx: vscode.ExtensionContext) {
   const tplWatcher = vscode.workspace.createFileSystemWatcher('**/templates/**/*.mustache');
   const onTpl = (uri: vscode.Uri, removed: boolean) => applyIncremental(() => {
     const ref = componentOfTemplateFile(root, uri.fsPath);
-    if (!ref) { void templates.buildFromRootAsync(root).then(refreshAll); return; }
+    if (!ref) return false; // 규칙 밖 — 침묵(재빌드도 담을 수 없다)
     if (removed) templates.removeFile(uri.fsPath); else templates.updateFile(uri.fsPath, ref.component, ref.name);
+    return true;
   });
   ctx.subscriptions.push(tplWatcher,
     tplWatcher.onDidChange(u => onTpl(u, false)),
