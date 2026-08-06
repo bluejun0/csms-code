@@ -12,6 +12,7 @@ Phase 1 (DB stdClass 인텔리전스)은 완료되었습니다. 아래는 종합
 - **빈 클로저 스코프 미인식**: 팩트가 하나도 없는 클로저(대입·접근·foreach·phpdoc 전무)는 완성의 스코프 축소에 보이지 않아 바깥 스코프로 폴백한다(2026-08-04 최종 리뷰 잔여 갭 — 실코드에서 극히 드묾).
 - **symlink 플러그인 watcher 미감지**: `**/db/install.xml` watcher는 심볼릭 링크된 디렉터리 내부의 파일 변경을 감지하지 못할 수 있다 — 링크된 플러그인의 install.xml 수정 후에는 창 재시작으로 재색인 필요. 초기 색인은 정상(2026-08-04 최종 리뷰).
 - **템플릿 생성 순서에 따른 표시 순서 발산**: 이미 색인된 템플릿의 갱신은 위치 순서를 보존하지만, 새로 생성된 파일은 배열 끝에 추가된다. 열거 순서상 앞자리인 파일(예: 테마 오버라이드가 이미 있는 상태에서 원본을 새로 만드는 경우)이 나중에 생성되면 F12·hover의 표시 순서가 새 창에서 본 것과 달라질 수 있다(내용은 동일, 다음 전체 재색인 시 정렬됨 — 2026-08-05 최종 리뷰).
+- **순수 stdClass 필드 미지원**: 인텔리전스는 **테이블을 알아낼 수 있는** stdClass에만 동작한다(추론 4경로가 모두 `tableExists()`를 통과해야 함 — `record-type-inference.ts`). `$data = new stdClass(); $data->title = …;` 처럼 DB에 가지 않는 객체는 바로 위에서 대입한 필드조차 완성되지 않는다. 실측 규모와 설계 방향은 아래 14번.
 - **lang 증분의 제거 비용**: `StringIndexStore.removeFile`이 색인 전체를 스캔하므로 lang 저장 시 증분이 ~6ms(최악 ~10ms)다. 전체 재색인(122ms)보다 훨씬 빠르지만 1ms 미만은 아니다. uri→key 역인덱스를 도입하면 더 줄일 수 있다.
 
 ## Phase 2 후속 작업 (우선순위 순)
@@ -28,6 +29,13 @@ Phase 1 (DB stdClass 인텔리전스)은 완료되었습니다. 아래는 종합
 11. ~~**`scopeContaining()`에 plainAssignments 반영**~~ — ✅ 완료 (2026-08-04, 같은 설계 문서). 일반 대입만 있는 클로저의 바깥 바인딩 누수 수정.
 12. ~~**재발 방지 하드닝(2026-08-04 최종 리뷰)**~~ — ✅ 완료 (2026-08-04, 같은 설계 문서). scopeContaining 구조적 유도 + E2E 음성 핀 + get_records_select 핀.
 13. **진단 code 네임스페이스 리네이밍**: 문자열 진단도 `csms.column.*` 코드를 재사용 중(동작은 정상) — `csms.fix.*` 등으로 일반화 + QuickFix 프로바이더명 정리. Plan 2 최종 리뷰(2026-08-04) 발견.
+14. **순수 stdClass 로컬 필드 인텔리전스** (2026-08-06 실측 — 사용자 요청으로 조사, 착수는 보류): `new stdClass()`/`(object)` 캐스트 이후 **그 스코프에서 대입한 필드**를 완성·hover·정의 이동(대입한 줄로 점프)에 쓴다.
+    - **실측(hlulxp 커스텀 PHP 3,370개, tree-sitter로 함수 스코프 단위)**: 순수 stdClass 변수 **275개**(서로 다른 스코프 217개), 대입된 고유 필드 **1,237개**(변수당 p50 3·p90 10·max 24), `return $obj`로 나가는 것 88개, `(object)` 캐스트 30개. ※ 파일 단위 정규식으로 세면 639변수/4,310필드로 2배 이상 과대 계상된다(`$data`·`$record` 변수명이 함수마다 재사용되므로). 스코프 단위 숫자를 쓸 것.
+    - **진단은 비목표**(오탐 필연): stdClass 필드 집합은 닫히지 않는다 — 참조 인자로 채우기(`function fill(&$o)`), 동적 이름(`$o->$k` — 실측 336곳), `(object)$array`. 다만 "쓰지 않은 필드를 읽는" 변수는 실측 3개(필드 4개)뿐이라 **완성·hover·F12의 정확도는 충분하다**.
+    - **설계 방향**: ① `facts.ts`에 `PropertyWrite { varName, property, index, scope }` 추가 — 기존 `Q_PROP`은 대입 좌·우변을 구분하지 못하므로 `(assignment_expression left: (member_access_expression object: (variable_name (name) @var) name: (name) @prop))` 쿼리가 따로 필요하다. ② stdClass 여부 판정에 새 경로를 만들지 말고 기존 `plainAssignments` + `nearestPreceding`(kill-on-reassign 기계)을 재사용해 "가장 가까운 선행 대입의 RHS가 `new stdClass`/`(object)` 캐스트인가"만 추가로 알면 된다. ③ **병합 의미는 합집합으로 확정**: 테이블 바인딩과 로컬 필드 쓰기가 둘 다 있는 변수(실측 43개 — `$rec = $DB->get_record(…); $rec->extra = 1;`)는 컬럼 ∪ 로컬 필드를 출처 구분해 표시한다. 이건 `complete-record-columns.ts`와 기존 dataarg 동작을 건드리므로 스펙에서 확정하고 들어갈 것.
+    - **스파이크 완료**: 위 3개 쿼리(`PropertyWrite`·`object_creation_expression`·`cast_expression type: (cast_type)`)가 현재 grammar에서 컴파일·매칭됨을 2026-08-06에 확인했다.
+15. **알려진 전역·함수의 테이블 바인딩** (14번과 함께 검토, 보류): `$USER`→`user`, `$COURSE`/`$SITE`→`course`, `get_course()`→`course`, `get_coursemodule_from_id()`/`_from_instance()`→`course_modules`. 실측 접근 `$USER->` 636회(그중 **87%가 실제 user 컬럼과 일치**)·`$COURSE->` 43(100%)·`$SITE->` 78(100%), 함수 쪽 45회. **여기도 진단은 제외**: `$USER`의 불일치 81건은 사이트가 주입하는 런타임 필드(`ubion` 62·`access`·`editing`·`realuser`)라 경고를 붙이면 즉시 오탐이 된다. `$CFG->`는 1,531회로 가장 많지만 config 키-값이라 테이블이 없어 대상 아님.
+16. **`get_record_sql` SQL 리터럴에서 테이블 추출** (별도 사이클 — 14·15번보다 위험): 실측 `get_record_sql`+`get_records_sql` 836회 중 호출부 리터럴에서 `{table}`이 1개만 나오는 건 244회, 조인 77회, **리터럴에서 아예 못 찾는 게 515회**(대부분 `$sql`을 위에서 조립해 넘김 → 변수 해석이 선행돼야 실질 커버리지가 나온다). 조인·별칭이 있으면 반환 필드는 테이블 컬럼이 아니라 select 목록이므로 `SELECT *`(198회)만 안전하다.
 
 ## Plan 2 (별도 계획 예정)
 - ~~**언어 문자열 인텔리전스**~~ — ✅ 완료 (2026-08-04, 설계: `docs/superpowers/specs/2026-08-04-lang-string-intelligence-design.md`). get_string 키 완성/정의 이동(ko·en)/hover(한국어 값)/누락 진단. 비목표: get_strings·lang_string·addHelpButton·AMD str, double-quoted/heredoc lang 값, component 이름 완성.
