@@ -34,6 +34,9 @@ import { FindTemplateReferences } from './application/find-template-references';
 import { ListResolvedTemplateCalls } from './application/list-resolved-template-calls';
 import { TemplateDefinitionProvider } from './presentation/providers/template-definition-provider';
 import { TemplateReferenceProvider } from './presentation/providers/template-reference-provider';
+import { ResolveTableDefinition } from './application/resolve-table-definition';
+import { ListResolvedTableRefs } from './application/list-resolved-table-refs';
+import { TableDefinitionProvider } from './presentation/providers/table-definition-provider';
 import { ResolveJsDefinition } from './application/resolve-js-definition';
 import { DescribeJsSymbol } from './application/describe-js-symbol';
 import { ListResolvedJsCalls } from './application/list-resolved-js-calls';
@@ -81,6 +84,9 @@ export async function activate(ctx: vscode.ExtensionContext) {
   const findTplRefs = new FindTemplateReferences(usageIndex);
   const listResolvedTpl = new ListResolvedTemplateCalls(syntax, templates);
 
+  const resolveTbl = new ResolveTableDefinition(syntax, store);
+  const listResolvedTbl = new ListResolvedTableRefs(syntax, store);
+
   const resolveJs = new ResolveJsDefinition(strings, templates);
   const describeJs = new DescribeJsSymbol(strings, templates);
   const listResolvedJs = new ListResolvedJsCalls(strings, templates);
@@ -108,6 +114,7 @@ export async function activate(ctx: vscode.ExtensionContext) {
         built: () => usageIndex.isBuilt,
         build: cb => usageBuild ?? (usageBuild = usageIndex.buildFromRoot(root, cb)),
       }, file => componentOfTemplateFile(root, file))),
+    vscode.languages.registerDefinitionProvider(php, new TableDefinitionProvider(resolveTbl)),
     vscode.languages.registerDefinitionProvider(js, new JsDefinitionProvider(resolveJs)),
     vscode.languages.registerHoverProvider(js, new JsHoverProvider(describeJs)),
   );
@@ -115,6 +122,7 @@ export async function activate(ctx: vscode.ExtensionContext) {
   const highlight = registerResolvedHighlight(ctx, [
     { setting: 'strings.highlightResolved', languages: ['php'], run: t => listResolved.run(t) },
     { setting: 'templates.highlightResolved', languages: ['php'], run: t => listResolvedTpl.run(t) },
+    { setting: 'tables.highlightResolved', languages: ['php'], run: t => listResolvedTbl.run(t) },
     { setting: 'strings.highlightResolved', languages: ['javascript'], run: t => listResolvedJs.runStrings(t) },
     { setting: 'templates.highlightResolved', languages: ['javascript'], run: t => listResolvedJs.runTemplates(t) },
   ]);

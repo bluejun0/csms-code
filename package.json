@@ -33,6 +33,10 @@
         "csmscode.templates.highlightResolved": {
           "type": "boolean", "default": true,
           "description": "해석되는 render_from_template 참조를 링크 색상(textLink.foreground)으로 하이라이팅합니다."
+        },
+        "csmscode.tables.highlightResolved": {
+          "type": "boolean", "default": true,
+          "description": "SQL 문자열에서 install.xml로 해석되는 테이블 참조({table})를 링크 색상(textLink.foreground)으로 하이라이팅합니다."
         }
       }
     }

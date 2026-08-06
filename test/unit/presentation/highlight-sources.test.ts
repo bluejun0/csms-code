@@ -9,18 +9,32 @@ function pick(sources: HighlightSource[], languageId: string, enabled: Record<st
 
 const S = 'strings.highlightResolved';
 const T = 'templates.highlightResolved';
+const B = 'tables.highlightResolved';
 const sources: HighlightSource[] = [
   { setting: S, languages: ['php'], run: () => [] },
   { setting: T, languages: ['php'], run: () => [] },
+  { setting: B, languages: ['php'], run: () => [] },
   { setting: S, languages: ['javascript'], run: () => [] },
   { setting: T, languages: ['javascript'], run: () => [] },
 ];
 
 describe('하이라이트 소스 라우팅', () => {
-  it('php 문서는 php 소스 2개만', () => {
+  it('php 문서는 php 소스 3개만', () => {
     const r = pick(sources, 'php', {});
-    assert.equal(r.length, 2);
+    assert.equal(r.length, 3);
     assert.ok(r.every(s => s.languages.includes('php')));
+  });
+  it('테이블 하이라이트는 문자열·템플릿 설정과 독립이다', () => {
+    const r = pick(sources, 'php', { [S]: false, [T]: false });
+    assert.equal(r.length, 1);
+    assert.equal(r[0].setting, B);
+  });
+  it('테이블 설정만 끄면 php에서 테이블만 빠진다', () => {
+    const r = pick(sources, 'php', { [B]: false });
+    assert.deepEqual(r.map(s => s.setting), [S, T]);
+  });
+  it('테이블 소스는 javascript에 없다', () => {
+    assert.ok(!pick(sources, 'javascript', {}).some(s => s.setting === B));
   });
   it('javascript 문서는 js 소스 2개만', () => {
     const r = pick(sources, 'javascript', {});
