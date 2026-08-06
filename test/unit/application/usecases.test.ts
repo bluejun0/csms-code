@@ -29,7 +29,7 @@ describe('ValidateRecordColumns', () => {
   });
 });
 
-// scopeContaining 클로저 정밀화 (스펙 2026-08-04): 일반 대입만 있는 클로저가
+// scopeContaining 클로저 정밀화: 일반 대입만 있는 클로저가
 // 스코프 축소에 보여야 바깥 바인딩이 클로저 안 완성으로 새지 않는다.
 const CODE2 = `<?php
 function g() {
@@ -57,7 +57,7 @@ describe('CompleteRecordColumns — scopeContaining 클로저 정밀화', () => 
   });
 });
 
-// 컬렉션 분리 E2E 음성 핀(백로그 12번): 도메인 테스트는 합성 팩트라 tree-sitter 추출이
+// 컬렉션 분리 E2E 음성 핀: 도메인 테스트는 합성 팩트라 tree-sitter 추출이
 // 표류하면 못 잡는다. 컬렉션 분리(965295a) 이전 코드라면 'foo' 진단 1건이 나와 실패했을 핀.
 const CODE3 = `<?php
 function h() {

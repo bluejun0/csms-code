@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 /** 플러그인 타입 → 루트 기준 상대 디렉터리. 타입명과 디렉터리명이 다르거나(block→blocks)
- *  중첩된(tool→admin/tool) 경우가 많아 매핑이 필요하다 — 2026-08-05 hlulxp 실측 검증. */
+ *  중첩된(tool→admin/tool) 경우가 많아 매핑이 필요하다. */
 export const PLUGIN_DIRS: Record<string, string> = {
   mod: 'mod', local: 'local', block: 'blocks', report: 'report', enrol: 'enrol',
   auth: 'auth', theme: 'theme', filter: 'filter', repository: 'repository',

@@ -1,7 +1,7 @@
 export interface ParsedLangString { key: string; value: string; line: number; }
 
 /** Moodle lang 파일의 `$string['key'] = '값';` 항목 추출.
- *  단일 인용부호 관례만 지원(double-quoted·heredoc은 스펙 비목표), 여러 줄 값 허용. */
+ *  단일 인용부호 관례만 지원한다(겹따옴표·heredoc 값은 대상 아님), 여러 줄 값 허용. */
 export function parseLangFile(text: string): ParsedLangString[] {
   const out: ParsedLangString[] = [];
   const re = /\$string\[\s*'((?:[^'\\]|\\.)+)'\s*\]\s*=\s*'((?:[^'\\]|\\.)*)'\s*;/g;

@@ -5,7 +5,7 @@ export interface RecordBinding { varName: string; tableName: string; source: Bin
 
 // 단일 stdClass 레코드 반환 → 변수 자체에 컬럼 바인딩 (② 직접 대입 경로)
 const DIRECT_RECORD_METHODS = new Set(['get_record', 'get_record_select']);
-// 레코드 컬렉션 반환 → foreach 항목 변수에만 바인딩 — 배열/recordset 변수 자체는 레코드가 아님 (스펙 2026-08-04)
+// 레코드 컬렉션 반환 → foreach 항목 변수에만 바인딩 — 배열/recordset 변수 자체는 레코드가 아니다.
 const COLLECTION_METHODS = new Set(['get_records', 'get_records_select', 'get_recordset', 'get_recordset_select']);
 
 function sameScope(a: Scope, b: Scope): boolean { return a.start === b.start && a.end === b.end; }

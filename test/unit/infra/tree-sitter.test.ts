@@ -47,7 +47,7 @@ describe('TreeSitterPhpSyntax', () => {
   });
 });
 
-// review 1 픽스: foreach key=>value / by-ref / key=>&value, dataArg read 제외 + 2번째 인자 앵커
+// foreach key=>value / by-ref / key=>&value 형태와, dataArg가 읽기 메서드·3번째 인자를 잡지 않는 것
 const CODE2 = `<?php
 function process2($cm) {
     foreach ($rows as $id => $record) { echo $record->id; }
@@ -104,7 +104,7 @@ describe('TreeSitterPhpSyntax — review 1 fixes', () => {
   });
 });
 
-// kill-on-reassign: 일반 대입(plainAssignments) 추출 (스펙 2026-07-31)
+// kill-on-reassign: 일반 대입(plainAssignments) 추출
 const CODE3 = `<?php
 function process3() {
     $a = build_row();
@@ -144,7 +144,7 @@ describe('TreeSitterPhpSyntax — plainAssignments (kill-on-reassign)', () => {
   });
 });
 
-// 최종 리뷰(2026-07-31): 문법 고정 — 복합/구조분해/참조 대입은 plainAssignments에 캡처되지 않음(낙관 동작).
+// 문법 고정 — 복합·구조분해·참조 대입은 plainAssignments에 캡처되지 않는다(낙관 동작).
 // tree-sitter-wasms 업그레이드로 노드 형태가 바뀌면 이 테스트가 잡는다.
 const CODE4 = `<?php
 function process4() {
@@ -168,7 +168,7 @@ describe('TreeSitterPhpSyntax — plainAssignments 문법 고정(비캡처 형�
   });
 });
 
-// Plan 2: get_string 리터럴 호출 추출 (스펙 2026-08-04)
+// get_string 리터럴 호출 추출
 const CODE5 = `<?php
 function s() {
     $t = get_string('attendance_book', 'local_ubattend');
@@ -200,7 +200,7 @@ describe('TreeSitterPhpSyntax — stringCalls (get_string)', () => {
   });
 });
 
-// Mustache: render_from_template 리터럴 호출 (스펙 2026-08-05)
+// render_from_template 리터럴 호출
 const CODE6 = `<?php
 function r() {
     echo $OUTPUT->render_from_template('local_ubattend/setting', $data);

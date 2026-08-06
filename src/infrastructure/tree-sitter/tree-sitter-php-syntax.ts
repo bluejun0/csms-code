@@ -10,7 +10,6 @@ const SCOPE_TYPES = new Set([
   'anonymous_function_creation_expression', 'arrow_function',
 ]);
 
-// 검증된 쿼리 (스파이크 2026-07-27)
 const Q_ASSIGN = `
   (assignment_expression
     left: (variable_name (name) @var)
@@ -24,7 +23,7 @@ const Q_ASSIGN_NOTABLE = `
     right: (member_call_expression
       object: (variable_name (name) @recv)
       name: (name) @method))`;
-// foreach: 4가지 형태를 각각 별도 쿼리로 잡는다(스파이크로 실제 노드 구조 확인, 2026-07-27).
+// foreach: 4가지 형태를 각각 별도 쿼리로 잡는다 — 값 변수를 감싸는 노드가 형태마다 다르다.
 //   - 단순: foreach ($rows as $r)                     → (foreach_statement (variable_name) (variable_name @item))
 //   - key=>value: foreach ($rows as $k => $v)         → (foreach_statement (variable_name) (pair (variable_name @key) (variable_name @item)))
 //   - by-ref: foreach ($rows as &$r)                  → (foreach_statement (variable_name) (by_ref (variable_name @item)))
@@ -45,7 +44,7 @@ const Q_PROP = `
   (member_access_expression object: (variable_name (name) @var) name: (name) @prop)`;
 // dataArg: 테이블 문자열 바로 다음(anchor .) 위치 인자만 datavar로 잡는다 — 3번째 이상 인자는 매칭되지 않는다.
 // 메서드는 insert_record/update_record(쓰기)만 허용하는데, 이 grammar/버전에서 술어(#any-of? 등)가
-// top-level 패턴 밖에 있으면 무시됨을 스파이크로 확인했으므로, 메서드 필터링은 캡처 후 코드에서 수행한다.
+// top-level 패턴 밖에 있으면 무시되므로, 메서드 필터링은 캡처 후 코드에서 수행한다.
 const Q_DATAARG = `
   (member_call_expression
     name: (name) @method
@@ -55,7 +54,7 @@ const DATAARG_WRITE_METHODS = new Set(['insert_record', 'update_record']);
 const Q_PLAIN_ASSIGN = `
   (assignment_expression left: (variable_name (name) @var))`;
 
-// Plan 2: get_string('key','component') 리터럴 호출 — 함수명 필터는 캡처 후 코드에서(술어 미지원, Q_DATAARG 선례).
+// get_string('key','component') 리터럴 호출 — 함수명 필터는 캡처 후 코드에서 한다(술어 미지원).
 // 변수 키/컴포넌트·보간 문자열은 string_content 캡처가 없어 매칭 자체가 안 된다(자연 침묵).
 const Q_STRING_CALL = `
   (function_call_expression

@@ -18,7 +18,7 @@ export class CompleteRecordColumns {
   }
 }
 // 커서 위치를 포함하는 가장 좁은 팩트 스코프(없으면 전체).
-// DocumentFacts 전체에서 구조적으로 유도 — 새 팩트 종류가 추가돼도 자동 포함(수기 열거가 백로그 11번 버그의 원인).
+// DocumentFacts 전체에서 구조적으로 유도한다 — 팩트 종류를 수기로 열거하면 새 종류가 추가될 때 누락된다.
 function scopeContaining(facts: DocumentFacts, atIndex: number): Scope {
   let best: Scope = { start: 0, end: Number.MAX_SAFE_INTEGER };
   const all = (Object.values(facts).flat() as unknown[])

@@ -64,7 +64,7 @@ describe('RecordTypeInference', () => {
     assert.equal(inf.infer(f, 'u', 250, scopeB, known), null);
   });
 
-  // ---- kill-on-reassign (스펙 2026-07-31) ----
+  // ---- kill-on-reassign ----
   it('kill: 레코드 대입 후 일반 재대입 → null (대표 오탐 시나리오)', () => {
     const f = { ...base,
       assignments: [{ varName: 'rec', receiver: 'DB', method: 'get_record', tableArg: 'user', index: 10, scope: S }],
@@ -123,7 +123,7 @@ describe('RecordTypeInference', () => {
     assert.deepEqual(inf.infer(f, 'rec', 50, scopeA, known), { varName: 'rec', tableName: 'user', source: 'assignment' });
   });
 
-  // ---- 컬렉션 직접 바인딩 제거 (스펙 2026-08-04) ----
+  // ---- 컬렉션 직접 바인딩 제거 ----
   it('get_recordset 직접 대입 → null (recordset 객체는 레코드가 아님)', () => {
     const f = { ...base,
       assignments: [{ varName: 'rs', receiver: 'DB', method: 'get_recordset', tableArg: 'user', index: 10, scope: S }],

@@ -47,8 +47,8 @@ describe('MoodleRootResolver', () => {
   });
 });
 
-// symlink 플러그인 색인 (스펙 2026-08-04): Dirent.isDirectory()는 링크를 따라가지 않아
-// 심볼릭 링크된 플러그인이 열거에서 탈락했다. 픽스처는 런타임 tmp 생성(커밋된 symlink는 Windows 파손).
+// symlink 플러그인 색인: Dirent.isDirectory()는 링크를 따라가지 않으므로 심볼릭 링크된
+// 플러그인은 별도 확인이 필요하다. 픽스처는 런타임 tmp에 만든다(커밋된 symlink는 Windows에서 깨진다).
 describe('MoodleRootResolver — symlink 플러그인 색인', () => {
   let tmp: string;
   before(function () {
