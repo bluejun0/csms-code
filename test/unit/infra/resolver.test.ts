@@ -2,7 +2,7 @@ import { strict as assert } from 'assert';
 import { join } from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
-import { findMoodleRoot, listInstallXmlFiles, listLangFiles, componentOfLangFile, listInstallXmlFilesAsync, listLangFilesAsync, listTemplateFilesAsync, listTemplateFiles } from '../../../src/infrastructure/workspace/moodle-root-resolver';
+import { findMoodleRoot, listInstallXmlFiles, listLangFiles, componentOfLangFile, componentOfInstallXmlFile, listInstallXmlFilesAsync, listLangFilesAsync, listTemplateFilesAsync, listTemplateFiles } from '../../../src/infrastructure/workspace/moodle-root-resolver';
 import { LangFileRef, TemplateFileRef } from '../../../src/infrastructure/workspace/moodle-root-resolver';
 
 const root = join(__dirname, '../../fixtures/mini-moodle');
@@ -99,5 +99,18 @@ describe('MoodleRootResolver — 비동기 열거는 동기와 동일 결과', (
   it('listTemplateFilesAsync ≡ listTemplateFiles (component·name 포함)', async () => {
     const key = (xs: TemplateFileRef[]) => xs.map(x => `${x.component}/${x.name}:${x.file}`).sort();
     assert.deepEqual(key(await listTemplateFilesAsync(root)), key(listTemplateFiles(root)));
+  });
+});
+
+describe('MoodleRootResolver — componentOfInstallXmlFile', () => {
+  it('코어', () =>
+    assert.equal(componentOfInstallXmlFile(root, join(root, 'lib/db/install.xml')), 'core'));
+  it('플러그인', () =>
+    assert.equal(componentOfInstallXmlFile(root, join(root, 'local/ubattend/db/install.xml')), 'local_ubattend'));
+  it('blocks 디렉터리(타입명 block)', () =>
+    assert.equal(componentOfInstallXmlFile(root, join(root, 'blocks/testblock/db/install.xml')), 'block_testblock'));
+  it('규칙 밖 → null', () => {
+    assert.equal(componentOfInstallXmlFile(root, join(root, 'local/ubattend/db/other.xml')), null);
+    assert.equal(componentOfInstallXmlFile(root, '/etc/install.xml'), null);
   });
 });

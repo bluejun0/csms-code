@@ -121,6 +121,17 @@ export function pluginTypeOfRel(rel: string): { type: string; name: string; rest
   return best ? { type: best.type, name: best.name, rest: best.rest } : null;
 }
 
+/** install.xml 경로 → component (listInstallXmlFiles 규칙의 역함수). 규칙 밖은 null. */
+export function componentOfInstallXmlFile(root: string, file: string): string | null {
+  const rel = path.relative(root, file);
+  if (rel.startsWith('..') || path.isAbsolute(rel)) return null;
+  const parts = rel.split(path.sep);
+  if (parts.length === 3 && parts[0] === 'lib' && parts[1] === 'db' && parts[2] === 'install.xml') return 'core';
+  const hit = pluginTypeOfRel(rel);
+  if (!hit) return null;
+  return hit.rest === 'db/install.xml' ? `${hit.type}_${hit.name}` : null;
+}
+
 /** lang 파일 경로 → component (listLangFiles 규칙의 역함수 — 순수 경로 로직). 규칙 밖은 null. */
 export function componentOfLangFile(root: string, file: string): string | null {
   const rel = path.relative(root, file);
