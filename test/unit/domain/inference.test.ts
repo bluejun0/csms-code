@@ -1,9 +1,9 @@
 import { strict as assert } from 'assert';
 import { RecordTypeInference } from '../../../src/domain/code-analysis/record-type-inference';
-import { DocumentFacts } from '../../../src/domain/code-analysis/facts';
+import { emptyFacts, DocumentFacts } from '../../../src/domain/code-analysis/facts';
 
 const S = { start: 0, end: 1000 };
-const base: DocumentFacts = { assignments: [], foreachBindings: [], dataArgBindings: [], phpdocVars: [], propertyAccesses: [], plainAssignments: [], stringCalls: [], templateCalls: [], tableRefs: [] };
+const base: DocumentFacts = emptyFacts();
 const known = (t: string) => ['user', 'assign', 'local_ubattend_config', 'local_ubattend_log'].includes(t);
 const inf = new RecordTypeInference();
 

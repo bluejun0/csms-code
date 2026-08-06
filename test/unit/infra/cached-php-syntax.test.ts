@@ -1,6 +1,6 @@
 import { strict as assert } from 'assert';
 import { CachedPhpSyntax } from '../../../src/infrastructure/caching/cached-php-syntax';
-import { DocumentFacts } from '../../../src/domain/code-analysis/facts';
+import { DocumentFacts, emptyFacts } from '../../../src/domain/code-analysis/facts';
 import { PhpSyntax } from '../../../src/domain/code-analysis/ports/php-syntax';
 
 /** 파싱 호출 횟수를 세는 가짜 — 매 호출 새 객체를 반환하므로 동일 객체 단언이 캐시 히트를 증명한다 */
@@ -8,7 +8,7 @@ class CountingFake implements PhpSyntax {
   calls = 0;
   facts(_text: string): DocumentFacts {
     this.calls++;
-    return { assignments: [], foreachBindings: [], dataArgBindings: [], phpdocVars: [], propertyAccesses: [], plainAssignments: [], stringCalls: [], templateCalls: [], tableRefs: [] };
+    return emptyFacts();
   }
 }
 

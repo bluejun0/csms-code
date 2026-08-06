@@ -1,7 +1,7 @@
 import * as path from 'path';
 import Parser from 'web-tree-sitter';
 import {
-  DocumentFacts, emptyFacts, RecordAssignment, ForeachBinding, DataArgBinding, PhpdocVar, PlainAssignment, PropertyAccess, Scope, StringCall, TableRef, TemplateCall,
+  AmdCall, DocumentFacts, emptyFacts, RecordAssignment, ForeachBinding, DataArgBinding, PhpdocVar, PlainAssignment, PropertyAccess, Scope, StringCall, TableRef, TemplateCall,
 } from '../../domain/code-analysis/facts';
 import { PhpSyntax } from '../../domain/code-analysis/ports/php-syntax';
 
@@ -63,8 +63,9 @@ const Q_STRING_CALL = `
       . (argument (string (string_content) @key))
       . (argument (string (string_content) @component))))`;
 
-// Mustache: render_from_template('component/name', …) — 수신자 무관($OUTPUT/$this/기타).
-// 메서드명 필터는 캡처 후 코드에서(술어 미지원, Q_DATAARG 선례). 동적 인자는 string_content가 없어 비매칭.
+// 첫 인자가 문자열 리터럴인 메서드 호출 — 수신자를 제약하지 않아 $OUTPUT->render_from_template와
+// $PAGE->requires->js_call_amd를 함께 잡는다. 종류는 메서드명으로 가른다.
+// 동적 인자는 string_content가 없어 비매칭이다.
 const Q_TEMPLATE_CALL = `
   (member_call_expression
     name: (name) @method
@@ -212,15 +213,20 @@ export class TreeSitterPhpSyntax implements PhpSyntax {
     }
 
     const templateCalls: TemplateCall[] = [];
+    const amdCalls: AmdCall[] = [];
     for (const { caps } of runMatches(this.queries.templateCall)) {
       const method = caps.get('method')!;
-      if (method.text !== 'render_from_template') continue;
+      // 이 쿼리는 첫 인자가 문자열인 모든 메서드 호출($DB->get_record 등)에 매칭된다 —
+      // 관심 있는 메서드가 아니면 객체를 만들기 전에 빠진다.
+      if (method.text !== 'render_from_template' && method.text !== 'js_call_amd') continue;
       const ref = caps.get('ref')!;
-      templateCalls.push({
+      const call = {
         ref: ref.text,
         refLine: ref.startPosition.row, refColumn: ref.startPosition.column, refIndex: ref.startIndex,
         index: method.startIndex,
-      });
+      };
+      if (method.text === 'render_from_template') templateCalls.push(call);
+      else amdCalls.push(call);
     }
 
     // Moodle SQL은 테이블을 `{name}`으로 적는다. 이름이 실제 테이블인지는 색인이 판정하므로
@@ -262,7 +268,7 @@ export class TreeSitterPhpSyntax implements PhpSyntax {
     // 반환하는 팩트 객체는 안전하다(트리 노드에 대한 참조를 들고 있지 않음). 호출마다 트리를 쌓아두지 않도록 해제한다.
     tree.delete();
 
-    return { assignments, foreachBindings, dataArgBindings, phpdocVars, propertyAccesses, plainAssignments, stringCalls, templateCalls, tableRefs };
+    return { assignments, foreachBindings, dataArgBindings, phpdocVars, propertyAccesses, plainAssignments, stringCalls, templateCalls, amdCalls, tableRefs };
   }
 }
 

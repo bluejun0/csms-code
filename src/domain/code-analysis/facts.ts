@@ -15,6 +15,12 @@ export interface TemplateCall {
   refLine: number; refColumn: number; refIndex: number;
   index: number;
 }
+/** `js_call_amd('component/name', …)`의 모듈 참조. */
+export interface AmdCall {
+  ref: string;
+  refLine: number; refColumn: number; refIndex: number;
+  index: number;
+}
 /** Moodle SQL의 테이블 참조 `{name}` — 문자열 리터럴 안에 있고 스코프와 무관하다. */
 export interface TableRef {
   name: string;
@@ -29,6 +35,7 @@ export interface DocumentFacts {
   plainAssignments: PlainAssignment[];
   stringCalls: StringCall[];
   templateCalls: TemplateCall[];
+  amdCalls: AmdCall[];
   tableRefs: TableRef[];
 }
 
@@ -36,6 +43,6 @@ export interface DocumentFacts {
 export function emptyFacts(): DocumentFacts {
   return {
     assignments: [], foreachBindings: [], dataArgBindings: [], phpdocVars: [],
-    propertyAccesses: [], plainAssignments: [], stringCalls: [], templateCalls: [], tableRefs: [],
+    propertyAccesses: [], plainAssignments: [], stringCalls: [], templateCalls: [], amdCalls: [], tableRefs: [],
   };
 }

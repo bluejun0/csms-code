@@ -329,3 +329,38 @@ describe('TreeSitterPhpSyntax — 파싱 불가 문서', () => {
     }
   });
 });
+
+// js_call_amd 모듈 참조 추출 — render_from_template와 같은 쿼리를 메서드명으로 가른다.
+const CODE9 = `<?php
+function page() {
+  $PAGE->requires->js_call_amd('local_ubattend/setting', 'init');
+  $PAGE->requires->js_call_amd('local_ubattend/sub/nested', 'init', [1]);
+  $this->page->requires->js_call_amd('block_testblock/main', 'init');
+  $PAGE->requires->js_call_amd($dynamic, 'init');
+  $OUTPUT->render_from_template('local_ubattend/setting', []);
+  $DB->get_record('user', ['id' => 1]);
+}
+`;
+
+describe('TreeSitterPhpSyntax — amdCalls (js_call_amd)', () => {
+  let syn: TreeSitterPhpSyntax; let f: any;
+  before(async () => { syn = await TreeSitterPhpSyntax.create(); f = syn.facts(CODE9); });
+
+  it('수신자 무관 추출·중첩 경로 포함, 동적 인자는 비추출', () => {
+    assert.deepEqual(f.amdCalls.map((x: any) => x.ref),
+      ['local_ubattend/setting', 'local_ubattend/sub/nested', 'block_testblock/main']);
+  });
+
+  it('ref 위치 정확성', () => {
+    const c = f.amdCalls[0];
+    assert.equal(CODE9.slice(c.refIndex, c.refIndex + c.ref.length), 'local_ubattend/setting');
+    assert.equal(c.refLine, 2);
+    assert.equal(c.refColumn, CODE9.split('\n')[2].indexOf('local_ubattend/setting'));
+  });
+
+  it('render_from_template·$DB 호출과 섞이지 않는다', () => {
+    assert.deepEqual(f.templateCalls.map((x: any) => x.ref), ['local_ubattend/setting']);
+    assert.equal(f.templateCalls[0].refLine, 6);
+    assert.ok(!f.amdCalls.some((x: any) => x.refLine === 6 || x.ref === 'user'));
+  });
+});
