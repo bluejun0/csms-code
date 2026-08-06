@@ -1,7 +1,7 @@
 # 수동 검증 (실제 저장소에서 확인할 체크리스트)
 
-1. `npm run package` → csms-code-0.1.0.vsix 생성 확인
-2. code --install-extension csms-code-0.1.0.vsix
+1. `npm run package` → `csms-code-<package.json의 version>.vsix` 생성 확인
+2. code --install-extension csms-code-<version>.vsix
 3. ~/workspace/hlulxp 열기
 4. local/ubattend 의 아무 php에서:
    - $config = $DB->get_record('local_ubattend_config', ...); 아래 줄에서 `$config->` 입력 → 컬럼 목록 + 한국어 설명 표시
@@ -30,7 +30,15 @@
 22. 워크스페이스를 처음 열 때 편집이 멈추지 않고, 상태바에 "CSMS Code: 색인 중…"이 잠깐 보인 뒤 사라짐(색인 완료 후 진단·하이라이트가 자동으로 채워짐)
 23. lang 파일의 값을 고쳐 저장 → hover/완성에 즉시 반영되고 저장이 체감상 멈추지 않음(전체 재색인이 아니라 그 파일만 갱신)
 24. install.xml에 FIELD를 추가해 저장 → 해당 테이블 컬럼 완성에 즉시 반영. .mustache 파일을 새로 만들면 그 참조가 바로 해석됨(하이라이트 색이 붙음)
-25. 색인 규칙 밖 경로(예: `PLUGIN_DIRS`에 없는 플러그인 타입)의 install.xml·lang·.mustache를 저장 → 아무 일도 일어나지 않음(경고·재색인 없음). 그런 경로는 애초에 색인 대상이 아니다.
+25. SQL 문자열의 테이블 참조에서 F12 → install.xml의 `<TABLE>` 줄로 이동. 세 가지 인용 방식 각각 확인:
+    - `$DB->get_records_sql('SELECT * FROM {course} …')` — 단일 인용
+    - `"… FROM {user} u JOIN {course_modules} cm …"` — 이중 인용(보간 `{$id}`가 섞여 있어도 테이블만 인식)
+    - `<<<SQL … FROM {grade_items} … SQL;` — heredoc(여러 줄에서도 커서 위치가 맞아야 함)
+26. 해석되는 테이블 참조가 링크 색상으로 표시되고, `csmscode.tables.highlightResolved=false` 시 사라짐
+27. 테이블이 아닌 중괄호에는 아무 일도 일어나지 않음 — `preg_match('/[0-9]{4}/')`, `'{Bucket}'` 등에 하이라이트·이동·경고 없음
+28. Moodle이 `moodle/` 하위에 있는 워크스페이스(예: ~/workspace/csms39)를 설정 변경 없이 열기 → 컬럼·문자열 기능이 바로 동작(기본 설정에 `moodle` 포함)
+29. 16진 이스케이프가 있는 파일(예: `mod/zoom/jwt/JWT.php`)을 연 뒤 **다른 정상 파일**로 이동 → 정상 파일의 완성·진단이 온전히 동작(파싱 실패가 다음 문서를 오염시키지 않음)
+30. 색인 규칙 밖 경로(예: `PLUGIN_DIRS`에 없는 플러그인 타입)의 install.xml·lang·.mustache를 저장 → 아무 일도 일어나지 않음(경고·재색인 없음). 그런 경로는 애초에 색인 대상이 아니다.
 
 ## 알려진 제한 (Known limitations)
 
@@ -50,6 +58,17 @@ kill-on-reassign(2026-07-31)으로 추적되지만, 구조 분해(`[$a,$b] = …
 (`grade/templates` 등)과 JS의 `Templates.render()` 호출, 동적 인자 호출은 침묵합니다. 문자열과 마찬가지로 겹따옴표 리터럴(`render_from_template("a/b")`)은 정의 이동·하이라이팅에서
 인식되지 않습니다(참조 목록에는 나타납니다 — 사용처 색인은 두 따옴표를 모두 훑습니다. 실측:
 커스텀 코드에서 홑따옴표 444건 대 겹따옴표 1건).
+
+SQL 테이블 참조는 문자열 안의 `{이름}` 형태를 모두 후보로 보고, install.xml에 있는 이름만 반응합니다 —
+정규식 수량자(`{4}`)나 다른 템플릿 문법(`{Bucket}`)은 조용히 무시되지만, 반대로 SQL이 아닌 문자열에
+테이블과 같은 이름이 들어 있으면(`index.php?id={course}`) 링크 색상이 붙을 수 있습니다. 실측으로
+문자열 내 `{이름}` 7,585건 중 테이블로 해석되는 것은 57.8%이고, 나머지는 SQL이 아니어서 진단은 제공하지
+않습니다. SQL 키워드 문맥 검사는 넣지 않았습니다 — 해석된 참조 중 280건이 조각 SQL(`, {groups_members} gm`)이라
+문맥 검사가 정상 참조를 잘라내는 쪽이 더 큽니다.
+
+`"\x00"` 같은 16진 이스케이프가 있는 파일은 이 tree-sitter 조합에서 파싱이 실패해 그 파일의 인텔리전스가
+전부 침묵합니다(파서 상태는 즉시 리셋해 다음 파일에 영향을 주지 않습니다). hlulxp 실측 16개 파일로,
+전부 vendor·번들 라이브러리입니다.
 
 JS/AMD는 AST가 아닌 정규식으로 인식하므로 주석이나 문자열 안의 호출도 이동·hover 대상이 될 수 있습니다
 (그래서 JS에는 진단을 제공하지 않습니다). `getStrings([...])` 배열 형태와 TypeScript 소스는 지원하지 않습니다. 컴포넌트를 생략한 한 인자 호출

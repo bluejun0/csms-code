@@ -46,7 +46,7 @@ import { JsHoverProvider } from './presentation/providers/js-hover-provider';
 export async function activate(ctx: vscode.ExtensionContext) {
   const folder = vscode.workspace.workspaceFolders?.[0];
   if (!folder) return;
-  const subs = vscode.workspace.getConfiguration('csmscode').get<string[]>('detectInSubfolders', []);
+  const subs = vscode.workspace.getConfiguration('csmscode').get<string[]>('detectInSubfolders', ['moodle']);
   const root = findMoodleRoot(folder.uri.fsPath, subs);
   if (!root) { console.log('CSMS Code: Moodle 루트를 찾지 못했습니다.'); return; }
 

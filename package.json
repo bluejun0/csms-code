@@ -2,7 +2,7 @@
   "name": "csms-code",
   "displayName": "CSMS Code",
   "description": "CSMS/Moodle 개발 지원 — DB 레코드 컬럼 인텔리전스",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "publisher": "bluesoft",
   "license": "MIT",
   "engines": { "vscode": "^1.85.0" },
@@ -19,8 +19,8 @@
       "title": "CSMS Code",
       "properties": {
         "csmscode.detectInSubfolders": {
-          "type": "array", "items": { "type": "string" }, "default": [],
-          "description": "Moodle 루트가 하위 폴더에 있을 때 탐색할 폴더명 목록 (예: [\"moodle\"])."
+          "type": "array", "items": { "type": "string" }, "default": ["moodle"],
+          "description": "Moodle 루트가 하위 폴더에 있을 때 탐색할 폴더명 목록. Moodle을 moodle/ 하위에 두는 배치가 흔해 기본으로 포함합니다. version.php와 lib/db/install.xml이 함께 있을 때만 루트로 인정합니다."
         },
         "csmscode.diagnostics.enable": {
           "type": "boolean", "default": true,

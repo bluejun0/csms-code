@@ -15,6 +15,36 @@ describe('MoodleRootResolver', () => {
     const list = listInstallXmlFiles(root).map(x => x.component).sort();
     assert.deepEqual(list, ['block_testblock', 'core', 'local_ubattend']);
   });
+
+  // 기본 설정이 하위 폴더 `moodle`을 탐색하므로, 이름만 같은 디렉터리를 루트로 오인하지 않아야 한다.
+  describe('하위 폴더 탐색', () => {
+    let tmp: string;
+    beforeEach(() => { tmp = fs.mkdtempSync(join(os.tmpdir(), 'csms-subfolder-')); });
+    afterEach(() => fs.rmSync(tmp, { recursive: true, force: true }));
+
+    it('version.php와 lib/db/install.xml이 함께 있으면 하위 폴더를 루트로 본다', () => {
+      const sub = join(tmp, 'moodle');
+      fs.mkdirSync(join(sub, 'lib', 'db'), { recursive: true });
+      fs.writeFileSync(join(sub, 'version.php'), '<?php');
+      fs.writeFileSync(join(sub, 'lib', 'db', 'install.xml'), '<XMLDB></XMLDB>');
+      assert.equal(findMoodleRoot(tmp, ['moodle']), sub);
+    });
+
+    it('version.php만 있으면 루트로 보지 않는다', () => {
+      const sub = join(tmp, 'moodle');
+      fs.mkdirSync(sub, { recursive: true });
+      fs.writeFileSync(join(sub, 'version.php'), '<?php');
+      assert.equal(findMoodleRoot(tmp, ['moodle']), undefined);
+    });
+
+    it('목록에 없는 폴더명은 탐색하지 않는다', () => {
+      const sub = join(tmp, 'moodle');
+      fs.mkdirSync(join(sub, 'lib', 'db'), { recursive: true });
+      fs.writeFileSync(join(sub, 'version.php'), '<?php');
+      fs.writeFileSync(join(sub, 'lib', 'db', 'install.xml'), '<XMLDB></XMLDB>');
+      assert.equal(findMoodleRoot(tmp, []), undefined);
+    });
+  });
 });
 
 // symlink 플러그인 색인 (스펙 2026-08-04): Dirent.isDirectory()는 링크를 따라가지 않아
