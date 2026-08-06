@@ -154,6 +154,15 @@ describe('PhpUsageIndex — js_call_amd 사용처', () => {
     assert.equal(idx.amdRefsOf('local_x', 'mod').length, 0);
   });
 
+  it('중첩 경로·코어 서브시스템 참조도 같은 키로 찾는다', () => {
+    const idx = new PhpUsageIndex(() => true);
+    idx.updateFileText('/w/a.php',
+      `<?php\n$PAGE->requires->js_call_amd('local_manager/code/index', 'init');\n` +
+      `$PAGE->requires->js_call_amd('core_form/submit', 'init');\n`);
+    assert.equal(idx.amdRefsOf('local_manager', 'code/index').length, 1);
+    assert.equal(idx.amdRefsOf('core_form', 'submit').length, 1);
+  });
+
   it('JS 파일에서는 수집하지 않는다(모듈 로딩은 import·require)', () => {
     const idx = new PhpUsageIndex(() => true);
     idx.updateFileText('/w/amd/src/a.js', "require(['local_x/mod'], function () {});\n");

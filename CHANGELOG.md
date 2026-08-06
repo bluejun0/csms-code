@@ -13,7 +13,7 @@
 ## [0.6.0] — 2026-08-06
 
 ### 추가
-- **AMD 모듈 참조 이동**: `$PAGE->requires->js_call_amd('local_ubion/user', 'index')`의 첫 인자에서 F12를 누르면 `local/ubion/amd/src/user.js`로 이동합니다. 중첩 경로(`local_x/foo/bar`)와 코어 서브시스템(`core_form/submit` → `lib/form/amd/src/submit.js`)도 해석하며, 실측 해석률은 97.0%(338건 중 328건)입니다.
+- **AMD 모듈 참조 이동**: `$PAGE->requires->js_call_amd('local_ubion/user', 'index')`의 첫 인자에서 F12를 누르면 `local/ubion/amd/src/user.js`로 이동합니다. 중첩 경로(`local_x/foo/bar`)와 코어 서브시스템(`core_form/submit` → `lib/form/amd/src/submit.js`)도 해석하며, 실측 해석률은 추출된 338건 중 328건(97.0%)입니다. 정규식으로 세면 354건이지만 차이 16건은 겹따옴표 리터럴 2건과 주석 처리된 호출이라 AST 기준에서 제외된 것입니다.
 - `amd/src`의 모듈 파일에서 Shift+F12 → 그 모듈을 부르는 `js_call_amd` 호출처 목록.
 - 해석되는 모듈 참조 하이라이팅. 설정 `csmscode.amd.highlightResolved`(기본 `true`).
 - 코어 서브시스템 디렉터리 매핑을 `lib/components.json`에서 읽습니다. 이 파일이 없는 구버전에서는 코어 서브시스템 모듈만 해석되지 않고 플러그인 모듈은 그대로 동작합니다.

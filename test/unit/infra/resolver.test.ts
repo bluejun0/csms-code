@@ -161,12 +161,21 @@ describe('MoodleRootResolver — AMD 모듈 열거', () => {
     assert.deepEqual(list, [
       'core/notification', 'core_form/submit',
       'local_ubattend/setting', 'local_ubattend/sub/nested', 'local_ubattend/view',
+      'tool_testtool/x',
     ]);
   });
 
   it('비동기 열거는 동기와 동일', async () => {
     const key = (xs: AmdFileRef[]) => xs.map(x => `${x.component}/${x.name}:${x.file}`).sort();
     assert.deepEqual(key(await listAmdFilesAsync(root)), key(listAmdFiles(root)));
+  });
+
+  // 중첩 타입 디렉터리(admin/tool)는 역산에서 pluginTypeOfRel의 최장 매치와 더미 세그먼트가
+  // 함께 걸리는 자리라 열거 결과에 반드시 포함돼 있어야 한다.
+  it('중첩 타입 디렉터리(admin/tool)도 열거된다', () => {
+    const hit = listAmdFiles(root).find(x => x.component === 'tool_testtool');
+    assert.ok(hit, 'tool_testtool 모듈이 열거되어야 한다');
+    assert.equal(hit!.name, 'x');
   });
 
   it('componentOfAmdFile: 열거 결과를 되돌린다', () => {
