@@ -229,3 +229,65 @@ describe('TreeSitterPhpSyntax — templateCalls (render_from_template)', () => {
     assert.equal(f.templateCalls.length, 3);
   });
 });
+
+// SQL 문자열 안의 {table} 참조 — 인용 방식 네 가지와 위치 계산
+const CODE7 = `<?php
+$a = 'SELECT * FROM {course} WHERE id = ?';
+$b = "SELECT * FROM {user} u JOIN {course_modules} cm WHERE x = {$id}";
+$c = <<<SQL
+SELECT *
+  FROM {grade_items} gi
+ WHERE gi.id = ?
+SQL;
+$d = <<<'RAW'
+FROM {assign}
+RAW;
+$e = '/[0-9]{4}/';
+`;
+
+describe('TreeSitterPhpSyntax — tableRefs (SQL {table})', () => {
+  let syn: TreeSitterPhpSyntax; let f: any;
+  before(async () => { syn = await TreeSitterPhpSyntax.create(); f = syn.facts(CODE7); });
+
+  it('단일 인용·이중 인용·heredoc·nowdoc 모두에서 뽑는다', () => {
+    assert.deepEqual(f.tableRefs.map((r: any) => r.name),
+      ['course', 'user', 'course_modules', 'grade_items', 'assign', '4']);
+  });
+
+  it('보간 {$var}는 이름으로 잡지 않는다', () => {
+    assert.ok(!f.tableRefs.some((r: any) => r.name === 'id'));
+  });
+
+  it('단일 인용의 줄·컬럼·오프셋이 정확하다', () => {
+    const r = f.tableRefs.find((x: any) => x.name === 'course');
+    assert.equal(CODE7.slice(r.nameIndex, r.nameIndex + 6), 'course');
+    assert.equal(r.nameLine, 1);
+    assert.equal(r.nameColumn, CODE7.split('\n')[1].indexOf('course'));
+  });
+
+  it('이중 인용에서 두 번째 참조의 컬럼도 정확하다', () => {
+    const r = f.tableRefs.find((x: any) => x.name === 'course_modules');
+    assert.equal(CODE7.slice(r.nameIndex, r.nameIndex + r.name.length), 'course_modules');
+    assert.equal(r.nameLine, 2);
+    assert.equal(r.nameColumn, CODE7.split('\n')[2].indexOf('course_modules'));
+  });
+
+  it('heredoc 여러 줄에서 줄·컬럼이 정확하다', () => {
+    const r = f.tableRefs.find((x: any) => x.name === 'grade_items');
+    assert.equal(CODE7.slice(r.nameIndex, r.nameIndex + r.name.length), 'grade_items');
+    assert.equal(r.nameLine, 5);
+    assert.equal(r.nameColumn, CODE7.split('\n')[5].indexOf('grade_items'));
+  });
+
+  it('nowdoc의 위치도 정확하다', () => {
+    const r = f.tableRefs.find((x: any) => x.name === 'assign');
+    assert.equal(CODE7.slice(r.nameIndex, r.nameIndex + r.name.length), 'assign');
+    assert.equal(r.nameLine, 9);
+    assert.equal(r.nameColumn, CODE7.split('\n')[9].indexOf('assign'));
+  });
+
+  it('정규식 수량자도 이름으로는 뽑힌다 — 해석 단계에서 걸러진다', () => {
+    const r = f.tableRefs.find((x: any) => x.name === '4');
+    assert.equal(r.nameLine, 11);
+  });
+});

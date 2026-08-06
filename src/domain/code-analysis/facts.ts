@@ -15,6 +15,11 @@ export interface TemplateCall {
   refLine: number; refColumn: number; refIndex: number;
   index: number;
 }
+/** Moodle SQL의 테이블 참조 `{name}` — 문자열 리터럴 안에 있고 스코프와 무관하다. */
+export interface TableRef {
+  name: string;
+  nameLine: number; nameColumn: number; nameIndex: number;
+}
 export interface DocumentFacts {
   assignments: RecordAssignment[];
   foreachBindings: ForeachBinding[];
@@ -24,4 +29,5 @@ export interface DocumentFacts {
   plainAssignments: PlainAssignment[];
   stringCalls: StringCall[];
   templateCalls: TemplateCall[];
+  tableRefs: TableRef[];
 }

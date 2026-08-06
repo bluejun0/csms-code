@@ -1,7 +1,7 @@
 import * as path from 'path';
 import Parser from 'web-tree-sitter';
 import {
-  DocumentFacts, RecordAssignment, ForeachBinding, DataArgBinding, PhpdocVar, PlainAssignment, PropertyAccess, Scope, StringCall, TemplateCall,
+  DocumentFacts, RecordAssignment, ForeachBinding, DataArgBinding, PhpdocVar, PlainAssignment, PropertyAccess, Scope, StringCall, TableRef, TemplateCall,
 } from '../../domain/code-analysis/facts';
 import { PhpSyntax } from '../../domain/code-analysis/ports/php-syntax';
 
@@ -71,6 +71,13 @@ const Q_TEMPLATE_CALL = `
     name: (name) @method
     arguments: (arguments . (argument (string (string_content) @ref))))`;
 
+// 문자열 내용 노드. string_content 하나가 단일 인용·이중 인용·heredoc를 모두 덮고, nowdoc만 별도 타입이다.
+// 이중 인용에서 `{$var}` 보간은 별도 노드로 쪼개지므로 문자열 내용에 남지 않는다.
+const Q_STRING_BODY = `
+  (string_content) @s
+  (nowdoc_string) @s`;
+const TABLE_REF_RE = /\{(\w+)\}/g;
+
 interface CompiledQueries {
   assign: Parser.Query;
   assignNoTable: Parser.Query;
@@ -83,6 +90,7 @@ interface CompiledQueries {
   plainAssign: Parser.Query;
   stringCall: Parser.Query;
   templateCall: Parser.Query;
+  stringBody: Parser.Query;
 }
 
 export class TreeSitterPhpSyntax implements PhpSyntax {
@@ -110,6 +118,7 @@ export class TreeSitterPhpSyntax implements PhpSyntax {
       plainAssign: lang.query(Q_PLAIN_ASSIGN),
       stringCall: lang.query(Q_STRING_CALL),
       templateCall: lang.query(Q_TEMPLATE_CALL),
+      stringBody: lang.query(Q_STRING_BODY),
     };
     return new TreeSitterPhpSyntax(parser, queries);
   }
@@ -199,6 +208,33 @@ export class TreeSitterPhpSyntax implements PhpSyntax {
       });
     }
 
+    // Moodle SQL은 테이블을 `{name}`으로 적는다. 이름이 실제 테이블인지는 색인이 판정하므로
+    // 여기서는 SQL 여부를 가리지 않고 형태만 뽑는다.
+    const tableRefs: TableRef[] = [];
+    for (const { caps } of runMatches(this.queries.stringBody)) {
+      const node = caps.get('s')!;
+      const body = node.text;
+      if (!body.includes('{')) continue;
+      // 줄·컬럼은 노드를 한 번만 훑으며 누적한다. 매치마다 앞쪽을 되짚으면 매치 수에 대해 제곱이 된다.
+      // lineStart를 노드의 시작 컬럼만큼 음수로 시작하면 첫 줄에서도 같은 식으로 문서 컬럼이 나오고,
+      // 줄바꿈을 만나 0 기준으로 리셋된 뒤에도 식이 그대로 성립한다.
+      let line = node.startPosition.row;
+      let lineStart = -node.startPosition.column;
+      let scanned = 0;
+      TABLE_REF_RE.lastIndex = 0;
+      let m: RegExpExecArray | null;
+      while ((m = TABLE_REF_RE.exec(body))) {
+        const nameOffset = m.index + 1;
+        for (; scanned < nameOffset; scanned++) {
+          if (body[scanned] === '\n') { line++; lineStart = scanned + 1; }
+        }
+        tableRefs.push({
+          name: m[1], nameLine: line, nameColumn: nameOffset - lineStart,
+          nameIndex: node.startIndex + nameOffset,
+        });
+      }
+    }
+
     const propertyAccesses: PropertyAccess[] = runMatches(this.queries.prop).map(({ caps }) => {
       const v = caps.get('var')!, p = caps.get('prop')!;
       return { varName: v.text, property: p.text, propLine: p.startPosition.row, propColumn: p.startPosition.column,
@@ -211,7 +247,7 @@ export class TreeSitterPhpSyntax implements PhpSyntax {
     // 반환하는 팩트 객체는 안전하다(트리 노드에 대한 참조를 들고 있지 않음). 호출마다 트리를 쌓아두지 않도록 해제한다.
     tree.delete();
 
-    return { assignments, foreachBindings, dataArgBindings, phpdocVars, propertyAccesses, plainAssignments, stringCalls, templateCalls };
+    return { assignments, foreachBindings, dataArgBindings, phpdocVars, propertyAccesses, plainAssignments, stringCalls, templateCalls, tableRefs };
   }
 }
 
