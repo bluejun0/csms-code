@@ -51,6 +51,13 @@ describe('MoodleRootResolver — symlink 플러그인 색인', () => {
     const list = listInstallXmlFiles(join(tmp, 'root')).map(x => x.component).sort();
     assert.deepEqual(list, ['core', 'local_linked']);
   });
+  it('비동기 열거도 심볼릭 링크를 동일하게 처리', async () => {
+    const r = join(tmp, 'root');
+    const sync = listInstallXmlFiles(r).map(x => x.component).sort();
+    const async_ = (await listInstallXmlFilesAsync(r)).map(x => x.component).sort();
+    assert.deepEqual(async_, sync, '동기와 동일해야 함');
+    assert.deepEqual(async_, ['core', 'local_linked'], '링크된 플러그인 포함·깨진 링크 제외');
+  });
 });
 
 describe('MoodleRootResolver — lang 파일 열거', () => {

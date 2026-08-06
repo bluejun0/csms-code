@@ -70,6 +70,12 @@ function statIsDirectory(p: string): boolean {
 export interface LangFileRef { file: string; component: string; locale: string; }
 const LANG_LOCALES = ['en', 'ko'];
 
+/** 플러그인 lang 파일명 규칙 — mod만 `<name>.php`, 그 외는 `<type>_<name>.php`(Moodle 규칙).
+ *  순방향 열거(동기·비동기)와 역방향 역산이 모두 이 함수를 쓴다. */
+export function langFileNameFor(type: string, name: string): string {
+  return type === 'mod' ? `${name}.php` : `${type}_${name}.php`;
+}
+
 /** 코어(lang/en/*.php — ko 언어팩은 저장소 밖) + 플러그인(lang/{en,ko})의 lang 파일 열거.
  *  mod 플러그인만 파일명이 `<name>.php`, 그 외는 `<type>_<name>.php` (Moodle 규칙). */
 export function listLangFiles(root: string): LangFileRef[] {
@@ -84,7 +90,7 @@ export function listLangFiles(root: string): LangFileRef[] {
     const typeDir = path.join(root, relDir);
     if (!fs.existsSync(typeDir)) continue;
     for (const name of safeReaddir(typeDir)) {
-      const expected = type === 'mod' ? `${name}.php` : `${type}_${name}.php`;
+      const expected = langFileNameFor(type, name);
       for (const locale of LANG_LOCALES) {
         const f = path.join(typeDir, name, 'lang', locale, expected);
         if (fs.existsSync(f)) out.push({ file: f, component: `${type}_${name}`, locale });
@@ -218,7 +224,8 @@ async function safeReaddirFilesAsync(dir: string): Promise<string[]> {
   } catch { return []; }
 }
 
-/** listInstallXmlFiles의 비동기 판 — 규칙은 동일 함수(pluginTypeOfRel 계열)를 쓰므로 갈라질 수 없다. */
+/** listInstallXmlFiles의 비동기 판 — 열거 방향(PLUGIN_DIRS 순회)·컴포넌트 조합 규칙은 동기판과 동일하고,
+ *  등가성은 resolver.test.ts의 sync/async 비교 테스트가 고정한다. */
 export async function listInstallXmlFilesAsync(root: string): Promise<{ file: string; component: string }[]> {
   const out: { file: string; component: string }[] = [];
   const core = path.join(root, 'lib', 'db', 'install.xml');
@@ -236,7 +243,7 @@ export async function listInstallXmlFilesAsync(root: string): Promise<{ file: st
   return out;
 }
 
-/** listLangFiles의 비동기 판 */
+/** listLangFiles의 비동기 판 — 파일명 규칙은 langFileNameFor를 공유한다. */
 export async function listLangFilesAsync(root: string): Promise<LangFileRef[]> {
   const out: LangFileRef[] = [];
   const coreDir = path.join(root, 'lang', 'en');
@@ -250,7 +257,7 @@ export async function listLangFilesAsync(root: string): Promise<LangFileRef[]> {
     const typeDir = path.join(root, relDir);
     if (!await existsAsync(typeDir)) continue;
     for (const name of await safeReaddirAsync(typeDir)) {
-      const expected = type === 'mod' ? `${name}.php` : `${type}_${name}.php`;
+      const expected = langFileNameFor(type, name);
       for (const locale of LANG_LOCALES) {
         const f = path.join(typeDir, name, 'lang', locale, expected);
         if (await existsAsync(f)) out.push({ file: f, component: `${type}_${name}`, locale });
