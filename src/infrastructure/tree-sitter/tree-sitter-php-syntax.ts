@@ -1,7 +1,7 @@
 import * as path from 'path';
 import Parser from 'web-tree-sitter';
 import {
-  DocumentFacts, RecordAssignment, ForeachBinding, DataArgBinding, PhpdocVar, PlainAssignment, PropertyAccess, Scope, StringCall, TableRef, TemplateCall,
+  DocumentFacts, emptyFacts, RecordAssignment, ForeachBinding, DataArgBinding, PhpdocVar, PlainAssignment, PropertyAccess, Scope, StringCall, TableRef, TemplateCall,
 } from '../../domain/code-analysis/facts';
 import { PhpSyntax } from '../../domain/code-analysis/ports/php-syntax';
 
@@ -123,8 +123,24 @@ export class TreeSitterPhpSyntax implements PhpSyntax {
     return new TreeSitterPhpSyntax(parser, queries);
   }
 
+  /** 이 grammar/런타임 조합은 16진 이스케이프(`"\x00"`)가 있는 문서에서 파싱이 실패한다.
+   *  중단된 파싱은 파서에 내부 상태를 남기고, 그대로 두면 **다음 문서**가 예외 없이
+   *  잘못된 트리로 파싱된다(누락된 노드·거짓 오류). 그래서 실패 즉시 reset()으로 상태를 버린다. */
+  private parseOrNull(text: string): Parser.Tree | null {
+    try {
+      return this.parser.parse(text);
+    } catch {
+      this.parser.reset();
+      console.warn('CSMS Code: PHP 파싱에 실패해 이 파일의 인텔리전스를 건너뜁니다.');
+      return null;
+    }
+  }
+
   facts(text: string): DocumentFacts {
-    const tree = this.parser.parse(text);
+    const tree = this.parseOrNull(text);
+    // 파싱 불가 문서는 팩트 없음(=침묵)으로 떨어뜨린다. 예외를 밖으로 던지면 그 파일에서
+    // 모든 프로바이더가 실패한다.
+    if (!tree) return emptyFacts();
     const root = tree.rootNode;
     const scopeOf = (node: Parser.SyntaxNode): Scope => {
       let p: Parser.SyntaxNode | null = node;

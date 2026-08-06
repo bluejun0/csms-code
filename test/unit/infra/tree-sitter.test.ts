@@ -291,3 +291,41 @@ describe('TreeSitterPhpSyntax — tableRefs (SQL {table})', () => {
     assert.equal(r.nameLine, 11);
   });
 });
+
+describe('TreeSitterPhpSyntax — 파싱 불가 문서', () => {
+  let syn: TreeSitterPhpSyntax;
+  before(async () => { syn = await TreeSitterPhpSyntax.create(); });
+
+  // 이 grammar/런타임 조합은 16진 이스케이프가 있는 파일에서 파싱이 실패한다.
+  const HEX = '<?php\n$sig = "\\x00";\n$sql = \'SELECT * FROM {user}\';\n';
+
+  it('16진 이스케이프가 있어도 예외를 던지지 않는다', () => {
+    assert.doesNotThrow(() => syn.facts(HEX));
+  });
+
+  it('파싱 실패는 빈 팩트로 떨어진다', () => {
+    const f = syn.facts(HEX);
+    assert.deepEqual(f.tableRefs, []);
+    assert.deepEqual(f.assignments, []);
+    assert.deepEqual(f.propertyAccesses, []);
+    assert.deepEqual(f.stringCalls, []);
+  });
+
+  // 파싱 실패는 바로 다음 파싱 한 번을 함께 오염시킨다 — 정상 문서가 그 자리에 걸려도 결과가 나와야 한다.
+  it('실패 직후 문서도 정상 파싱된다', () => {
+    syn.facts(HEX);
+    const f = syn.facts(`<?php\n$sql = 'SELECT * FROM {course}';\n`);
+    assert.deepEqual(f.tableRefs.map((r: any) => r.name), ['course']);
+  });
+
+  // 오염된 상태에서는 예외 없이 노드가 누락된 트리가 나오므로, 팩트 수까지 확인해야 잡힌다.
+  it('실패 직후 문서의 팩트가 누락 없이 나온다', () => {
+    const TWO = `<?php\n$a = $DB->get_record('user', []);\n$b = $DB->get_record('assign', []);\n`;
+    const expected = syn.facts(TWO).assignments.length;
+    assert.equal(expected, 2);
+    for (let i = 0; i < 3; i++) {
+      syn.facts(HEX);
+      assert.equal(syn.facts(TWO).assignments.length, expected, `${i}번째 문서에서 팩트가 누락됐다`);
+    }
+  });
+});

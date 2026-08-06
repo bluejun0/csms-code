@@ -31,3 +31,11 @@ export interface DocumentFacts {
   templateCalls: TemplateCall[];
   tableRefs: TableRef[];
 }
+
+/** 팩트 없음 — 파싱이 불가능한 문서를 침묵으로 처리할 때 쓴다. 새 팩트 종류가 늘어도 여기만 고치면 된다. */
+export function emptyFacts(): DocumentFacts {
+  return {
+    assignments: [], foreachBindings: [], dataArgBindings: [], phpdocVars: [],
+    propertyAccesses: [], plainAssignments: [], stringCalls: [], templateCalls: [], tableRefs: [],
+  };
+}
