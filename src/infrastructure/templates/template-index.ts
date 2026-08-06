@@ -28,9 +28,13 @@ export class TemplateIndex implements TemplateRepository {
     this.byRef = map;
   }
 
-  /** 템플릿 파일 하나가 바뀌면 그 위치만 교체 */
+  /** 템플릿 파일 하나가 바뀌면 그 위치만 교체.
+   *  위치 값은 파일마다 동일하므로(uri·line 0·column 0), 이미 같은 키에 있으면 할 일이 없다 —
+   *  제거 후 append로 재삽입하면 배열 순서가 뒤집혀 F12·hover의 표시 순서가 흔들린다. */
   updateFile(file: string, component: string, name: string): void {
-    this.removeFile(file);
+    const arr = this.byRef.get(`${component}/${name}`);
+    if (arr?.some(l => l.uri === file)) return; // 순서 보존 — 이미 등록된 파일
+    this.removeFile(file);                      // 다른 키(컴포넌트/이름)에 있었다면 거기서 제거
     addRef(this.byRef, file, component, name);
   }
 
