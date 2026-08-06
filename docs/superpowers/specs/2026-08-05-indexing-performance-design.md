@@ -78,7 +78,7 @@ export function langFileMetaOf(root: string, file: string): { component: string;
 ### 3.5 결선 (`extension.ts`)
 - **활성화**: 세 색인을 `buildFromRootAsync`로 순차 실행하고 `vscode.window.withProgress({ location: ProgressLocation.Window, title: 'CSMS Code: 색인 중…' })`로 감싼다. **Notification이 아니라 Window(상태바)** — 워크스페이스를 열 때마다 뜨는 알림은 소음이다. 프로바이더는 즉시 등록하고(빌드 전 조회는 빈 결과 = 침묵 원칙), 빌드 완료 후 열린 에디터의 진단·하이라이트를 한 번 갱신한다.
   - 갱신 훅: `registerDiagnostics`와 `registerResolvedHighlight`가 각각 `refreshAll(): void`를 반환하도록 하고(현재는 반환값 없음), 빌드 완료 시 둘을 호출한다. 이 훅은 백로그에 있던 "외부 재색인 후 하이라이트 낡음" 항목도 함께 해소한다.
-- **워처**: `onDidChange`/`onDidCreate` → 역산 후 `updateFile`, `onDidDelete` → `removeFile`. **역산이 null이면 전체 재빌드로 폴백**(규칙 밖 경로에서 색인이 조용히 낡는 것보다 안전). 갱신 후 `refreshAll()` 호출.
+- **워처**: `onDidChange`/`onDidCreate` → 역산 후 `updateFile`, `onDidDelete` → `removeFile`. **역산이 null이면 침묵**한다 — 초기 설계는 전체 재빌드 폴백이었으나, 열거 함수가 역산과 동일한 규칙을 쓰므로 역산이 null인 파일은 재빌드로도 색인될 수 없다(2026-08-05 Task 5 리뷰에서 증명). 폴백은 이득 없이 진행 중 증분을 덮어쓸 위험만 있어 제거했다. 갱신 후 `refreshAll()` 호출.
 
 ## 4. 테스트 전략
 - **열거 등가성**: 세 비동기 열거가 동기 버전과 같은 결과(정렬 후 deepEqual).

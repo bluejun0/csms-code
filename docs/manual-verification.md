@@ -27,6 +27,10 @@
 19. `local/*/amd/src/*.js`에서 `M.util.get_string('key','local_x')`의 키 위에 F12 → lang 파일로 이동, hover → 한국어 값
 20. 같은 파일에서 `Templates.render('local_x/name')`의 리터럴에 F12 → .mustache로 이동
 21. lang 파일에서 Shift+F12 → PHP 호출처와 함께 JS 호출처도 목록에 나타남(단, `amd/build`의 미니파이 사본은 나타나지 않아야 함)
+22. 워크스페이스를 처음 열 때 편집이 멈추지 않고, 상태바에 "CSMS Code: 색인 중…"이 잠깐 보인 뒤 사라짐(색인 완료 후 진단·하이라이트가 자동으로 채워짐)
+23. lang 파일의 값을 고쳐 저장 → hover/완성에 즉시 반영되고 저장이 체감상 멈추지 않음(전체 재색인이 아니라 그 파일만 갱신)
+24. install.xml에 FIELD를 추가해 저장 → 해당 테이블 컬럼 완성에 즉시 반영. .mustache 파일을 새로 만들면 그 참조가 바로 해석됨(하이라이트 색이 붙음)
+25. 색인 규칙 밖 경로(예: `PLUGIN_DIRS`에 없는 플러그인 타입)의 install.xml·lang·.mustache를 저장 → 아무 일도 일어나지 않음(경고·재색인 없음). 그런 경로는 애초에 색인 대상이 아니다.
 
 ## 알려진 제한 (Known limitations)
 
