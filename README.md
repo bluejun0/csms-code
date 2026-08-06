@@ -41,18 +41,19 @@ npm install
 npm run compile        # tsc -noEmit + esbuild
 npm run test:unit       # 단위 테스트 (mocha)
 npm run lint            # eslint
-npm run package         # esbuild(production) + vsce package → csms-code-0.1.0.vsix
+npm run package         # esbuild(production) + vsce package → csms-code-<version>.vsix
 ```
 
 수동 검증 절차는 [docs/manual-verification.md](docs/manual-verification.md)를 참고하세요.
 
 ## 알려진 제한 (Known limitations)
 
-추론은 현재 함수 스코프 내 로컬 데이터플로우만 추적하며, 레코드 대입 후 같은 변수를
-다른 값으로 재대입(예: `$rec = build_row();`)하는 경우 그 재대입을 추적하지 못해
-이전 테이블 바인딩이 남아 드물게 정상 코드에 오탐 경고가 날 수 있습니다. 이 경우
-`csmscode.diagnostics.enable`로 진단을 끄거나 해당 변수에 정확한 `@var` 주석을 달 수
-있습니다. (kill-on-reassign은 후속 단계 예정.)
+추론은 현재 함수 스코프 내 로컬 데이터플로우만 추적합니다. 재대입(`$rec = build_row();`)은
+추적해 바인딩을 끊지만(kill-on-reassign), 구조 분해(`[$a, $b] = …`)·복합 대입(`+=`, `??=`)·
+참조 대입(`=&`)은 캡처하지 않아 이전 바인딩이 남습니다. 오탐이 생기면
+`csmscode.diagnostics.enable`로 진단을 끄거나 해당 변수에 정확한 `@var` 주석을 달 수 있습니다.
+전체 목록은 [docs/PHASE2-BACKLOG.md](docs/PHASE2-BACKLOG.md)의 "알려진 제한"을 참고하세요.
+버전별 변경 이력은 [CHANGELOG.md](CHANGELOG.md)에 있습니다.
 
 ## 비목표
 
