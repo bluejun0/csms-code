@@ -2,7 +2,7 @@ import { strict as assert } from 'assert';
 import { join } from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
-import { findMoodleRoot, listInstallXmlFiles, listLangFiles, componentOfLangFile, componentOfInstallXmlFile, listInstallXmlFilesAsync, listLangFilesAsync, listTemplateFilesAsync, listTemplateFiles } from '../../../src/infrastructure/workspace/moodle-root-resolver';
+import { findMoodleRoot, listInstallXmlFiles, listLangFiles, componentOfLangFile, componentOfInstallXmlFile, listInstallXmlFilesAsync, listLangFilesAsync, listTemplateFilesAsync, listTemplateFiles, langFileMetaOf } from '../../../src/infrastructure/workspace/moodle-root-resolver';
 import { LangFileRef, TemplateFileRef } from '../../../src/infrastructure/workspace/moodle-root-resolver';
 
 const root = join(__dirname, '../../fixtures/mini-moodle');
@@ -65,6 +65,16 @@ describe('MoodleRootResolver — lang 파일 열거', () => {
     const list = listLangFiles(root).map(x => `${x.component}:${x.locale}`).sort();
     assert.deepEqual(list, ['block_testblock:en', 'core:en', 'core_grades:en', 'local_ubattend:en', 'local_ubattend:ko', 'mod_testmod:en', 'tool_testtool:en']);
   });
+});
+
+describe('MoodleRootResolver — langFileMetaOf', () => {
+  it('플러그인 ko', () =>
+    assert.deepEqual(langFileMetaOf(root, join(root, 'local/ubattend/lang/ko/local_ubattend.php')),
+      { component: 'local_ubattend', locale: 'ko' }));
+  it('코어 en', () =>
+    assert.deepEqual(langFileMetaOf(root, join(root, 'lang/en/moodle.php')), { component: 'core', locale: 'en' }));
+  it('규칙 밖 → null', () =>
+    assert.equal(langFileMetaOf(root, join(root, 'local/ubattend/lang/ko/wrong.php')), null));
 });
 
 describe('MoodleRootResolver — componentOfLangFile (경로 역산)', () => {

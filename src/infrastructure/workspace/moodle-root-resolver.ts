@@ -132,21 +132,26 @@ export function componentOfInstallXmlFile(root: string, file: string): string | 
   return hit.rest === 'db/install.xml' ? `${hit.type}_${hit.name}` : null;
 }
 
-/** lang 파일 경로 → component (listLangFiles 규칙의 역함수 — 순수 경로 로직). 규칙 밖은 null. */
-export function componentOfLangFile(root: string, file: string): string | null {
+/** lang 파일 경로 → { component, locale }. 규칙 밖은 null. */
+export function langFileMetaOf(root: string, file: string): { component: string; locale: string } | null {
   const rel = path.relative(root, file);
   if (rel.startsWith('..') || path.isAbsolute(rel)) return null;
   const parts = rel.split(path.sep);
   if (parts.length === 3 && parts[0] === 'lang' && parts[1] === 'en' && parts[2].endsWith('.php')) {
     const base = parts[2].slice(0, -4);
-    return base === 'moodle' ? 'core' : `core_${base}`;
+    return { component: base === 'moodle' ? 'core' : `core_${base}`, locale: 'en' };
   }
   const hit = pluginTypeOfRel(rel);
   if (!hit) return null;
   const restParts = hit.rest.split('/');
   if (restParts.length !== 3 || restParts[0] !== 'lang' || !LANG_LOCALES.includes(restParts[1])) return null;
-  const expected = hit.type === 'mod' ? `${hit.name}.php` : `${hit.type}_${hit.name}.php`;
-  return restParts[2] === expected ? `${hit.type}_${hit.name}` : null;
+  const expected = langFileNameFor(hit.type, hit.name);
+  return restParts[2] === expected ? { component: `${hit.type}_${hit.name}`, locale: restParts[1] } : null;
+}
+
+/** lang 파일 경로 → component (listLangFiles 규칙의 역함수 — 순수 경로 로직). 규칙 밖은 null. */
+export function componentOfLangFile(root: string, file: string): string | null {
+  return langFileMetaOf(root, file)?.component ?? null;
 }
 
 export interface TemplateFileRef { file: string; component: string; name: string; }
