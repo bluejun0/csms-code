@@ -1,5 +1,7 @@
 import { strict as assert } from 'assert';
 import { join } from 'path';
+import * as fs from 'fs';
+import * as os from 'os';
 import { IndexStore } from '../../../src/infrastructure/indexing/index-store';
 
 const root = join(__dirname, '../../fixtures/mini-moodle');
@@ -39,6 +41,34 @@ describe('IndexStore — 비동기 빌드·증분', () => {
     s.removeFile(file);
     s.updateFile(file, 'local_ubattend');
     const full = new IndexStore(); await full.buildFromRootAsync(root);
-    assert.deepEqual(s.allTableNames().sort(), full.allTableNames().sort());
+    // 이름만 비교하면 component 오라벨을 놓친다 — 테이블 정체성(이름·컴포넌트·필드)까지 비교
+    const dump = (x: IndexStore) => x.allTableNames().sort().map(n => {
+      const t = x.getTable(n)!;
+      return `${t.name}|${t.component}|${t.fieldNames().join(',')}`;
+    });
+    assert.deepEqual(dump(s), dump(full));
+  });
+  it('파일 201개 합성 루트에서 200파일 양보·진행률 분기가 실제로 실행된다', async () => {
+    const tmp = fs.mkdtempSync(join(os.tmpdir(), 'csms-yield-'));
+    try {
+      // Moodle 루트 최소 조건 + local 플러그인 201개(각각 db/install.xml 1개)
+      fs.mkdirSync(join(tmp, 'lib', 'db'), { recursive: true });
+      fs.writeFileSync(join(tmp, 'version.php'), '<?php');
+      fs.writeFileSync(join(tmp, 'lib', 'db', 'install.xml'), '<XMLDB><TABLES></TABLES></XMLDB>');
+      for (let i = 0; i < 201; i++) {
+        const d = join(tmp, 'local', `t${i}`, 'db');
+        fs.mkdirSync(d, { recursive: true });
+        fs.writeFileSync(join(d, 'install.xml'),
+          `<XMLDB><TABLES><TABLE NAME="table_${i}"><FIELDS><FIELD NAME="id" TYPE="int"/></FIELDS></TABLE></TABLES></XMLDB>`);
+      }
+      const s = new IndexStore();
+      const calls: [number, number][] = [];
+      await s.buildFromRootAsync(tmp, (d, t) => calls.push([d, t]));
+      assert.ok(calls.some(([d]) => d === 200), '200번째 파일에서 루프 내 진행률이 발화(양보 분기 실행)');
+      assert.ok(calls.length >= 2, '루프 내 양보 1회 이상 + 완료 1회');
+      assert.ok(calls.every(([d, t]) => d <= t), 'done ≤ total 항상 참');
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
   });
 });
