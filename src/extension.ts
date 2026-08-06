@@ -4,7 +4,7 @@ import { IndexStore } from './infrastructure/indexing/index-store';
 import { StringIndexStore } from './infrastructure/lang/string-index-store';
 import { TreeSitterPhpSyntax } from './infrastructure/tree-sitter/tree-sitter-php-syntax';
 import { CachedPhpSyntax } from './infrastructure/caching/cached-php-syntax';
-import { findMoodleRoot, componentOfLangFile, componentOfTemplateFile, componentOfInstallXmlFile, langFileMetaOf } from './infrastructure/workspace/moodle-root-resolver';
+import { findMoodleRoot, componentOfLangFile, componentOfTemplateFile, componentOfInstallXmlFile, componentOfAmdFile, langFileMetaOf } from './infrastructure/workspace/moodle-root-resolver';
 import { RecordTypeInference } from './domain/code-analysis/record-type-inference';
 import { ValidateRecordColumns } from './application/validate-record-columns';
 import { CompleteRecordColumns } from './application/complete-record-columns';
@@ -34,6 +34,12 @@ import { FindTemplateReferences } from './application/find-template-references';
 import { ListResolvedTemplateCalls } from './application/list-resolved-template-calls';
 import { TemplateDefinitionProvider } from './presentation/providers/template-definition-provider';
 import { TemplateReferenceProvider } from './presentation/providers/template-reference-provider';
+import { AmdIndex } from './infrastructure/amd/amd-index';
+import { ResolveAmdDefinition } from './application/resolve-amd-definition';
+import { ListResolvedAmdCalls } from './application/list-resolved-amd-calls';
+import { FindAmdReferences } from './application/find-amd-references';
+import { AmdDefinitionProvider } from './presentation/providers/amd-definition-provider';
+import { AmdReferenceProvider } from './presentation/providers/amd-reference-provider';
 import { ResolveTableDefinition } from './application/resolve-table-definition';
 import { ListResolvedTableRefs } from './application/list-resolved-table-refs';
 import { TableDefinitionProvider } from './presentation/providers/table-definition-provider';
@@ -53,6 +59,7 @@ export async function activate(ctx: vscode.ExtensionContext) {
   const store = new IndexStore();
   const strings = new StringIndexStore();
   const templates = new TemplateIndex();
+  const amd = new AmdIndex();
 
   // 번들 시 dist에 tree-sitter.wasm + tree-sitter-php.wasm 복사됨
   let syntax: CachedPhpSyntax;
@@ -83,6 +90,10 @@ export async function activate(ctx: vscode.ExtensionContext) {
   const resolveTpl = new ResolveTemplateDefinition(syntax, templates);
   const findTplRefs = new FindTemplateReferences(usageIndex);
   const listResolvedTpl = new ListResolvedTemplateCalls(syntax, templates);
+
+  const resolveAmd = new ResolveAmdDefinition(syntax, amd);
+  const listResolvedAmd = new ListResolvedAmdCalls(syntax, amd);
+  const findAmdRefs = new FindAmdReferences(usageIndex);
 
   const resolveTbl = new ResolveTableDefinition(syntax, store);
   const listResolvedTbl = new ListResolvedTableRefs(syntax, store);
@@ -115,6 +126,13 @@ export async function activate(ctx: vscode.ExtensionContext) {
         build: cb => usageBuild ?? (usageBuild = usageIndex.buildFromRoot(root, cb)),
       }, file => componentOfTemplateFile(root, file))),
     vscode.languages.registerDefinitionProvider(php, new TableDefinitionProvider(resolveTbl)),
+    vscode.languages.registerDefinitionProvider(php, new AmdDefinitionProvider(resolveAmd)),
+    vscode.languages.registerReferenceProvider(
+      { scheme: 'file', pattern: '**/amd/src/**/*.js' },
+      new AmdReferenceProvider(findAmdRefs, {
+        built: () => usageIndex.isBuilt,
+        build: cb => usageBuild ?? (usageBuild = usageIndex.buildFromRoot(root, cb)),
+      }, file => componentOfAmdFile(root, file))),
     vscode.languages.registerDefinitionProvider(js, new JsDefinitionProvider(resolveJs)),
     vscode.languages.registerHoverProvider(js, new JsHoverProvider(describeJs)),
   );
@@ -123,6 +141,7 @@ export async function activate(ctx: vscode.ExtensionContext) {
     { setting: 'strings.highlightResolved', languages: ['php'], run: t => listResolved.run(t) },
     { setting: 'templates.highlightResolved', languages: ['php'], run: t => listResolvedTpl.run(t) },
     { setting: 'tables.highlightResolved', languages: ['php'], run: t => listResolvedTbl.run(t) },
+    { setting: 'amd.highlightResolved', languages: ['php'], run: t => listResolvedAmd.run(t) },
     { setting: 'strings.highlightResolved', languages: ['javascript'], run: t => listResolvedJs.runStrings(t) },
     { setting: 'templates.highlightResolved', languages: ['javascript'], run: t => listResolvedJs.runTemplates(t) },
   ]);
@@ -142,6 +161,7 @@ export async function activate(ctx: vscode.ExtensionContext) {
     await store.buildFromRootAsync(root);
     await strings.buildFromRootAsync(root);
     await templates.buildFromRootAsync(root);
+    await amd.buildFromRootAsync(root);
   };
 
   /** 전체 재빌드는 항상 이 게이트를 통과한다.
@@ -210,6 +230,19 @@ export async function activate(ctx: vscode.ExtensionContext) {
     tplWatcher.onDidChange(u => onTpl(u, false)),
     tplWatcher.onDidCreate(u => onTpl(u, false)),
     tplWatcher.onDidDelete(u => onTpl(u, true)));
+
+  // AMD 모듈 변경 → 그 파일만 갱신
+  const amdWatcher = vscode.workspace.createFileSystemWatcher('**/amd/src/**/*.js');
+  const onAmd = (uri: vscode.Uri, removed: boolean) => applyIncremental(() => {
+    const ref = componentOfAmdFile(root, uri.fsPath);
+    if (!ref) return false; // 규칙 밖 — 침묵(재빌드도 담을 수 없다)
+    if (removed) amd.removeFile(uri.fsPath); else amd.updateFile(uri.fsPath, ref.component, ref.name);
+    return true;
+  });
+  ctx.subscriptions.push(amdWatcher,
+    amdWatcher.onDidChange(u => onAmd(u, false)),
+    amdWatcher.onDidCreate(u => onAmd(u, false)),
+    amdWatcher.onDidDelete(u => onAmd(u, true)));
 
   // 사용처 색인 증분: lazy 빌드 이후에만, 저장된 파일 단위로 재추출
   ctx.subscriptions.push(vscode.workspace.onDidSaveTextDocument(d => {

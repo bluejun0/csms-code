@@ -38,7 +38,11 @@
 27. 테이블이 아닌 중괄호에는 아무 일도 일어나지 않음 — `preg_match('/[0-9]{4}/')`, `'{Bucket}'` 등에 하이라이트·이동·경고 없음
 28. Moodle이 `moodle/` 하위에 있는 워크스페이스(예: ~/workspace/csms39)를 설정 변경 없이 열기 → 컬럼·문자열 기능이 바로 동작(기본 설정에 `moodle` 포함)
 29. 16진 이스케이프가 있는 파일(예: `mod/zoom/jwt/JWT.php`)을 연 뒤 **다른 정상 파일**로 이동 → 정상 파일의 완성·진단이 온전히 동작(파싱 실패가 다음 문서를 오염시키지 않음)
-30. 색인 규칙 밖 경로(예: `PLUGIN_DIRS`에 없는 플러그인 타입)의 install.xml·lang·.mustache를 저장 → 아무 일도 일어나지 않음(경고·재색인 없음). 그런 경로는 애초에 색인 대상이 아니다.
+30. `$PAGE->requires->js_call_amd('local_ubion/user', 'index')`의 첫 인자에서 F12 → `local/ubion/amd/src/user.js`로 이동. 중첩 경로(`local_manager/code/index`)와 코어 서브시스템(`core_form/submit` → `lib/form/amd/src/submit.js`)도 확인
+31. `amd/src`의 .js 파일에서 Shift+F12 → 그 모듈을 부르는 `js_call_amd` 호출처 목록(첫 요청 시 진행률, 이후 즉시)
+32. 없는 모듈(`local_ubion/asiteHaksa`)에는 이동·하이라이트 없음. 해석되는 참조는 링크 색상이고 `csmscode.amd.highlightResolved=false`로 사라짐
+33. `amd/src`에 .js를 새로 만들고 그 이름으로 `js_call_amd`를 쓰면 바로 해석됨(워처 증분). `amd/build`의 미니파이 사본으로는 이동하지 않음
+34. 색인 규칙 밖 경로(예: `PLUGIN_DIRS`에 없는 플러그인 타입)의 install.xml·lang·.mustache를 저장 → 아무 일도 일어나지 않음(경고·재색인 없음). 그런 경로는 애초에 색인 대상이 아니다.
 
 ## 알려진 제한 (Known limitations)
 
@@ -58,6 +62,12 @@ kill-on-reassign(2026-07-31)으로 추적되지만, 구조 분해(`[$a,$b] = …
 (`grade/templates` 등)과 JS의 `Templates.render()` 호출, 동적 인자 호출은 침묵합니다. 문자열과 마찬가지로 겹따옴표 리터럴(`render_from_template("a/b")`)은 정의 이동·하이라이팅에서
 인식되지 않습니다(참조 목록에는 나타납니다 — 사용처 색인은 두 따옴표를 모두 훑습니다. 실측:
 커스텀 코드에서 홑따옴표 444건 대 겹따옴표 1건).
+
+AMD 모듈 참조는 `js_call_amd`의 홑따옴표 리터럴만 인식합니다(실측 홑따옴표 348 대 겹따옴표 2). 동적 인자는
+침묵합니다. 코어 서브시스템 매핑은 `lib/components.json`에서 읽으므로 이 파일이 없는 구버전(3.5·2.9)에서는
+`core_form/submit` 같은 코어 모듈만 해석되지 않습니다. `PLUGIN_DIRS`에 없는 플러그인 타입
+(`gradingform`·`assignfeedback`·`quizaccess` 등)의 모듈도 해석되지 않습니다. 실측 해석률은 97.0%(338건 중 328건)이고,
+나머지는 위 미매핑 타입과 실제로 존재하지 않는 모듈(`mod_ubboard/ubboard` 등)입니다.
 
 SQL 테이블 참조는 문자열 안의 `{이름}` 형태를 모두 후보로 보고, install.xml에 있는 이름만 반응합니다 —
 정규식 수량자(`{4}`)나 다른 템플릿 문법(`{Bucket}`)은 조용히 무시되지만, 반대로 SQL이 아닌 문자열에

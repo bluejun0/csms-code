@@ -14,6 +14,7 @@ Phase 1 (DB stdClass 인텔리전스)은 완료되었습니다. 아래는 종합
 - **템플릿 생성 순서에 따른 표시 순서 발산**: 이미 색인된 템플릿의 갱신은 위치 순서를 보존하지만, 새로 생성된 파일은 배열 끝에 추가된다. 열거 순서상 앞자리인 파일(예: 테마 오버라이드가 이미 있는 상태에서 원본을 새로 만드는 경우)이 나중에 생성되면 F12·hover의 표시 순서가 새 창에서 본 것과 달라질 수 있다(내용은 동일, 다음 전체 재색인 시 정렬됨 — 2026-08-05 최종 리뷰).
 - **순수 stdClass 필드 미지원**: 인텔리전스는 **테이블을 알아낼 수 있는** stdClass에만 동작한다(추론 4경로가 모두 `tableExists()`를 통과해야 함 — `record-type-inference.ts`). `$data = new stdClass(); $data->title = …;` 처럼 DB에 가지 않는 객체는 바로 위에서 대입한 필드조차 완성되지 않는다. 실측 규모와 설계 방향은 아래 14번.
 - **16진 이스케이프 파일 파싱 불가**: `"\x00"` 같은 16진 이스케이프가 있는 PHP 파일은 현재 조합(web-tree-sitter 0.20.8 + tree-sitter-wasms 0.1.13)에서 `Parser.parse()`가 예외를 던져 그 파일의 인텔리전스가 전부 침묵한다. 최소 재현 `<?php $a = "\x00";` — 8진(`\000`)·유니코드(`\u{...}`)·단일 인용은 정상이고 heredoc·nowdoc도 실패한다. 실패 시 `reset()`으로 파서 상태를 버려 다음 문서는 영향받지 않는다. hlulxp 실측 16개 파일(local/ vendor 10 + mod/ 번들 라이브러리 6)로 커스텀 플러그인 코드에는 없다. 코어에는 lib·admin·course에 119개. 해결은 아래 17번.
+- **AMD 모듈 참조의 미해석 요인**: 실측 해석률 97.0%(338건 중 328건). 남는 원인은 ① `PLUGIN_DIRS`에 없는 플러그인 타입(`gradingform`→`grade/grading/form`, `assignfeedback`→`mod/assign/feedback`, `quizaccess`→`mod/quiz/accessrule`, `quiz`(리포트)→`mod/quiz/report`) ② 실제로 없는 모듈(`local_ubion/assign`·`mod_ubboard/ubboard` — 죽은 참조) ③ 겹따옴표 리터럴(실측 2건) ④ `lib/components.json`이 없는 구버전(3.5·2.9)에서 코어 서브시스템 모듈. ①은 아래 19번으로 한 번에 해소된다.
 - **SQL이 아닌 문자열의 오검출**: 테이블 참조는 문자열 안 `{이름}`을 모두 후보로 보고 색인에 있는 이름만 반응하므로, `index.php?id={course}`처럼 테이블과 같은 이름이 든 비SQL 문자열에도 링크 색상이 붙을 수 있다(F12는 무해, 실측 해석된 4,384건 중 이런 유형이 최대 280건).
 - **lang 증분의 제거 비용**: `StringIndexStore.removeFile`이 색인 전체를 스캔하므로 lang 저장 시 증분이 ~6ms(최악 ~10ms)다. 전체 재색인(122ms)보다 훨씬 빠르지만 1ms 미만은 아니다. uri→key 역인덱스를 도입하면 더 줄일 수 있다.
 
@@ -52,6 +53,8 @@ Phase 1 (DB stdClass 인텔리전스)은 완료되었습니다. 아래는 종합
     - **install.xml → 사용처 참조(Shift+F12)**: `<TABLE>` 줄에서 그 테이블을 쓰는 SQL·`$DB` 호출을 모두 찾기. `PhpUsageIndex`에 테이블 참조 종류를 추가해야 하므로 앞의 두 개보다 크다.
 17. **tree-sitter grammar/런타임 조합 갱신**: 16진 이스케이프 파싱 실패(위 "알려진 제한")를 없앤다. 현재 `web-tree-sitter` 0.20.8 + `tree-sitter-wasms` 0.1.13. 상위 버전은 `Parser.init`·`Query` API가 달라 어댑터 수정이 필요하고, `dist/`로 복사하는 WASM 산출물 경로도 함께 확인해야 한다. 대안(우회): 파싱 직전에 `\x`를 같은 길이의 무해한 문자열로 치환하면 오프셋이 보존돼 위치 계산이 그대로 유효하다 — 영향 파일이 vendor·라이브러리뿐이라 현재는 채택하지 않았다.
 18. **`get_record_sql` 결과 변수의 컬럼 추론** (별도 사이클 — 14·15번보다 위험): 실측 `get_record_sql`+`get_records_sql` 836회 중 호출부 리터럴에서 `{table}`이 1개만 나오는 건 244회, 조인 77회, **리터럴에서 아예 못 찾는 게 515회**(대부분 `$sql`을 위에서 조립해 넘김 → 변수 해석이 선행돼야 실질 커버리지가 나온다). 조인·별칭이 있으면 반환 필드는 테이블 컬럼이 아니라 select 목록이므로 `SELECT *`(198회)만 안전하다.
+19. **`lib/components.json`으로 `PLUGIN_DIRS`를 대체**: 이 파일의 `plugintypes`(4.5 기준 45개)가 타입→디렉터리 매핑의 권위 있는 출처다. 정적 `PLUGIN_DIRS`(30개)를 이것으로 대체하면 **6번 잔여(qbank·tiny·quizaccess·assignsubmission 등)와 AMD 미해석 ①이 한 번에 해소되고**, 새 Moodle 버전에서 타입이 늘어도 코드 수정이 필요 없다. 파일이 없는 구버전(3.5·2.9)에는 정적 맵을 폴백으로 남긴다. 네 색인(install.xml·lang·템플릿·AMD)이 모두 같은 맵을 쓰므로 한 곳만 바꾸면 되지만, 열거 대상이 늘어 색인 크기·시간이 변하므로 실측을 함께 해야 한다.
+20. **JS 파일의 모듈 참조 이동**: `import 'local_x/y'`·`require(['local_x/y'])`에서도 모듈 파일로 이동(실측 1,161건·97% 해석 가능). VS Code 기본 JS 지원은 Moodle AMD 이름을 해석하지 못한다. 이미 만든 `AmdIndex`를 그대로 쓰고 JS 스캐너에 정규식 두 개만 추가하면 된다.
 
 ## Plan 2 (별도 계획 예정)
 - ~~**언어 문자열 인텔리전스**~~ — ✅ 완료 (2026-08-04, 설계: `docs/superpowers/specs/2026-08-04-lang-string-intelligence-design.md`). get_string 키 완성/정의 이동(ko·en)/hover(한국어 값)/누락 진단. 비목표: get_strings·lang_string·addHelpButton·AMD str, double-quoted/heredoc lang 값, component 이름 완성.
@@ -59,4 +62,5 @@ Phase 1 (DB stdClass 인텔리전스)은 완료되었습니다. 아래는 종합
 - ~~**Mustache 템플릿 인텔리전스**~~ — ✅ 완료 (2026-08-05, 같은 설계 문서). render_from_template 정의 이동(테마 오버라이드 포함)·템플릿에서 참조 이동·해석 참조 하이라이팅. 비목표: JS `Templates.render()`, 템플릿 이름 완성, .mustache 내부 인텔리전스.
 - ~~**JS/AMD 인텔리전스**~~ — ✅ 완료 (2026-08-05, 설계: `docs/superpowers/specs/2026-08-05-js-amd-intelligence-design.md`). amd/src의 get_string·Templates.render에 이동·hover·하이라이트, 참조 목록 통합. 비목표: JS 진단(AST 부재로 오탐 위험)·JS 자동완성·getStrings 배열·TypeScript.
 - ~~**SQL 테이블 참조 이동**~~ — ✅ 완료 (2026-08-06, 설계: `docs/superpowers/specs/2026-08-06-sql-table-navigation-design.md`). 문자열 안 `{table}`에서 install.xml `<TABLE>` 줄로 이동 + 해석 참조 하이라이팅, 네 가지 인용 방식 지원. 비목표: 진단(해석률 57.8%), hover, `$DB` 인자 리터럴, install.xml→사용처 참조(위 16번).
+- ~~**AMD 모듈 참조 이동**~~ — ✅ 완료 (2026-08-06, 설계: `docs/superpowers/specs/2026-08-06-amd-module-navigation-design.md`). `js_call_amd` 첫 인자에서 `amd/src` 모듈로 이동·해석 참조 하이라이팅·모듈 파일에서 사용처 참조. 코어 서브시스템은 `lib/components.json`으로 해석. 비목표: 진단, JS의 import·require 이동(위 20번), 모듈 이름 자동완성, 두 번째 인자(함수명) 이동.
 - 이후 capability, 웹서비스 등 mdlcode parity 확장.
