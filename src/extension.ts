@@ -4,7 +4,7 @@ import { IndexStore } from './infrastructure/indexing/index-store';
 import { StringIndexStore } from './infrastructure/lang/string-index-store';
 import { TreeSitterPhpSyntax } from './infrastructure/tree-sitter/tree-sitter-php-syntax';
 import { CachedPhpSyntax } from './infrastructure/caching/cached-php-syntax';
-import { findMoodleRoot, componentOfLangFile, componentOfTemplateFile } from './infrastructure/workspace/moodle-root-resolver';
+import { findMoodleRoot, componentOfLangFile, componentOfTemplateFile, componentOfInstallXmlFile, langFileMetaOf } from './infrastructure/workspace/moodle-root-resolver';
 import { RecordTypeInference } from './domain/code-analysis/record-type-inference';
 import { ValidateRecordColumns } from './application/validate-record-columns';
 import { CompleteRecordColumns } from './application/complete-record-columns';
@@ -47,13 +47,8 @@ export async function activate(ctx: vscode.ExtensionContext) {
   if (!root) { console.log('CSMS Code: Moodle 루트를 찾지 못했습니다.'); return; }
 
   const store = new IndexStore();
-  store.buildFromRoot(root);
-
   const strings = new StringIndexStore();
-  strings.buildFromRoot(root);
-
   const templates = new TemplateIndex();
-  templates.buildFromRoot(root);
 
   // 번들 시 dist에 tree-sitter.wasm + tree-sitter-php.wasm 복사됨
   let syntax: CachedPhpSyntax;
@@ -115,28 +110,78 @@ export async function activate(ctx: vscode.ExtensionContext) {
     vscode.languages.registerDefinitionProvider(js, new JsDefinitionProvider(resolveJs)),
     vscode.languages.registerHoverProvider(js, new JsHoverProvider(describeJs)),
   );
-  registerDiagnostics(ctx, validate, validateStr);
-  registerResolvedHighlight(ctx, [
+  const diagnostics = registerDiagnostics(ctx, validate, validateStr);
+  const highlight = registerResolvedHighlight(ctx, [
     { setting: 'strings.highlightResolved', languages: ['php'], run: t => listResolved.run(t) },
     { setting: 'templates.highlightResolved', languages: ['php'], run: t => listResolvedTpl.run(t) },
     { setting: 'strings.highlightResolved', languages: ['javascript'], run: t => listResolvedJs.runStrings(t) },
     { setting: 'templates.highlightResolved', languages: ['javascript'], run: t => listResolvedJs.runTemplates(t) },
   ]);
+  const refreshAll = () => { diagnostics.refreshAll(); highlight.refreshAll(); };
 
-  // install.xml 변경 시 증분 재색인
+  // 색인은 비동기로 — 활성화가 확장 호스트를 막지 않는다(실측 콜드 ~1.7초).
+  // 빌드 완료 전 조회는 빈 결과(침묵 원칙)이고, 완료 후 열린 문서를 한 번 갱신한다.
+  // 알림이 아니라 상태바(Window) — 워크스페이스를 열 때마다 뜨는 알림은 소음이다.
+  let indexing = true;
+  let pendingReindex = false;
+  const buildAll = async () => {
+    await store.buildFromRootAsync(root);
+    await strings.buildFromRootAsync(root);
+    await templates.buildFromRootAsync(root);
+  };
+  const runInitialBuild = () => vscode.window.withProgress(
+    { location: vscode.ProgressLocation.Window, title: 'CSMS Code: 색인 중…' },
+    async () => {
+      await buildAll();
+      // 빌드 중 워처가 놓친 변경이 있으면 한 번 더 — 빌드의 마지막 교체가 증분을 덮어쓰기 때문
+      if (pendingReindex) { pendingReindex = false; await buildAll(); }
+      indexing = false;
+      refreshAll();
+    });
+  void runInitialBuild();
+
+  /** 워처 공통 게이트 — 빌드 중이면 증분을 적용하지 않고 재빌드로 미룬다(적용해도 덮어써진다). */
+  const applyIncremental = (apply: () => void) => {
+    if (indexing) { pendingReindex = true; return; }
+    apply();
+    refreshAll();
+  };
+
+  // install.xml 변경 → 그 파일만 갱신. 역산 실패(규칙 밖)면 전체 재빌드로 폴백해 색인이 조용히 낡지 않게 한다.
   const watcher = vscode.workspace.createFileSystemWatcher('**/db/install.xml');
-  const reindex = () => store.buildFromRoot(root); // 단순: 전체 재색인(파일 수가 많지 않음). 최적화는 후속.
-  ctx.subscriptions.push(watcher, watcher.onDidChange(reindex), watcher.onDidCreate(reindex), watcher.onDidDelete(reindex));
+  const onXml = (uri: vscode.Uri, removed: boolean) => applyIncremental(() => {
+    const component = componentOfInstallXmlFile(root, uri.fsPath);
+    if (!component) { void store.buildFromRootAsync(root).then(refreshAll); return; }
+    if (removed) store.removeFile(uri.fsPath); else store.updateFile(uri.fsPath, component);
+  });
+  ctx.subscriptions.push(watcher,
+    watcher.onDidChange(u => onXml(u, false)),
+    watcher.onDidCreate(u => onXml(u, false)),
+    watcher.onDidDelete(u => onXml(u, true)));
 
-  // lang 파일 변경 시 문자열 전체 재색인(단순화 — install.xml 워처와 동일 패턴)
+  // lang 파일 변경 → 그 파일만 갱신(실측 전체 재색인 122ms → ~1ms)
   const langWatcher = vscode.workspace.createFileSystemWatcher('**/lang/*/*.php');
-  const restring = () => strings.buildFromRoot(root);
-  ctx.subscriptions.push(langWatcher, langWatcher.onDidChange(restring), langWatcher.onDidCreate(restring), langWatcher.onDidDelete(restring));
+  const onLang = (uri: vscode.Uri, removed: boolean) => applyIncremental(() => {
+    const meta = langFileMetaOf(root, uri.fsPath);
+    if (!meta) { void strings.buildFromRootAsync(root).then(refreshAll); return; }
+    if (removed) strings.removeFile(uri.fsPath); else strings.updateFile(uri.fsPath, meta.component, meta.locale);
+  });
+  ctx.subscriptions.push(langWatcher,
+    langWatcher.onDidChange(u => onLang(u, false)),
+    langWatcher.onDidCreate(u => onLang(u, false)),
+    langWatcher.onDidDelete(u => onLang(u, true)));
 
-  // 템플릿 파일 변경 시 전체 재색인(기존 워처들과 동일 단순화)
+  // 템플릿 변경 → 그 파일만 갱신
   const tplWatcher = vscode.workspace.createFileSystemWatcher('**/templates/**/*.mustache');
-  const retemplate = () => templates.buildFromRoot(root);
-  ctx.subscriptions.push(tplWatcher, tplWatcher.onDidChange(retemplate), tplWatcher.onDidCreate(retemplate), tplWatcher.onDidDelete(retemplate));
+  const onTpl = (uri: vscode.Uri, removed: boolean) => applyIncremental(() => {
+    const ref = componentOfTemplateFile(root, uri.fsPath);
+    if (!ref) { void templates.buildFromRootAsync(root).then(refreshAll); return; }
+    if (removed) templates.removeFile(uri.fsPath); else templates.updateFile(uri.fsPath, ref.component, ref.name);
+  });
+  ctx.subscriptions.push(tplWatcher,
+    tplWatcher.onDidChange(u => onTpl(u, false)),
+    tplWatcher.onDidCreate(u => onTpl(u, false)),
+    tplWatcher.onDidDelete(u => onTpl(u, true)));
 
   // 사용처 색인 증분: lazy 빌드 이후에만, 저장된 파일 단위로 재추출
   ctx.subscriptions.push(vscode.workspace.onDidSaveTextDocument(d => {
