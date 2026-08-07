@@ -25,6 +25,10 @@ Moodle 코드는 DB 레코드를 대부분 `stdClass`로 다루기 때문에, �
   (`quizaccess`·`assignsubmission`·`qbank`·`tiny` 등)도 함께 색인됩니다.
 - **언어 문자열 인텔리전스**: `get_string('key', 'component')` 키 자동완성(한국어 값 미리보기)·정의로 이동(ko/en)·hover·누락 키 진단·해석 키 하이라이팅, lang 파일에서 사용처 참조 이동(Shift+F12)
 - **Mustache 템플릿 인텔리전스**: `render_from_template('component/name', …)`에서 `.mustache` 파일로 이동(테마 오버라이드가 있으면 함께 표시)·템플릿 파일에서 사용처 참조 이동(Shift+F12)·해석되는 참조 하이라이팅
+- **전역 인텔리전스**: `global $DB, $CFG, $USER;`로 가져온 전역에 완성·hover·정의 이동을 제공합니다.
+  `$DB->`·`$PAGE->`·`$OUTPUT->`은 코어 클래스의 메서드·프로퍼티(매직 프로퍼티 포함),
+  `$CFG->`는 `config-dist.php`·`settings.php`에서 모은 설정 키, `$USER->`·`$COURSE->`·`$SITE->`는
+  해당 테이블 컬럼입니다. 전역이 지역 변수로 가려지면 기존 레코드 추론이 담당합니다.
 - **AMD 모듈 참조 이동**: `$PAGE->requires->js_call_amd('local_ubion/user', 'index')`의 첫 인자에서 F12를
   누르면 `local/ubion/amd/src/user.js`로 이동하고, 모듈 파일에서 Shift+F12로 그 모듈을 부르는 호출처를
   찾습니다. 해석되는 참조는 링크 색상으로 표시됩니다. 중첩 경로(`local_x/foo/bar`)와 코어 서브시스템

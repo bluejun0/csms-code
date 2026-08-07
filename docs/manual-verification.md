@@ -44,7 +44,12 @@
 33. `amd/src`에 .js를 새로 만들고 그 이름으로 `js_call_amd`를 쓰면 바로 해석됨(워처 증분). `amd/build`의 미니파이 사본으로는 이동하지 않음
 34. 서브플러그인에서 기능이 동작하는지 — `mod/quiz/accessrule/seb`(quizaccess)·`question/bank/*`(qbank)·`lib/editor/tiny/plugins/*`(tiny)의 PHP에서 `get_string` 완성·컬럼 완성이 되고, 그 lang 파일에서 Shift+F12가 사용처를 찾는지
 35. 플러그인에 `db/subplugins.json`을 새로 만들거나 고친 뒤 저장 → 상태바에 재색인이 뜨고 새 타입의 플러그인이 바로 인식됨
-36. 색인 규칙 밖 경로(예: `PLUGIN_DIRS`에 없는 플러그인 타입)의 install.xml·lang·.mustache를 저장 → 아무 일도 일어나지 않음(경고·재색인 없음). 그런 경로는 애초에 색인 대상이 아니다.
+36. `global $DB;` 아래에서 `$DB->get_rec` 입력 → `get_record`·`get_records`가 인자 시그니처와 함께 뜨고(자주 쓰는 것이 위), F12가 `lib/dml/moodle_database.php`의 선언 줄로 이동. 첫 요청은 색인을 만드느라 잠깐 걸리고 이후는 즉시
+37. `$PAGE->cont` → `context`(매직 프로퍼티)가 뜸. `$OUTPUT->head` → `header`
+38. `$CFG->wwwr` → `wwwroot`가 설명과 함께 뜨고 F12가 `config-dist.php`로 이동
+39. `$USER->` → user 테이블 컬럼이 한국어 설명과 함께 뜸. `foreach ($rows as $USER)` 안에서는 전역이 아니라 그 레코드의 컬럼이 뜨는지 확인
+40. 전역 어디에도 경고가 붙지 않음(`$USER->ubion` 같은 런타임 필드에 진단 없음)
+41. 색인 규칙 밖 경로(예: `PLUGIN_DIRS`에 없는 플러그인 타입)의 install.xml·lang·.mustache를 저장 → 아무 일도 일어나지 않음(경고·재색인 없음). 그런 경로는 애초에 색인 대상이 아니다.
 
 ## 알려진 제한 (Known limitations)
 

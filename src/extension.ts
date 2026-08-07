@@ -44,6 +44,14 @@ import { AmdReferenceProvider } from './presentation/providers/amd-reference-pro
 import { ResolveTableDefinition } from './application/resolve-table-definition';
 import { ListResolvedTableRefs } from './application/list-resolved-table-refs';
 import { TableDefinitionProvider } from './presentation/providers/table-definition-provider';
+import { ClassMemberIndex } from './infrastructure/coreapi/class-member-index';
+import { ConfigKeyIndex } from './infrastructure/config/config-key-index';
+import { CompleteGlobalMembers } from './application/complete-global-members';
+import { DescribeGlobalMember } from './application/describe-global-member';
+import { ResolveGlobalMemberDefinition } from './application/resolve-global-member-definition';
+import { GlobalMemberCompletionProvider } from './presentation/providers/global-member-completion-provider';
+import { GlobalHoverProvider } from './presentation/providers/global-hover-provider';
+import { GlobalDefinitionProvider } from './presentation/providers/global-definition-provider';
 import { ResolveJsDefinition } from './application/resolve-js-definition';
 import { DescribeJsSymbol } from './application/describe-js-symbol';
 import { ListResolvedJsCalls } from './application/list-resolved-js-calls';
@@ -99,6 +107,22 @@ export async function activate(ctx: vscode.ExtensionContext) {
   const listResolvedAmd = new ListResolvedAmdCalls(syntax, amd);
   const findAmdRefs = new FindAmdReferences(usageIndex);
 
+  // 전역 색인은 활성화가 아니라 첫 요청에서 만든다 — 코어 클래스 세 개 파싱이 실측 105ms(최대 정지 42ms),
+  // 설정 키 수집이 999ms라 활성화 경로에 넣으면 한 자릿수 ms 목표를 깬다.
+  const classMembers = new ClassMemberIndex();
+  const configKeys = new ConfigKeyIndex();
+  let globalsBuild: Promise<void> | undefined;
+  const globalsHandle = {
+    built: () => classMembers.isBuilt,
+    build: () => globalsBuild ?? (globalsBuild = (async () => {
+      await classMembers.buildFromRoot(root, syntax);
+      await configKeys.buildFromRootAsync(root);
+    })()),
+  };
+  const completeGlobal = new CompleteGlobalMembers(syntax, classMembers, configKeys, store);
+  const describeGlobal = new DescribeGlobalMember(syntax, classMembers, configKeys, store);
+  const resolveGlobal = new ResolveGlobalMemberDefinition(syntax, classMembers, configKeys, store);
+
   const resolveTbl = new ResolveTableDefinition(syntax, store);
   const listResolvedTbl = new ListResolvedTableRefs(syntax, store);
 
@@ -130,6 +154,9 @@ export async function activate(ctx: vscode.ExtensionContext) {
         build: cb => usageBuild ?? (usageBuild = usageIndex.buildFromRoot(root, cb)),
       }, file => componentOfTemplateFile(root, file))),
     vscode.languages.registerDefinitionProvider(php, new TableDefinitionProvider(resolveTbl)),
+    vscode.languages.registerCompletionItemProvider(php, new GlobalMemberCompletionProvider(completeGlobal, globalsHandle), '>'),
+    vscode.languages.registerHoverProvider(php, new GlobalHoverProvider(describeGlobal, globalsHandle)),
+    vscode.languages.registerDefinitionProvider(php, new GlobalDefinitionProvider(resolveGlobal, globalsHandle)),
     vscode.languages.registerDefinitionProvider(php, new AmdDefinitionProvider(resolveAmd)),
     vscode.languages.registerReferenceProvider(
       { scheme: 'file', pattern: '**/amd/src/**/*.js' },
