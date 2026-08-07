@@ -1,21 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-
-/** 플러그인 타입 → 루트 기준 상대 디렉터리. 타입명과 디렉터리명이 다르거나(block→blocks)
- *  중첩된(tool→admin/tool) 경우가 많아 매핑이 필요하다. */
-export const PLUGIN_DIRS: Record<string, string> = {
-  mod: 'mod', local: 'local', block: 'blocks', report: 'report', enrol: 'enrol',
-  auth: 'auth', theme: 'theme', filter: 'filter', repository: 'repository',
-  portfolio: 'portfolio', webservice: 'webservice',
-  tool: 'admin/tool', format: 'course/format', qtype: 'question/type',
-  gradereport: 'grade/report', gradeexport: 'grade/export', gradeimport: 'grade/import',
-  message: 'message/output', availability: 'availability/condition',
-  customfield: 'customfield/field', contenttype: 'contentbank/contenttype',
-  profilefield: 'user/profile/field', datafield: 'mod/data/field', datapreset: 'mod/data/preset',
-  cachestore: 'cache/stores', cachelock: 'cache/locks',
-  editor: 'lib/editor', atto: 'lib/editor/atto/plugins', tinymce: 'lib/editor/tinymce/plugins',
-  mlbackend: 'lib/mlbackend',
-};
+import { pluginTypeDirs, pluginTypeDirsAsync, coreSubsystemDirs, coreSubsystemDirsAsync } from './plugin-type-map';
 
 export function findMoodleRoot(startDir: string, detectInSubfolders: string[] = []): string | undefined {
   let dir = startDir;
@@ -42,7 +27,7 @@ export function listInstallXmlFiles(root: string): { file: string; component: st
   const out: { file: string; component: string }[] = [];
   const core = path.join(root, 'lib', 'db', 'install.xml');
   if (fs.existsSync(core)) out.push({ file: core, component: 'core' });
-  for (const [type, relDir] of Object.entries(PLUGIN_DIRS)) {
+  for (const [type, relDir] of pluginTypeDirs(root)) {
     const typeDir = path.join(root, relDir);
     if (!fs.existsSync(typeDir)) continue;
     for (const name of safeReaddir(typeDir)) {
@@ -86,7 +71,7 @@ export function listLangFiles(root: string): LangFileRef[] {
     const base = f.slice(0, -4);
     out.push({ file: path.join(coreDir, f), component: base === 'moodle' ? 'core' : `core_${base}`, locale: 'en' });
   }
-  for (const [type, relDir] of Object.entries(PLUGIN_DIRS)) {
+  for (const [type, relDir] of pluginTypeDirs(root)) {
     const typeDir = path.join(root, relDir);
     if (!fs.existsSync(typeDir)) continue;
     for (const name of safeReaddir(typeDir)) {
@@ -107,10 +92,10 @@ function safeReaddirFiles(dir: string): string[] {
 
 /** 루트 기준 상대경로에서 플러그인 타입·이름·나머지를 역산 — 다중 세그먼트 디렉터리 대응,
  *  최장 relDir 우선(예: `mod/data/field/x/…`는 datafield이지 mod가 아님). 규칙 밖은 null. */
-export function pluginTypeOfRel(rel: string): { type: string; name: string; rest: string } | null {
+export function pluginTypeOfRel(root: string, rel: string): { type: string; name: string; rest: string } | null {
   const parts = rel.split(path.sep);
   let best: { type: string; name: string; rest: string; depth: number } | null = null;
-  for (const [type, relDir] of Object.entries(PLUGIN_DIRS)) {
+  for (const [type, relDir] of pluginTypeDirs(root)) {
     const dirParts = relDir.split('/');
     if (parts.length < dirParts.length + 2) continue;
     if (!dirParts.every((seg, i) => parts[i] === seg)) continue;
@@ -127,7 +112,7 @@ export function componentOfInstallXmlFile(root: string, file: string): string | 
   if (rel.startsWith('..') || path.isAbsolute(rel)) return null;
   const parts = rel.split(path.sep);
   if (parts.length === 3 && parts[0] === 'lib' && parts[1] === 'db' && parts[2] === 'install.xml') return 'core';
-  const hit = pluginTypeOfRel(rel);
+  const hit = pluginTypeOfRel(root, rel);
   if (!hit) return null;
   return hit.rest === 'db/install.xml' ? `${hit.type}_${hit.name}` : null;
 }
@@ -141,7 +126,7 @@ export function langFileMetaOf(root: string, file: string): { component: string;
     const base = parts[2].slice(0, -4);
     return { component: base === 'moodle' ? 'core' : `core_${base}`, locale: 'en' };
   }
-  const hit = pluginTypeOfRel(rel);
+  const hit = pluginTypeOfRel(root, rel);
   if (!hit) return null;
   const restParts = hit.rest.split('/');
   if (restParts.length !== 3 || restParts[0] !== 'lang' || !LANG_LOCALES.includes(restParts[1])) return null;
@@ -167,7 +152,7 @@ export function componentOfTemplateFile(root: string, file: string): { component
   if (parts[0] === 'lib' && parts[1] === 'templates' && parts.length >= 3) {
     return { component: 'core', name: stripMustache(parts.slice(2).join('/')) };
   }
-  const hit = pluginTypeOfRel(rel);
+  const hit = pluginTypeOfRel(root, rel);
   if (!hit) return null;
   const restParts = hit.rest.split('/');
   if (restParts[0] !== 'templates' || restParts.length < 2) return null;
@@ -199,7 +184,7 @@ export function listTemplateFiles(root: string): TemplateFileRef[] {
   };
   const coreDir = path.join(root, 'lib', 'templates');
   if (fs.existsSync(coreDir)) walk(coreDir);
-  for (const relDir of Object.values(PLUGIN_DIRS)) {
+  for (const relDir of new Set(pluginTypeDirs(root).values())) {
     const typeDir = path.join(root, relDir);
     if (!fs.existsSync(typeDir)) continue;
     for (const name of safeReaddir(typeDir)) {
@@ -212,28 +197,13 @@ export function listTemplateFiles(root: string): TemplateFileRef[] {
 
 export interface AmdFileRef { file: string; component: string; name: string; }
 
-/** `lib/components.json`의 서브시스템 → 루트 기준 디렉터리. 코어 서브시스템은 컴포넌트명에서
- *  디렉터리를 유도할 수 없다(`core_form` → `lib/form`). 값이 null인 항목은 디렉터리가 없는
- *  서브시스템이라 제외한다. 이 파일이 없는 버전에서는 빈 Map이고, 그러면 코어 서브시스템
- *  모듈만 해석되지 않는다(플러그인 모듈은 영향 없음). */
-export function coreSubsystemDirs(root: string): Map<string, string> {
-  const out = new Map<string, string>();
-  try {
-    const raw = JSON.parse(fs.readFileSync(path.join(root, 'lib', 'components.json'), 'utf8'));
-    for (const [name, dir] of Object.entries(raw?.subsystems ?? {})) {
-      if (typeof dir === 'string' && dir) out.set(name, dir);
-    }
-  } catch { /* 파일 없음·JSON 파손 → 빈 Map */ }
-  return out;
-}
-
 /** AMD 모듈이 놓이는 `amd/src` 디렉터리와 그 컴포넌트 — 코어·코어 서브시스템·플러그인 순. */
 function amdRoots(root: string): { dir: string; component: string }[] {
   const out = [{ dir: path.join(root, 'lib', 'amd', 'src'), component: 'core' }];
   for (const [sub, rel] of coreSubsystemDirs(root)) {
     out.push({ dir: path.join(root, rel, 'amd', 'src'), component: `core_${sub}` });
   }
-  for (const [type, relDir] of Object.entries(PLUGIN_DIRS)) {
+  for (const [type, relDir] of pluginTypeDirs(root)) {
     const typeDir = path.join(root, relDir);
     if (!fs.existsSync(typeDir)) continue;
     for (const name of safeReaddir(typeDir)) {
@@ -287,7 +257,7 @@ export function componentOfAmdFile(root: string, file: string): { component: str
   }
   // pluginTypeOfRel은 타입 디렉터리·플러그인 이름 뒤에 최소 한 세그먼트를 더 요구하므로
   // 플러그인 디렉터리까지만 남은 경로에는 더미 세그먼트를 붙여 호출한다.
-  const hit = pluginTypeOfRel(path.join(...parts.slice(0, i - 1), 'x'));
+  const hit = pluginTypeOfRel(root, path.join(...parts.slice(0, i - 1), 'x'));
   return hit ? { component: `${hit.type}_${hit.name}`, name } : null;
 }
 
@@ -321,14 +291,15 @@ async function safeReaddirFilesAsync(dir: string): Promise<string[]> {
   } catch { return []; }
 }
 
-/** listInstallXmlFiles의 비동기 판 — 열거 방향(PLUGIN_DIRS 순회)·컴포넌트 조합 규칙은 동기판과 동일하고,
+/** listInstallXmlFiles의 비동기 판 — 열거 방향(타입 맵 순회)·컴포넌트 조합 규칙은 동기판과 동일하고,
  *  등가성은 resolver.test.ts의 sync/async 비교 테스트가 고정한다. */
 export async function listInstallXmlFilesAsync(root: string): Promise<{ file: string; component: string }[]> {
   const out: { file: string; component: string }[] = [];
+  const typeDirs = await pluginTypeDirsAsync(root);
   const core = path.join(root, 'lib', 'db', 'install.xml');
   if (await existsAsync(core)) out.push({ file: core, component: 'core' });
   let n = 0;
-  for (const [type, relDir] of Object.entries(PLUGIN_DIRS)) {
+  for (const [type, relDir] of typeDirs) {
     const typeDir = path.join(root, relDir);
     if (!await existsAsync(typeDir)) continue;
     for (const name of await safeReaddirAsync(typeDir)) {
@@ -343,6 +314,7 @@ export async function listInstallXmlFilesAsync(root: string): Promise<{ file: st
 /** listLangFiles의 비동기 판 — 파일명 규칙은 langFileNameFor를 공유한다. */
 export async function listLangFilesAsync(root: string): Promise<LangFileRef[]> {
   const out: LangFileRef[] = [];
+  const typeDirs = await pluginTypeDirsAsync(root);
   const coreDir = path.join(root, 'lang', 'en');
   for (const f of await safeReaddirFilesAsync(coreDir)) {
     if (!f.endsWith('.php')) continue;
@@ -350,7 +322,7 @@ export async function listLangFilesAsync(root: string): Promise<LangFileRef[]> {
     out.push({ file: path.join(coreDir, f), component: base === 'moodle' ? 'core' : `core_${base}`, locale: 'en' });
   }
   let n = 0;
-  for (const [type, relDir] of Object.entries(PLUGIN_DIRS)) {
+  for (const [type, relDir] of typeDirs) {
     const typeDir = path.join(root, relDir);
     if (!await existsAsync(typeDir)) continue;
     for (const name of await safeReaddirAsync(typeDir)) {
@@ -369,28 +341,17 @@ export async function listLangFilesAsync(root: string): Promise<LangFileRef[]> {
  *  활성화 경로가 확장 호스트를 막지 않으려면 여기서도 동기 fs를 쓰지 않아야 한다. */
 async function amdRootsAsync(root: string): Promise<{ dir: string; component: string }[]> {
   const out = [{ dir: path.join(root, 'lib', 'amd', 'src'), component: 'core' }];
+  const typeDirs = await pluginTypeDirsAsync(root);
   for (const [sub, rel] of await coreSubsystemDirsAsync(root)) {
     out.push({ dir: path.join(root, rel, 'amd', 'src'), component: `core_${sub}` });
   }
-  for (const [type, relDir] of Object.entries(PLUGIN_DIRS)) {
+  for (const [type, relDir] of typeDirs) {
     const typeDir = path.join(root, relDir);
     if (!await existsAsync(typeDir)) continue;
     for (const name of await safeReaddirAsync(typeDir)) {
       out.push({ dir: path.join(typeDir, name, 'amd', 'src'), component: `${type}_${name}` });
     }
   }
-  return out;
-}
-
-/** coreSubsystemDirs의 비동기 판 — 파싱·필터 규칙은 동기판과 동일하다. */
-async function coreSubsystemDirsAsync(root: string): Promise<Map<string, string>> {
-  const out = new Map<string, string>();
-  try {
-    const raw = JSON.parse(await fs.promises.readFile(path.join(root, 'lib', 'components.json'), 'utf8'));
-    for (const [name, dir] of Object.entries(raw?.subsystems ?? {})) {
-      if (typeof dir === 'string' && dir) out.set(name, dir);
-    }
-  } catch { /* 파일 없음·JSON 파손 → 빈 Map */ }
   return out;
 }
 
@@ -418,6 +379,7 @@ export async function listAmdFilesAsync(root: string): Promise<AmdFileRef[]> {
 /** listTemplateFiles의 비동기 판 — realpath 순환 가드도 동일하게 유지 */
 export async function listTemplateFilesAsync(root: string): Promise<TemplateFileRef[]> {
   const out: TemplateFileRef[] = [];
+  const typeDirs = await pluginTypeDirsAsync(root);
   const seen = new Set<string>();
   let n = 0;
   const push = (file: string) => {
@@ -437,7 +399,7 @@ export async function listTemplateFilesAsync(root: string): Promise<TemplateFile
   };
   const coreDir = path.join(root, 'lib', 'templates');
   if (await existsAsync(coreDir)) await walk(coreDir);
-  for (const relDir of Object.values(PLUGIN_DIRS)) {
+  for (const relDir of new Set(typeDirs.values())) {
     const typeDir = path.join(root, relDir);
     if (!await existsAsync(typeDir)) continue;
     for (const name of await safeReaddirAsync(typeDir)) {

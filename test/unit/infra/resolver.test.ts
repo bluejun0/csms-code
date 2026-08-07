@@ -2,7 +2,8 @@ import { strict as assert } from 'assert';
 import { join } from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
-import { findMoodleRoot, listInstallXmlFiles, listLangFiles, componentOfLangFile, componentOfInstallXmlFile, listInstallXmlFilesAsync, listLangFilesAsync, listTemplateFilesAsync, listTemplateFiles, langFileMetaOf, listAmdFiles, listAmdFilesAsync, componentOfAmdFile, coreSubsystemDirs } from '../../../src/infrastructure/workspace/moodle-root-resolver';
+import { findMoodleRoot, listInstallXmlFiles, listLangFiles, componentOfLangFile, componentOfInstallXmlFile, listInstallXmlFilesAsync, listLangFilesAsync, listTemplateFilesAsync, listTemplateFiles, langFileMetaOf, listAmdFiles, listAmdFilesAsync, componentOfAmdFile, componentOfTemplateFile } from '../../../src/infrastructure/workspace/moodle-root-resolver';
+import { clearPluginTypeCache } from '../../../src/infrastructure/workspace/plugin-type-map';
 import { LangFileRef, TemplateFileRef, AmdFileRef } from '../../../src/infrastructure/workspace/moodle-root-resolver';
 
 const root = join(__dirname, '../../fixtures/mini-moodle');
@@ -190,15 +191,49 @@ describe('MoodleRootResolver — AMD 모듈 열거', () => {
     assert.equal(componentOfAmdFile(root, '/etc/passwd'), null);
   });
 
-  it('coreSubsystemDirs: null 값은 제외', () => {
-    const m = coreSubsystemDirs(root);
-    assert.equal(m.get('form'), 'lib/form');
-    assert.ok(!m.has('access'));
+});
+
+// 선언(components.json·subplugins.*)에서 온 타입은 네 열거와 역산에 모두 반영돼야 한다.
+describe('MoodleRootResolver — 선언에서 온 서브플러그인 타입', () => {
+  const subRoot = join(__dirname, '../../fixtures/subplugin-moodle');
+  beforeEach(() => clearPluginTypeCache());
+
+  it('install.xml 열거에 새 타입이 포함된다', () => {
+    const list = listInstallXmlFiles(subRoot).map(x => x.component);
+    assert.ok(list.includes('testsub_alpha'), list.join(','));
   });
 
-  it('coreSubsystemDirs: components.json이 없으면 빈 Map', () => {
-    const tmp = fs.mkdtempSync(join(os.tmpdir(), 'csms-nocomp-'));
-    assert.equal(coreSubsystemDirs(tmp).size, 0);
-    fs.rmSync(tmp, { recursive: true, force: true });
+  it('lang 열거에 json·php 선언의 타입이 모두 포함된다', () => {
+    const list = listLangFiles(subRoot).map(x => x.component);
+    assert.ok(list.includes('testsub_alpha'), 'json 선언');
+    assert.ok(list.includes('testold_beta'), 'php 선언');
+    assert.ok(list.includes('report_myrep'), '선언이 정적 맵을 덮어쓴 디렉터리');
+  });
+
+  it('템플릿·AMD 열거에도 포함된다', () => {
+    assert.ok(listTemplateFiles(subRoot).some(x => x.component === 'testsub_alpha' && x.name === 'card'));
+    assert.ok(listAmdFiles(subRoot).some(x => x.component === 'testsub_alpha' && x.name === 'alpha'));
+  });
+
+  it('역산이 상위 타입이 아니라 서브플러그인 타입을 준다', () => {
+    assert.equal(
+      componentOfInstallXmlFile(subRoot, join(subRoot, 'mod/testmod/sub/alpha/db/install.xml')),
+      'testsub_alpha');
+    assert.deepEqual(
+      componentOfAmdFile(subRoot, join(subRoot, 'mod/testmod/sub/alpha/amd/src/alpha.js')),
+      { component: 'testsub_alpha', name: 'alpha' });
+    assert.deepEqual(
+      componentOfTemplateFile(subRoot, join(subRoot, 'mod/testmod/sub/alpha/templates/card.mustache')),
+      { component: 'testsub_alpha', name: 'card' });
+    assert.equal(
+      componentOfLangFile(subRoot, join(subRoot, 'blocks/testblock/old/beta/lang/en/testold_beta.php')),
+      'testold_beta');
+  });
+
+  it('비동기 열거도 같은 타입을 본다', async () => {
+    const s = listInstallXmlFiles(subRoot).map(x => x.component).sort();
+    clearPluginTypeCache();
+    const a = (await listInstallXmlFilesAsync(subRoot)).map(x => x.component).sort();
+    assert.deepEqual(a, s);
   });
 });
