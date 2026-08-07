@@ -177,7 +177,7 @@ const CLASS_FILES: Record<string, string[]> = {
   core_renderer: ['lib/classes/output/core_renderer.php', 'lib/outputrenderers.php'],
 };
 ```
-각 클래스마다 후보를 순서대로 읽어 `new RegExp(`(class|interface|trait)\\s+${name}\\b`)`가 맞는 첫 파일을 고른다. 그 파일을 `PhpSyntax`가 아니라 **전용 쿼리**로 파싱해야 하므로, `PhpSyntax` 포트에 `classMembers(text, className): RawMember[]`를 추가하지 말고 **`ClassMemberIndex`가 tree-sitter 어댑터를 직접 받는다**(인프라끼리의 의존이라 계층 규칙에 걸리지 않는다). 어댑터에 다음을 추가한다.
+각 클래스마다 후보를 순서대로 읽어 `new RegExp(`(class|interface|trait)\\s+${name}\\b`)`가 맞는 첫 파일을 고른다. 그 파일은 팩트가 아니라 클래스 본문을 봐야 하므로 전용 추출이 필요하다.
 
 ```ts
 // tree-sitter-php-syntax.ts
