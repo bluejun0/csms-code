@@ -73,6 +73,7 @@ function buildSync(root: string): RootInfo {
     }
     frontier = [...new Set(types.values())].filter(d => !before.has(d));
   }
+  warnIfTruncated(frontier);
   return { types, subsystems };
 }
 
@@ -120,7 +121,15 @@ async function buildAsync(root: string): Promise<RootInfo> {
     }
     frontier = [...new Set(types.values())].filter(d => !before.has(d));
   }
+  warnIfTruncated(frontier);
   return { types, subsystems };
+}
+
+/** 상한에 걸려 더 깊은 선언을 못 읽었다면 알린다 — 조용히 잘라내면 색인 누락이 원인 불명이 된다. */
+function warnIfTruncated(frontier: string[]): void {
+  if (frontier.length) {
+    console.warn(`CSMS Code: 플러그인 타입 선언이 ${MAX_ROUNDS}단계보다 깊어 일부를 읽지 못했습니다.`, frontier);
+  }
 }
 
 /** `components.json`과 `subplugins.json`이 같은 `plugintypes` 형태라 파서를 공유한다. */

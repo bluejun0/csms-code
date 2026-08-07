@@ -171,8 +171,14 @@ export async function activate(ctx: vscode.ExtensionContext) {
   /** 전체 재빌드는 항상 이 게이트를 통과한다.
    *  빌드 중 도착한 증분은 적용해도 마지막 맵 교체에 덮이므로 pendingReindex로 미루고,
    *  빌드가 끝났을 때 미뤄진 것이 있으면 없어질 때까지 반복한다(단발이면 2차 이벤트가 유실된다).
+   *  재진입도 같은 자리에서 막는다 — 동시에 두 번 돌면 먼저 끝난 쪽이 indexing을 내려버려
+   *  아직 도는 빌드가 그 뒤의 증분을 맵 교체로 덮어쓴다.
    *  예외가 나도 finally로 게이트를 반드시 내린다 — 안 내리면 증분 동기화가 세션 내내 죽는다. */
-  const gatedRebuild = () => vscode.window.withProgress(
+  const gatedRebuild = (): Thenable<void> | void => {
+    if (indexing) { pendingReindex = true; return; }
+    return runRebuild();
+  };
+  const runRebuild = () => vscode.window.withProgress(
     { location: vscode.ProgressLocation.Window, title: 'CSMS Code: 색인 중…' },
     async () => {
       indexing = true;
@@ -258,7 +264,8 @@ export async function activate(ctx: vscode.ExtensionContext) {
   // 플러그인 타입 선언이 바뀌면 맵 자체가 달라져 파일 단위 증분이 불가능하다 — 전체를 다시 만든다.
   const typeDeclWatcher = vscode.workspace.createFileSystemWatcher('**/db/subplugins.{json,php}');
   const componentsWatcher = vscode.workspace.createFileSystemWatcher('**/lib/components.json');
-  const onTypeDecl = () => { void gatedRebuild(); };
+  // git checkout처럼 여러 선언 파일이 한꺼번에 바뀌면 이벤트가 몰아친다 — 마지막 한 번만 의미가 있다.
+  const onTypeDecl = () => refreshDebouncer.schedule('typedecl', () => { void gatedRebuild(); });
   ctx.subscriptions.push(typeDeclWatcher, componentsWatcher,
     typeDeclWatcher.onDidChange(onTypeDecl), typeDeclWatcher.onDidCreate(onTypeDecl), typeDeclWatcher.onDidDelete(onTypeDecl),
     componentsWatcher.onDidChange(onTypeDecl), componentsWatcher.onDidCreate(onTypeDecl), componentsWatcher.onDidDelete(onTypeDecl));
