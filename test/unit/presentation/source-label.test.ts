@@ -21,6 +21,12 @@ describe('출처 표시', () => {
     assert.equal(completionLabelParts('x', '', true).detail, undefined);
   });
 
+  it('긴 문자열은 라벨 뒤에 붙이지 않는다(호출자가 넘기지 않는 형태)', () => {
+    const p = completionLabelParts('attendance_book', undefined, true);
+    assert.equal(p.detail, undefined, '라벨 뒤에는 아무것도 붙지 않는다');
+    assert.equal(p.description, SOURCE_LABEL, '출처 표시는 남는다');
+  });
+
   it('hover는 본문 아래에 출처 한 줄을 덧붙인다', () => {
     const md = hoverMarkdownWithSource('**user.id**', true);
     assert.ok(md.startsWith('**user.id**'), '본문이 앞에 온다');
