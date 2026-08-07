@@ -1,11 +1,13 @@
 import { strict as assert } from 'assert';
 import { CachedPhpSyntax } from '../../../src/infrastructure/caching/cached-php-syntax';
 import { DocumentFacts, emptyFacts } from '../../../src/domain/code-analysis/facts';
-import { PhpSyntax } from '../../../src/domain/code-analysis/ports/php-syntax';
+import { PhpSyntax, RawClassMember } from '../../../src/domain/code-analysis/ports/php-syntax';
 
 /** 파싱 호출 횟수를 세는 가짜 — 매 호출 새 객체를 반환하므로 동일 객체 단언이 캐시 히트를 증명한다 */
 class CountingFake implements PhpSyntax {
   calls = 0;
+  memberCalls = 0;
+  classMembers(): RawClassMember[] { this.memberCalls++; return []; }
   facts(_text: string): DocumentFacts {
     this.calls++;
     return emptyFacts();
@@ -13,6 +15,14 @@ class CountingFake implements PhpSyntax {
 }
 
 describe('CachedPhpSyntax', () => {
+  it('classMembers는 캐시하지 않고 그대로 넘긴다', () => {
+    const fake = new CountingFake();
+    const cached = new CachedPhpSyntax(fake, 8);
+    cached.classMembers('<?php', 'x');
+    cached.classMembers('<?php', 'x');
+    assert.equal(fake.memberCalls, 2);
+  });
+
   it('동일 텍스트 2회 → 파싱 1회 + 동일 객체 반환', () => {
     const fake = new CountingFake();
     const c = new CachedPhpSyntax(fake, 8);

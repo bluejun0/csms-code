@@ -3,7 +3,7 @@ import Parser from 'web-tree-sitter';
 import {
   AmdCall, DocumentFacts, MethodCall, emptyFacts, RecordAssignment, ForeachBinding, DataArgBinding, PhpdocVar, PlainAssignment, PropertyAccess, Scope, StringCall, TableRef, TemplateCall,
 } from '../../domain/code-analysis/facts';
-import { PhpSyntax } from '../../domain/code-analysis/ports/php-syntax';
+import { PhpSyntax, RawClassMember } from '../../domain/code-analysis/ports/php-syntax';
 
 const SCOPE_TYPES = new Set([
   'function_definition', 'method_declaration',
@@ -140,6 +140,24 @@ export class TreeSitterPhpSyntax implements PhpSyntax {
       console.warn('CSMS Code: PHP 파싱에 실패해 이 파일의 인텔리전스를 건너뜁니다.');
       return null;
     }
+  }
+
+  /** 지정한 클래스 본문의 public 멤버. `magic_get_<name>`은 Moodle의 매직 프로퍼티 관례라
+   *  protected여도 프로퍼티 `<name>`으로 바꿔 담는다 — 그러지 않으면 `$PAGE->context`가 빠진다. */
+  classMembers(text: string, className: string): RawClassMember[] {
+    const tree = this.parseOrNull(text);
+    if (!tree) return [];
+    const out: RawClassMember[] = [];
+    const body = findClassBody(tree.rootNode, className);
+    if (body) {
+      for (let i = 0; i < body.childCount; i++) {
+        const node = body.child(i)!;
+        const member = readMember(node);
+        if (member) out.push(member);
+      }
+    }
+    tree.delete();
+    return out;
   }
 
   facts(text: string): DocumentFacts {
@@ -299,4 +317,81 @@ function extractPhpdocVars(text: string, root: Parser.SyntaxNode, scopeOf: (n: P
   };
   walk(root);
   return out;
+}
+
+/** 이름이 맞는 class/interface/trait 선언의 본문 노드 */
+function findClassBody(root: Parser.SyntaxNode, className: string): Parser.SyntaxNode | null {
+  const stack: Parser.SyntaxNode[] = [root];
+  while (stack.length) {
+    const n = stack.pop()!;
+    if (n.type === 'class_declaration' || n.type === 'interface_declaration' || n.type === 'trait_declaration') {
+      if (n.childForFieldName('name')?.text === className) return n.childForFieldName('body');
+    }
+    for (let i = 0; i < n.childCount; i++) stack.push(n.child(i)!);
+  }
+  return null;
+}
+
+const MAGIC_GET = 'magic_get_';
+
+function readMember(node: Parser.SyntaxNode): RawClassMember | null {
+  const visibility = childOfType(node, 'visibility_modifier')?.text ?? 'public';
+  if (node.type === 'method_declaration') {
+    const name = node.childForFieldName('name');
+    if (!name) return null;
+    if (name.text.startsWith(MAGIC_GET)) {
+      return {
+        name: name.text.slice(MAGIC_GET.length), kind: 'property',
+        signature: '', doc: docBefore(node),
+        line: name.startPosition.row, column: name.startPosition.column,
+      };
+    }
+    if (visibility !== 'public') return null;
+    return {
+      name: name.text, kind: 'method',
+      signature: childOfType(node, 'formal_parameters')?.text ?? '()', doc: docBefore(node),
+      line: name.startPosition.row, column: name.startPosition.column,
+    };
+  }
+  if (node.type === 'property_declaration') {
+    if (visibility !== 'public') return null;
+    const el = childOfType(node, 'property_element');
+    const name = el ? firstDescendantOfType(el, 'name') : null;
+    if (!name) return null;
+    return {
+      name: name.text, kind: 'property', signature: '', doc: docBefore(node),
+      line: name.startPosition.row, column: name.startPosition.column,
+    };
+  }
+  return null;
+}
+
+function childOfType(node: Parser.SyntaxNode, type: string): Parser.SyntaxNode | null {
+  for (let i = 0; i < node.childCount; i++) if (node.child(i)!.type === type) return node.child(i);
+  return null;
+}
+
+function firstDescendantOfType(node: Parser.SyntaxNode, type: string): Parser.SyntaxNode | null {
+  const stack = [node];
+  while (stack.length) {
+    const n = stack.pop()!;
+    if (n.type === type) return n;
+    for (let i = 0; i < n.childCount; i++) stack.push(n.child(i)!);
+  }
+  return null;
+}
+
+/** 선언 바로 앞 주석 블록의 첫 문장. `@var <타입>` 접두는 설명이 아니므로 떼어낸다. */
+function docBefore(node: Parser.SyntaxNode): string {
+  const prev = node.previousSibling;
+  if (!prev || prev.type !== 'comment') return '';
+  const lines = prev.text.replace(/^\/\*+|\*+\/$/g, '').split('\n')
+    .map(l => l.replace(/^\s*\*?\s?/, '').trim())
+    .filter(l => l.length > 0);
+  let first = lines[0] ?? '';
+  const varMatch = /^@var\s+\S+\s+(.*)$/.exec(first);
+  if (varMatch) first = varMatch[1];
+  else if (first.startsWith('@')) return '';
+  const stop = first.search(/[.。]/);
+  return stop >= 0 ? first.slice(0, stop + 1) : first;
 }

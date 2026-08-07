@@ -1,5 +1,5 @@
 import { DocumentFacts } from '../../domain/code-analysis/facts';
-import { PhpSyntax } from '../../domain/code-analysis/ports/php-syntax';
+import { PhpSyntax, RawClassMember } from '../../domain/code-analysis/ports/php-syntax';
 
 /** 텍스트 내용을 키로 DocumentFacts를 LRU 캐시하는 데코레이터.
  *  facts()는 순수(같은 텍스트 → 같은 팩트)이므로 내용 키가 안전하다.
@@ -8,6 +8,11 @@ import { PhpSyntax } from '../../domain/code-analysis/ports/php-syntax';
 export class CachedPhpSyntax implements PhpSyntax {
   private cache = new Map<string, DocumentFacts>();
   constructor(private inner: PhpSyntax, private capacity = 8) {}
+
+  /** 클래스 멤버는 색인 빌드에서 한 번만 쓰이므로 캐시하지 않고 그대로 넘긴다. */
+  classMembers(text: string, className: string): RawClassMember[] {
+    return this.inner.classMembers(text, className);
+  }
 
   facts(text: string): DocumentFacts {
     const hit = this.cache.get(text);
