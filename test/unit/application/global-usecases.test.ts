@@ -26,6 +26,11 @@ function shadowedByAssign() {
   $USER = build();
   echo $USER->username;
 }
+function writtenBack() {
+  global $DB, $USER;
+  $DB->update_record('user', $USER);
+  echo $USER->username;
+}
 `;
 
 describe('전역 유즈케이스 (E2E)', () => {
@@ -79,6 +84,18 @@ describe('전역 유즈케이스 (E2E)', () => {
   it('재대입으로 가려진 $USER도 빠진다', () => {
     const idx = CODE.indexOf('$USER = build();');
     assert.deepEqual(complete.run(CODE, 'USER', idx + 30), []);
+  });
+
+  it('dataarg로 레코드 엔진이 이미 담당하면 전역 경로는 빠진다', () => {
+    const idx = CODE.indexOf("$DB->update_record('user', $USER)");
+    assert.deepEqual(complete.run(CODE, 'USER', idx + 40), [],
+      '레코드 완성과 겹쳐 목록이 두 번 나오는 것을 막는다');
+  });
+
+  it('targets()는 색인 없이 전역 멤버 여부만 답한다', () => {
+    assert.equal(describe_.targets(CODE, at('get_record(', 2)), true);
+    assert.equal(describe_.targets(CODE, CODE.indexOf('function q()')), false);
+    assert.equal(resolve.targets(CODE, at('wwwroot', 2)), true);
   });
 
   it('hover: 메서드 이름 위', () => {

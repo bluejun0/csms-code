@@ -35,7 +35,11 @@ export function shadowed(facts: DocumentFacts, varName: string, atIndex: number,
     .some(p => p.varName === varName && sameScope(p.scope, scope) && p.index <= atIndex);
   const bound = facts.foreachBindings
     .some(b => b.itemVar === varName && sameScope(b.scope, scope) && b.index <= atIndex);
-  return assigned || bound;
+  // `$DB->update_record('user', $USER)`는 레코드 엔진이 같은 컬럼을 이미 준다 —
+  // 두 경로가 함께 답하면 목록이 그대로 두 번 나온다.
+  const dataArg = facts.dataArgBindings
+    .some(d => d.dataVar === varName && sameScope(d.scope, scope));
+  return assigned || bound || dataArg;
 }
 
 function sameScope(a: Scope, b: Scope): boolean { return a.start === b.start && a.end === b.end; }

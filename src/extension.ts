@@ -107,16 +107,20 @@ export async function activate(ctx: vscode.ExtensionContext) {
   const listResolvedAmd = new ListResolvedAmdCalls(syntax, amd);
   const findAmdRefs = new FindAmdReferences(usageIndex);
 
-  // 전역 색인은 활성화가 아니라 첫 요청에서 만든다 — 코어 클래스 세 개 파싱이 실측 105ms(최대 정지 42ms),
-  // 설정 키 수집이 999ms라 활성화 경로에 넣으면 한 자릿수 ms 목표를 깬다.
+  // 전역 색인은 활성화가 아니라 첫 요청에서 만든다 — 코어 클래스 세 개 파싱과 설정 키 수집이
+  // 각각 최대 이벤트 루프 정지 약 30ms·18ms로, 활성화의 한 자릿수 ms 목표를 넘긴다.
   const classMembers = new ClassMemberIndex();
   const configKeys = new ConfigKeyIndex();
   let globalsBuild: Promise<void> | undefined;
+  // 두 색인이 모두 끝나야 준비된 것이다 — 클래스 색인의 플래그만 보면 설정 색인이 비어 있는
+  // 900ms 동안 $CFG-> 완성이 조용히 빈 목록을 준다.
+  let globalsReady = false;
   const globalsHandle = {
-    built: () => classMembers.isBuilt,
+    built: () => globalsReady,
     build: () => globalsBuild ?? (globalsBuild = (async () => {
       await classMembers.buildFromRoot(root, syntax);
       await configKeys.buildFromRootAsync(root);
+      globalsReady = true;
     })()),
   };
   const completeGlobal = new CompleteGlobalMembers(syntax, classMembers, configKeys, store);

@@ -109,7 +109,7 @@ export class ClassMemberIndex implements ClassMemberRepository {
   - phpdoc은 선언 바로 앞 주석 블록의 첫 문장만 쓴다.
 - 코어 파일은 편집 대상이 아니므로 **증분 갱신은 두지 않는다** — 전체 재빌드에서만 다시 읽는다.
 
-파싱 대상이 큰 파일이다(4.5 기준 `moodle_database.php` 122KB, `pagelib.php` 92KB, `core_renderer.php` 195KB). 기존 실측 p90이 15KB에 11ms이므로 세 파일 합계는 100~300ms로 예상된다 — **활성화 경로에 넣으면 한 자릿수 ms 목표를 깬다**. 따라서 처음부터 **지연 빌드**로 만든다: 첫 `$DB->`·`$PAGE->`·`$OUTPUT->` 요청에서 한 번 만들고 이후 재사용한다(사용처 색인의 `built()`/`build()` 관례와 같다). 실측이 한 자릿수 ms로 나오면 그때 활성화 빌드로 옮긴다.
+파싱 대상이 큰 파일이다(4.5 기준 `moodle_database.php` 122KB, `pagelib.php` 92KB, `core_renderer.php` 195KB). 기존 실측 p90이 15KB에 11ms이므로 세 파일 합계는 100~300ms로 예상된다(구현 후 실측: 파싱 79~86ms에 최대 정지 29~33ms) — **활성화 경로에 넣으면 한 자릿수 ms 목표를 깬다**. 따라서 처음부터 **지연 빌드**로 만든다: 첫 `$DB->`·`$PAGE->`·`$OUTPUT->` 요청에서 한 번 만들고 이후 재사용한다(사용처 색인의 `built()`/`build()` 관례와 같다). 실측이 한 자릿수 ms로 나오면 그때 활성화 빌드로 옮긴다.
 
 `$CFG` 완성 목록은 필터 없이 전부를 준다(실측 config-dist + 설정 선언 949개). 현재 플러그인 문맥으로 좁히는 것은 다음 사이클 후보다.
 
