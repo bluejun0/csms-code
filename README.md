@@ -20,7 +20,9 @@ Moodle 코드는 DB 레코드를 대부분 `stdClass`로 다루기 때문에, �
 - **타입 추론 범위**: 현재 함수/메서드 스코프 내 지역 변수의 가장 가까운 선행 대입만 추적합니다
   (전역 데이터플로우·크로스 함수 추론은 범위 밖).
 - **워크스페이스 자동 인식**: Moodle 루트와 core + 커스텀 플러그인을 자동으로 찾아 색인하며,
-  파일 변경을 감지해 증분 갱신합니다.
+  파일 변경을 감지해 증분 갱신합니다. 플러그인 타입 → 디렉터리 매핑은 Moodle 자신의 선언
+  (`lib/components.json`, 각 플러그인의 `db/subplugins.json`·`.php`)에서 읽으므로 서브플러그인
+  (`quizaccess`·`assignsubmission`·`qbank`·`tiny` 등)도 함께 색인됩니다.
 - **언어 문자열 인텔리전스**: `get_string('key', 'component')` 키 자동완성(한국어 값 미리보기)·정의로 이동(ko/en)·hover·누락 키 진단·해석 키 하이라이팅, lang 파일에서 사용처 참조 이동(Shift+F12)
 - **Mustache 템플릿 인텔리전스**: `render_from_template('component/name', …)`에서 `.mustache` 파일로 이동(테마 오버라이드가 있으면 함께 표시)·템플릿 파일에서 사용처 참조 이동(Shift+F12)·해석되는 참조 하이라이팅
 - **AMD 모듈 참조 이동**: `$PAGE->requires->js_call_amd('local_ubion/user', 'index')`의 첫 인자에서 F12를

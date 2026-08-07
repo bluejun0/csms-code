@@ -2,7 +2,7 @@
   "name": "csms-code",
   "displayName": "CSMS Code",
   "description": "CSMS/Moodle 개발 지원 — DB 레코드 컬럼 인텔리전스",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "publisher": "bluesoft",
   "license": "MIT",
   "engines": { "vscode": "^1.85.0" },

@@ -42,7 +42,9 @@
 31. `amd/src`의 .js 파일에서 Shift+F12 → 그 모듈을 부르는 `js_call_amd` 호출처 목록(첫 요청 시 진행률, 이후 즉시)
 32. 없는 모듈(`local_ubion/asiteHaksa`)에는 이동·하이라이트 없음. 해석되는 참조는 링크 색상이고 `csmscode.amd.highlightResolved=false`로 사라짐
 33. `amd/src`에 .js를 새로 만들고 그 이름으로 `js_call_amd`를 쓰면 바로 해석됨(워처 증분). `amd/build`의 미니파이 사본으로는 이동하지 않음
-34. 색인 규칙 밖 경로(예: `PLUGIN_DIRS`에 없는 플러그인 타입)의 install.xml·lang·.mustache를 저장 → 아무 일도 일어나지 않음(경고·재색인 없음). 그런 경로는 애초에 색인 대상이 아니다.
+34. 서브플러그인에서 기능이 동작하는지 — `mod/quiz/accessrule/seb`(quizaccess)·`question/bank/*`(qbank)·`lib/editor/tiny/plugins/*`(tiny)의 PHP에서 `get_string` 완성·컬럼 완성이 되고, 그 lang 파일에서 Shift+F12가 사용처를 찾는지
+35. 플러그인에 `db/subplugins.json`을 새로 만들거나 고친 뒤 저장 → 상태바에 재색인이 뜨고 새 타입의 플러그인이 바로 인식됨
+36. 색인 규칙 밖 경로(예: `PLUGIN_DIRS`에 없는 플러그인 타입)의 install.xml·lang·.mustache를 저장 → 아무 일도 일어나지 않음(경고·재색인 없음). 그런 경로는 애초에 색인 대상이 아니다.
 
 ## 알려진 제한 (Known limitations)
 
@@ -65,8 +67,9 @@ kill-on-reassign(2026-07-31)으로 추적되지만, 구조 분해(`[$a,$b] = …
 
 AMD 모듈 참조는 `js_call_amd`의 홑따옴표 리터럴만 인식합니다(실측 홑따옴표 348 대 겹따옴표 2). 동적 인자는
 침묵합니다. 코어 서브시스템 매핑은 `lib/components.json`에서 읽으므로 이 파일이 없는 구버전(3.5·2.9)에서는
-`core_form/submit` 같은 코어 모듈만 해석되지 않습니다. `PLUGIN_DIRS`에 없는 플러그인 타입
-(`gradingform`·`assignfeedback`·`quizaccess` 등)의 모듈도 해석되지 않습니다. 실측 해석률은 추출된 338건 중 328건(97.0%)이고,
+`core_form/submit` 같은 코어 모듈만 해석되지 않습니다. 플러그인 타입 매핑은 Moodle 선언에서 읽으므로
+`gradingform`·`assignfeedback`·`quizaccess` 같은 서브플러그인 타입도 해석됩니다(선언이 없는 3.5·2.9는
+`subplugins.php`까지 읽고, 그래도 없으면 내장 폴백 맵을 씁니다). 실측 해석률은 추출된 338건 중 328건(97.0%)이고,
 나머지는 위 미매핑 타입과 실제로 존재하지 않는 모듈(`mod_ubboard/ubboard` 등)입니다. 정규식으로 센 전체 호출은 354건인데,
 차이 16건은 겹따옴표 2건과 주석 처리된 호출입니다(AST 기준이라 주석은 제외됨 — 다만 사용처 목록(Shift+F12)은
 정규식 스캔이라 주석 처리된 호출도 나타납니다).
