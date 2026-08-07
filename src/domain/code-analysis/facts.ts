@@ -15,6 +15,12 @@ export interface TemplateCall {
   refLine: number; refColumn: number; refIndex: number;
   index: number;
 }
+/** `$var->method(…)` 호출 — 프로퍼티 접근(member_access_expression)과는 다른 노드다. */
+export interface MethodCall {
+  varName: string; method: string;
+  nameLine: number; nameColumn: number; nameIndex: number;
+  index: number; scope: Scope;
+}
 /** `js_call_amd('component/name', …)`의 모듈 참조. */
 export interface AmdCall {
   ref: string;
@@ -36,6 +42,7 @@ export interface DocumentFacts {
   stringCalls: StringCall[];
   templateCalls: TemplateCall[];
   amdCalls: AmdCall[];
+  methodCalls: MethodCall[];
   tableRefs: TableRef[];
 }
 
@@ -43,6 +50,6 @@ export interface DocumentFacts {
 export function emptyFacts(): DocumentFacts {
   return {
     assignments: [], foreachBindings: [], dataArgBindings: [], phpdocVars: [],
-    propertyAccesses: [], plainAssignments: [], stringCalls: [], templateCalls: [], amdCalls: [], tableRefs: [],
+    propertyAccesses: [], plainAssignments: [], stringCalls: [], templateCalls: [], amdCalls: [], methodCalls: [], tableRefs: [],
   };
 }

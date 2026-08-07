@@ -1,7 +1,7 @@
 import * as path from 'path';
 import Parser from 'web-tree-sitter';
 import {
-  AmdCall, DocumentFacts, emptyFacts, RecordAssignment, ForeachBinding, DataArgBinding, PhpdocVar, PlainAssignment, PropertyAccess, Scope, StringCall, TableRef, TemplateCall,
+  AmdCall, DocumentFacts, MethodCall, emptyFacts, RecordAssignment, ForeachBinding, DataArgBinding, PhpdocVar, PlainAssignment, PropertyAccess, Scope, StringCall, TableRef, TemplateCall,
 } from '../../domain/code-analysis/facts';
 import { PhpSyntax } from '../../domain/code-analysis/ports/php-syntax';
 
@@ -71,6 +71,10 @@ const Q_TEMPLATE_CALL = `
     name: (name) @method
     arguments: (arguments . (argument (string (string_content) @ref))))`;
 
+// 수신 변수가 단순 변수인 메서드 호출 — Moodle 전역($DB 등)의 멤버를 짚는 데 쓴다.
+const Q_METHOD_CALL = `
+  (member_call_expression object: (variable_name (name) @var) name: (name) @method)`;
+
 // 문자열 내용 노드. string_content 하나가 단일 인용·이중 인용·heredoc를 모두 덮고, nowdoc만 별도 타입이다.
 // 이중 인용에서 `{$var}` 보간은 별도 노드로 쪼개지므로 문자열 내용에 남지 않는다.
 const Q_STRING_BODY = `
@@ -91,6 +95,7 @@ interface CompiledQueries {
   stringCall: Parser.Query;
   templateCall: Parser.Query;
   stringBody: Parser.Query;
+  methodCall: Parser.Query;
 }
 
 export class TreeSitterPhpSyntax implements PhpSyntax {
@@ -119,6 +124,7 @@ export class TreeSitterPhpSyntax implements PhpSyntax {
       stringCall: lang.query(Q_STRING_CALL),
       templateCall: lang.query(Q_TEMPLATE_CALL),
       stringBody: lang.query(Q_STRING_BODY),
+      methodCall: lang.query(Q_METHOD_CALL),
     };
     return new TreeSitterPhpSyntax(parser, queries);
   }
@@ -256,6 +262,13 @@ export class TreeSitterPhpSyntax implements PhpSyntax {
       }
     }
 
+    const methodCalls: MethodCall[] = runMatches(this.queries.methodCall).map(({ caps }) => {
+      const v = caps.get('var')!, m = caps.get('method')!;
+      return { varName: v.text, method: m.text,
+        nameLine: m.startPosition.row, nameColumn: m.startPosition.column, nameIndex: m.startIndex,
+        index: v.startIndex, scope: scopeOf(v) };
+    });
+
     const propertyAccesses: PropertyAccess[] = runMatches(this.queries.prop).map(({ caps }) => {
       const v = caps.get('var')!, p = caps.get('prop')!;
       return { varName: v.text, property: p.text, propLine: p.startPosition.row, propColumn: p.startPosition.column,
@@ -268,7 +281,7 @@ export class TreeSitterPhpSyntax implements PhpSyntax {
     // 반환하는 팩트 객체는 안전하다(트리 노드에 대한 참조를 들고 있지 않음). 호출마다 트리를 쌓아두지 않도록 해제한다.
     tree.delete();
 
-    return { assignments, foreachBindings, dataArgBindings, phpdocVars, propertyAccesses, plainAssignments, stringCalls, templateCalls, amdCalls, tableRefs };
+    return { assignments, foreachBindings, dataArgBindings, phpdocVars, propertyAccesses, plainAssignments, stringCalls, templateCalls, amdCalls, methodCalls, tableRefs };
   }
 }
 

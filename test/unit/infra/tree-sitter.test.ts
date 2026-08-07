@@ -364,3 +364,37 @@ describe('TreeSitterPhpSyntax — amdCalls (js_call_amd)', () => {
     assert.ok(!f.amdCalls.some((x: any) => x.refLine === 6 || x.ref === 'user'));
   });
 });
+
+// 전역 멤버를 짚으려면 메서드 호출도 팩트로 필요하다 — 프로퍼티 접근과는 노드가 다르다.
+const CODE10 = `<?php
+function q() {
+  global $DB;
+  $r = $DB->get_record('user', ['id' => 1]);
+  $DB->update_record('user', $r);
+  echo $USER->firstname;
+  echo $PAGE->context;
+}
+`;
+
+describe('TreeSitterPhpSyntax — methodCalls', () => {
+  let syn: TreeSitterPhpSyntax; let f: any;
+  before(async () => { syn = await TreeSitterPhpSyntax.create(); f = syn.facts(CODE10); });
+
+  it('수신 변수와 메서드 이름을 위치와 함께 잡는다', () => {
+    const calls = f.methodCalls.filter((c: any) => c.varName === 'DB').map((c: any) => c.method);
+    assert.deepEqual(calls, ['get_record', 'update_record']);
+    const first = f.methodCalls.find((c: any) => c.method === 'get_record');
+    assert.equal(CODE10.slice(first.nameIndex, first.nameIndex + 'get_record'.length), 'get_record');
+    assert.equal(first.nameLine, 3);
+    assert.equal(first.nameColumn, CODE10.split('\n')[3].indexOf('get_record'));
+  });
+
+  it('프로퍼티 접근은 methodCalls에 들어가지 않는다', () => {
+    assert.ok(!f.methodCalls.some((c: any) => c.method === 'firstname' || c.method === 'context'));
+    assert.ok(f.propertyAccesses.some((p: any) => p.property === 'firstname'));
+  });
+
+  it('스코프를 가진다', () => {
+    assert.ok(f.methodCalls[0].scope.end > f.methodCalls[0].scope.start);
+  });
+});
