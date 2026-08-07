@@ -4,6 +4,7 @@ import { IndexStore } from './infrastructure/indexing/index-store';
 import { StringIndexStore } from './infrastructure/lang/string-index-store';
 import { TreeSitterPhpSyntax } from './infrastructure/tree-sitter/tree-sitter-php-syntax';
 import { CachedPhpSyntax } from './infrastructure/caching/cached-php-syntax';
+import { pluginTypeDirsAsync, clearPluginTypeCache } from './infrastructure/workspace/plugin-type-map';
 import { findMoodleRoot, componentOfLangFile, componentOfTemplateFile, componentOfInstallXmlFile, componentOfAmdFile, langFileMetaOf } from './infrastructure/workspace/moodle-root-resolver';
 import { RecordTypeInference } from './domain/code-analysis/record-type-inference';
 import { ValidateRecordColumns } from './application/validate-record-columns';
@@ -55,6 +56,9 @@ export async function activate(ctx: vscode.ExtensionContext) {
   const subs = vscode.workspace.getConfiguration('csmscode').get<string[]>('detectInSubfolders', ['moodle']);
   const root = findMoodleRoot(folder.uri.fsPath, subs);
   if (!root) { console.log('CSMS Code: Moodle 루트를 찾지 못했습니다.'); return; }
+  // 타입 맵을 미리 채운다. 동기 조회(경로 역산)가 캐시 미스를 만나면 구성 I/O가 확장 호스트를
+  // 막으므로, 프로바이더 등록 전에 비동기로 만들어 둔다.
+  await pluginTypeDirsAsync(root);
 
   const store = new IndexStore();
   const strings = new StringIndexStore();
@@ -173,7 +177,14 @@ export async function activate(ctx: vscode.ExtensionContext) {
     async () => {
       indexing = true;
       try {
-        do { pendingReindex = false; await buildAll(); } while (pendingReindex);
+        do {
+          pendingReindex = false;
+          // 선언이 바뀌었을 수 있는 유일한 지점이다. 비운 채로 두면 그 사이의 동기 조회가
+          // 확장 호스트에서 맵을 다시 만들게 되므로 즉시 다시 채운다.
+          clearPluginTypeCache(root);
+          await pluginTypeDirsAsync(root);
+          await buildAll();
+        } while (pendingReindex);
       } catch (err) {
         console.error('CSMS Code: 색인에 실패했습니다.', err);
       } finally {
@@ -243,6 +254,14 @@ export async function activate(ctx: vscode.ExtensionContext) {
     amdWatcher.onDidChange(u => onAmd(u, false)),
     amdWatcher.onDidCreate(u => onAmd(u, false)),
     amdWatcher.onDidDelete(u => onAmd(u, true)));
+
+  // 플러그인 타입 선언이 바뀌면 맵 자체가 달라져 파일 단위 증분이 불가능하다 — 전체를 다시 만든다.
+  const typeDeclWatcher = vscode.workspace.createFileSystemWatcher('**/db/subplugins.{json,php}');
+  const componentsWatcher = vscode.workspace.createFileSystemWatcher('**/lib/components.json');
+  const onTypeDecl = () => { void gatedRebuild(); };
+  ctx.subscriptions.push(typeDeclWatcher, componentsWatcher,
+    typeDeclWatcher.onDidChange(onTypeDecl), typeDeclWatcher.onDidCreate(onTypeDecl), typeDeclWatcher.onDidDelete(onTypeDecl),
+    componentsWatcher.onDidChange(onTypeDecl), componentsWatcher.onDidCreate(onTypeDecl), componentsWatcher.onDidDelete(onTypeDecl));
 
   // 사용처 색인 증분: lazy 빌드 이후에만, 저장된 파일 단위로 재추출
   ctx.subscriptions.push(vscode.workspace.onDidSaveTextDocument(d => {
