@@ -2,6 +2,8 @@ import * as vscode from 'vscode';
 import { ValidateRecordColumns } from '../../application/validate-record-columns';
 import { ValidateStringKeys } from '../../application/validate-string-keys';
 import { KeyedDebouncer } from '../keyed-debouncer';
+import { diagnosticCode } from '../diagnostic-codes';
+import { SOURCE_LABEL } from '../source-label-text';
 
 const CHANGE_DEBOUNCE_MS = 300;
 
@@ -18,8 +20,8 @@ export function registerDiagnostics(ctx: vscode.ExtensionContext, uc: ValidateRe
     coll.set(doc.uri, items.map(i => {
       const range = new vscode.Range(i.line, i.column0, i.line, i.column0 + i.length);
       const d = new vscode.Diagnostic(range, i.suggestion ? `${i.message} '${i.suggestion}' 을(를) 의도하셨나요?` : i.message, vscode.DiagnosticSeverity.Warning);
-      d.code = i.suggestion ? `csms.column.${i.suggestion}` : 'csms.column';
-      d.source = 'CSMS Code';
+      d.code = diagnosticCode(i.kind, i.suggestion);
+      d.source = SOURCE_LABEL;
       return d;
     }));
   };

@@ -32,7 +32,7 @@ Phase 1 (DB stdClass 인텔리전스)은 완료되었습니다. 아래는 종합
 10. **.vsix 정리**: `.gitignore`/`.mocharc.json`/`tsconfig.test.json` 등 dev 파일 제외.
 11. ~~**`scopeContaining()`에 plainAssignments 반영**~~ — ✅ 완료 (2026-08-04, 같은 설계 문서). 일반 대입만 있는 클로저의 바깥 바인딩 누수 수정.
 12. ~~**재발 방지 하드닝(2026-08-04 최종 리뷰)**~~ — ✅ 완료 (2026-08-04, 같은 설계 문서). scopeContaining 구조적 유도 + E2E 음성 핀 + get_records_select 핀.
-13. **진단 code 네임스페이스 리네이밍**: 문자열 진단도 `csms.column.*` 코드를 재사용 중(동작은 정상) — `csms.fix.*` 등으로 일반화 + QuickFix 프로바이더명 정리. Plan 2 최종 리뷰(2026-08-04) 발견.
+13. ~~**진단 code 네임스페이스 리네이밍**~~ — ✅ 완료 (2026-08-07). 문자열 진단이 `csms.column.*`을 재사용해 Problems 패널에 컬럼 진단으로 보였다. `DiagnosticItem.kind`를 검증기가 정하고 코드는 `csms.<kind>[.<제안>]`으로 만든다. QuickFix는 종류 무관으로 제안을 읽고(`suggestionFromCode`), 프로바이더명도 `SuggestionQuickFixProvider`로 바꿨다. 진단 출처 문자열도 완성·hover와 같은 `csms-intelli`로 통일.
 14. **순수 stdClass 로컬 필드 인텔리전스** (2026-08-06 실측 — 사용자 요청으로 조사, 착수는 보류): `new stdClass()`/`(object)` 캐스트 이후 **그 스코프에서 대입한 필드**를 완성·hover·정의 이동(대입한 줄로 점프)에 쓴다.
     - **실측(hlulxp 커스텀 PHP 3,370개, tree-sitter로 함수 스코프 단위)**: 순수 stdClass 변수 **275개**(서로 다른 스코프 217개), 대입된 고유 필드 **1,237개**(변수당 p50 3·p90 10·max 24), `return $obj`로 나가는 것 88개, `(object)` 캐스트 30개. ※ 파일 단위 정규식으로 세면 639변수/4,310필드로 2배 이상 과대 계상된다(`$data`·`$record` 변수명이 함수마다 재사용되므로). 스코프 단위 숫자를 쓸 것.
     - **진단은 비목표**(오탐 필연): stdClass 필드 집합은 닫히지 않는다 — 참조 인자로 채우기(`function fill(&$o)`), 동적 이름(`$o->$k` — 실측 336곳), `(object)$array`. 다만 "쓰지 않은 필드를 읽는" 변수는 실측 3개(필드 4개)뿐이라 **완성·hover·F12의 정확도는 충분하다**.

@@ -52,7 +52,8 @@
 41. 함수·클래스 **밖**(최상위)에서도 전부 동작하는지 — Moodle 페이지 스크립트에서 `$DB->`·`$USER->`·`$CFG->` 완성, `$config = $DB->get_record(...)` 뒤 `$config->` 컬럼 완성, `?>` HTML `<?php`로 끊긴 뒤에도 유지되는지
 42. 상태 표시줄 왼쪽에 `csms-intelli`와 테이블 수가 보이고, 마우스를 올리면 루트 경로와 네 색인 수가 나옴. 워크스페이스를 열 때는 회전 아이콘이었다가 색인이 끝나면 숫자로 바뀜
 43. 자동완성 목록의 각 항목 오른쪽 끝과 hover 아래에 `csms-intelli` 표시가 보임. `csmscode.showSourceLabel=false`로 끄면 표시만 사라지고 기능은 그대로
-44. 색인 규칙 밖 경로(예: `PLUGIN_DIRS`에 없는 플러그인 타입)의 install.xml·lang·.mustache를 저장 → 아무 일도 일어나지 않음(경고·재색인 없음). 그런 경로는 애초에 색인 대상이 아니다.
+44. Problems 패널에서 진단 출처가 `csms-intelli`이고 코드가 종류에 맞는지 — 컬럼 오타는 `csms.column.<제안>`, 언어 문자열 오타는 `csms.string.<제안>`. 두 경우 모두 전구(QuickFix)로 제안 값으로 고쳐지는지
+45. 색인 규칙 밖 경로(예: `PLUGIN_DIRS`에 없는 플러그인 타입)의 install.xml·lang·.mustache를 저장 → 아무 일도 일어나지 않음(경고·재색인 없음). 그런 경로는 애초에 색인 대상이 아니다.
 
 ## 알려진 제한 (Known limitations)
 

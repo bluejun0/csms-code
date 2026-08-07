@@ -50,6 +50,7 @@ describe('언어 문자열 유즈케이스 (E2E)', () => {
     assert.equal(diags.length, 1);
     assert.match(diags[0].message, /attendance_bok/);
     assert.equal(diags[0].suggestion, 'attendance_book');
+    assert.equal(diags[0].kind, 'string', '문자열 진단은 string 종류여야 한다');
     assert.equal(diags[0].length, 'attendance_bok'.length);
   });
   it('hover/정의: 커서가 key 밖(component 위)이면 null/[]', async () => {

@@ -20,7 +20,7 @@ import { registerDiagnostics } from './presentation/providers/record-diagnostics
 import { RecordColumnCompletionProvider } from './presentation/providers/record-column-completion-provider';
 import { RecordDefinitionProvider } from './presentation/providers/record-definition-provider';
 import { RecordHoverProvider } from './presentation/providers/record-hover-provider';
-import { RecordQuickFixProvider } from './presentation/providers/record-quickfix-provider';
+import { SuggestionQuickFixProvider } from './presentation/providers/suggestion-quickfix-provider';
 import { StringKeyCompletionProvider } from './presentation/providers/string-key-completion-provider';
 import { StringDefinitionProvider } from './presentation/providers/string-definition-provider';
 import { StringHoverProvider } from './presentation/providers/string-hover-provider';
@@ -143,7 +143,7 @@ export async function activate(ctx: vscode.ExtensionContext) {
     vscode.languages.registerCompletionItemProvider(php, new RecordColumnCompletionProvider(complete), '>'),
     vscode.languages.registerDefinitionProvider(php, new RecordDefinitionProvider(resolve)),
     vscode.languages.registerHoverProvider(php, new RecordHoverProvider(describe)),
-    vscode.languages.registerCodeActionsProvider(php, new RecordQuickFixProvider(), { providedCodeActionKinds: [vscode.CodeActionKind.QuickFix] }),
+    vscode.languages.registerCodeActionsProvider(php, new SuggestionQuickFixProvider(), { providedCodeActionKinds: [vscode.CodeActionKind.QuickFix] }),
     vscode.languages.registerCompletionItemProvider(php, new StringKeyCompletionProvider(completeStr), "'", '"'),
     vscode.languages.registerDefinitionProvider(php, new StringDefinitionProvider(resolveStr)),
     vscode.languages.registerHoverProvider(php, new StringHoverProvider(describeStr)),

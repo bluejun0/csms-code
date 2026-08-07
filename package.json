@@ -1,8 +1,8 @@
 {
   "name": "csms-code",
   "displayName": "CSMS Code",
-  "description": "CSMS/Moodle 개발 지원 — DB 레코드 컬럼 인텔리전스",
-  "version": "0.9.0",
+  "description": "CSMS/Moodle 개발 지원 — DB 컬럼·언어 문자열·템플릿·AMD 모듈·SQL 테이블·전역 인텔리전스",
+  "version": "0.10.0",
   "publisher": "bluesoft",
   "license": "MIT",
   "engines": { "vscode": "^1.85.0" },

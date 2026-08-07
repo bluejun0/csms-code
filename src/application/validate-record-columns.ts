@@ -16,6 +16,7 @@ export class ValidateRecordColumns {
       const table = this.tables.getTable(binding.tableName);
       if (!table || table.hasField(pa.property)) continue;
       out.push({
+        kind: 'column',
         line: pa.propLine, column0: pa.propColumn, length: pa.property.length,
         message: `'${binding.tableName}' 테이블에 '${pa.property}' 컬럼이 없습니다.`,
         suggestion: closestColumn(table, pa.property),

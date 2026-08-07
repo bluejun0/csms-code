@@ -26,6 +26,7 @@ describe('ValidateRecordColumns', () => {
     assert.equal(diags.length, 1);
     assert.match(diags[0].message, /coursid/);
     assert.equal(diags[0].suggestion, 'courseid');
+    assert.equal(diags[0].kind, 'column', '컬럼 진단은 column 종류여야 한다');
   });
 });
 
