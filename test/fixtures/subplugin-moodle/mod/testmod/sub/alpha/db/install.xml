@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<XMLDB PATH="mod/testmod/sub/alpha/db">
+  <TABLES>
+    <TABLE NAME="testsub_alpha_log" COMMENT="알파 기록">
+      <FIELDS>
+        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="courseid" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" COMMENT="강좌 고유번호"/>
+      </FIELDS>
+    </TABLE>
+  </TABLES>
+</XMLDB>

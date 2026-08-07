@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<XMLDB PATH="lib/db">
+  <TABLES>
+    <TABLE NAME="user" COMMENT="사용자">
+      <FIELDS>
+        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+      </FIELDS>
+    </TABLE>
+  </TABLES>
+</XMLDB>

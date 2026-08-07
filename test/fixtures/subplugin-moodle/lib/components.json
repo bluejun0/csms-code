@@ -1,0 +1,12 @@
+{
+  "plugintypes": {
+    "local": "local",
+    "mod": "mod",
+    "block": "blocks",
+    "report": "custom/report"
+  },
+  "subsystems": {
+    "form": "lib/form",
+    "access": null
+  }
+}
