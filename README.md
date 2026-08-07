@@ -40,10 +40,19 @@ Moodle 코드는 DB 레코드를 대부분 `stdClass`로 다루기 때문에, �
   (정규식 수량자 `{4}`, 다른 템플릿 문법 `{Bucket}` 등)에는 아무 반응도 하지 않습니다.
 - **JS/AMD 인텔리전스**: `amd/src`의 `get_string`(`M.util.`·`core/str` 모두)·`Templates.render` 리터럴에 정의 이동·hover·하이라이팅, lang/템플릿 참조 목록에 JS 호출처 포함 (`amd/build`·`.min.js`는 생성물이라 제외)
 
+## 이 확장이 준 결과인지 확인하기
+
+자동완성 항목의 오른쪽 끝과 hover 아래에 `csms-intelli` 표시가 붙습니다 — 다른 PHP 확장이 준 결과와
+구분하기 위한 것입니다. 화면 아래 상태 표시줄에도 `csms-intelli`와 색인된 테이블 수가 계속 표시되고,
+마우스를 올리면 Moodle 루트 경로와 테이블·언어 문자열·템플릿·AMD 모듈 색인 수를 볼 수 있습니다.
+색인 중에는 회전 아이콘으로 바뀝니다. 표시가 거슬리면 `csmscode.showSourceLabel`로 끌 수 있습니다
+(상태 표시줄은 설정과 무관하게 남습니다).
+
 ## 설정
 
 | 설정 | 타입 | 기본값 | 설명 |
 |---|---|---|---|
+| `csmscode.showSourceLabel` | `boolean` | `true` | 자동완성·hover에 `csms-intelli` 출처 표시를 붙입니다. |
 | `csmscode.detectInSubfolders` | `string[]` | `["moodle"]` | Moodle 루트가 워크스페이스 하위 폴더에 있을 때 탐색할 폴더명 목록. `version.php`와 `lib/db/install.xml`이 함께 있을 때만 루트로 인정합니다. |
 | `csmscode.diagnostics.enable` | `boolean` | `true` | DB 레코드 컬럼 오타 진단을 켭니다. `false`로 설정하면 진단이 즉시 사라집니다. |
 | `csmscode.strings.highlightResolved` | `boolean` | `true` | 해석되는 get_string 키를 링크 색상으로 하이라이팅 |

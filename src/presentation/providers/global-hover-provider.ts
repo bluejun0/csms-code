@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { DescribeGlobalMember } from '../../application/describe-global-member';
 import { LazyIndexHandle } from './global-member-completion-provider';
+import { hoverWithSource } from '../source-label';
 
 export class GlobalHoverProvider implements vscode.HoverProvider {
   constructor(private uc: DescribeGlobalMember, private ensure: LazyIndexHandle) {}
@@ -11,6 +12,6 @@ export class GlobalHoverProvider implements vscode.HoverProvider {
     if (!this.uc.targets(text, at)) return null;
     if (!this.ensure.built()) await this.ensure.build();
     const r = this.uc.run(text, at);
-    return r ? new vscode.Hover(new vscode.MarkdownString(r.markdown)) : null;
+    return r ? hoverWithSource(r.markdown) : null;
   }
 }

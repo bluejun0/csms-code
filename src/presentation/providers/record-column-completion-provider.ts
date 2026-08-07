@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { CompleteRecordColumns } from '../../application/complete-record-columns';
+import { withSource } from '../source-label';
 
 export class RecordColumnCompletionProvider implements vscode.CompletionItemProvider {
   constructor(private uc: CompleteRecordColumns) {}
@@ -12,9 +13,8 @@ export class RecordColumnCompletionProvider implements vscode.CompletionItemProv
     const cols = this.uc.run(doc.getText(), varName, atIndex);
     return cols.map(c => {
       const it = new vscode.CompletionItem(c.name, vscode.CompletionItemKind.Field);
-      it.detail = c.type;
       if (c.comment) it.documentation = new vscode.MarkdownString(c.comment);
-      return it;
+      return withSource(it, c.type);
     });
   }
 }

@@ -39,6 +39,9 @@ export class TemplateIndex implements TemplateRepository {
   }
 
   /** 해당 파일 위치만 제거 — 위치가 하나도 남지 않은 키는 지운다 */
+  /** 색인된 키 수 — 상태 표시에 쓴다. */
+  size(): number { return this.byRef.size; }
+
   removeFile(uri: string): void {
     for (const [key, arr] of this.byRef) {
       const kept = arr.filter(l => l.uri !== uri);

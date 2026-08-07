@@ -40,6 +40,13 @@ export class StringIndexStore implements StringRepository {
 
   /** 해당 파일에서 온 항목 제거 — 두 locale 모두 사라진 키와 빈 컴포넌트 맵까지 정리한다
    *  (정규화가 byComponent.has()에 의존하므로 빈 맵을 남기면 bare 이름 해석이 틀어진다). */
+  /** 색인된 문자열 키 총수 — 상태 표시에 쓴다(컴포넌트 수가 아니다). */
+  size(): number {
+    let n = 0;
+    for (const keys of this.byComponent.values()) n += keys.size;
+    return n;
+  }
+
   removeFile(uri: string): void {
     for (const [comp, keys] of this.byComponent) {
       for (const [key, ls] of keys) {

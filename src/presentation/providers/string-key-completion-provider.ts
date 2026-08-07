@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { CompleteStringKeys } from '../../application/complete-string-keys';
+import { withSource } from '../source-label';
 
 export class StringKeyCompletionProvider implements vscode.CompletionItemProvider {
   constructor(private uc: CompleteStringKeys) {}
@@ -12,9 +13,8 @@ export class StringKeyCompletionProvider implements vscode.CompletionItemProvide
     if (!cm) return [];
     return this.uc.run(cm[1]).map(s => {
       const it = new vscode.CompletionItem(s.key, vscode.CompletionItemKind.Text);
-      it.detail = s.ko ?? s.en ?? '';
       if (s.ko && s.en) it.documentation = new vscode.MarkdownString(`en: ${s.en}`);
-      return it;
+      return withSource(it, s.ko ?? s.en ?? '');
     });
   }
 }

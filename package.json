@@ -2,7 +2,7 @@
   "name": "csms-code",
   "displayName": "CSMS Code",
   "description": "CSMS/Moodle 개발 지원 — DB 레코드 컬럼 인텔리전스",
-  "version": "0.8.1",
+  "version": "0.9.0",
   "publisher": "bluesoft",
   "license": "MIT",
   "engines": { "vscode": "^1.85.0" },
@@ -33,6 +33,10 @@
         "csmscode.templates.highlightResolved": {
           "type": "boolean", "default": true,
           "description": "해석되는 render_from_template 참조를 링크 색상(textLink.foreground)으로 하이라이팅합니다."
+        },
+        "csmscode.showSourceLabel": {
+          "type": "boolean", "default": true,
+          "description": "자동완성 항목과 hover에 이 확장이 준 결과라는 표시(csms-intelli)를 덧붙입니다. 상태 표시줄에는 설정과 무관하게 색인 현황이 표시됩니다."
         },
         "csmscode.amd.highlightResolved": {
           "type": "boolean", "default": true,
