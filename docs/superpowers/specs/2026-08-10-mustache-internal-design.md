@@ -62,9 +62,9 @@ export function scanMustache(text: string): MustacheRefs;
 
 ### 3.3 사용처 색인에 mustache 포함
 
-`PhpUsageIndex`는 이미 PHP와 JS를 함께 훑으므로 이름이 맞지 않는다 — **`UsageIndex`로 바꾼다**. `isIndexableSourcePath`에 `.mustache`를 더하고, `updateFileText`가 확장자로 추출기를 고르는 기존 분기에 mustache를 추가한다. 추출 결과는 기존 두 저장소(문자열 사용처·템플릿 사용처)에 그대로 들어가므로 참조 조회 쪽은 손대지 않는다. 문자열 사용처의 component는 **PHP 경로와 같이 `normalizeComponent`를 통과시킨다** — 빠뜨리면 정규화가 필요한 컴포넌트(`grades`↔`core_grades`)에서 lang 쪽 Shift+F12가 mustache 호출처를 놓친다.
+`isIndexableSourcePath`에 `.mustache`를 더하고, `updateFileText`가 확장자로 추출기를 고르는 기존 분기에 mustache를 추가한다. 추출 결과는 기존 두 저장소(문자열 사용처·템플릿 사용처)에 그대로 들어가므로 참조 조회 쪽은 손대지 않는다. 문자열 사용처의 component는 **PHP 경로와 같이 `normalizeComponent`를 통과시킨다** — 빠뜨리면 정규화가 필요한 컴포넌트(`grades`↔`core_grades`)에서 lang 쪽 Shift+F12가 mustache 호출처를 놓친다.
 
-**이름은 이 사이클에서 바꾸지 않는다.** `PhpUsageIndex`가 PHP·JS·mustache를 모두 훑게 되어 이름이 맞지 않지만, 추출 로직을 고치는 커밋에서 광범위한 rename을 함께 하면 диф가 커져 실수가 묻힌다. 별도 커밋으로 미룬다.
+**이름은 이 사이클에서 바꾸지 않는다.** `PhpUsageIndex`가 PHP·JS·mustache를 모두 훑게 되어 이름이 맞지 않지만, 추출 로직을 고치는 커밋에서 광범위한 rename을 함께 하면 diff가 커져 실수가 묻힌다. 별도 커밋으로 미룬다.
 
 ### 3.4 유즈케이스
 
