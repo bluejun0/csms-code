@@ -16,6 +16,7 @@ Phase 1 (DB stdClass 인텔리전스)은 완료되었습니다. 아래는 종합
 - **16진 이스케이프 파일 파싱 불가**: `"\x00"` 같은 16진 이스케이프가 있는 PHP 파일은 현재 조합(web-tree-sitter 0.20.8 + tree-sitter-wasms 0.1.13)에서 `Parser.parse()`가 예외를 던져 그 파일의 인텔리전스가 전부 침묵한다. 최소 재현 `<?php $a = "\x00";` — 8진(`\000`)·유니코드(`\u{...}`)·단일 인용은 정상이고 heredoc·nowdoc도 실패한다. 실패 시 `reset()`으로 파서 상태를 버려 다음 문서는 영향받지 않는다. hlulxp 실측 16개 파일(local/ vendor 10 + mod/ 번들 라이브러리 6)로 커스텀 플러그인 코드에는 없다. 코어에는 lib·admin·course에 119개. 해결은 아래 17번.
 - **AMD 모듈 참조의 미해석 요인**: 실측 해석률은 추출된 338건 중 328건(97.0%) — 정규식으로 센 전체 호출 354건 기준으로는 약 93%다(차이 16건은 겹따옴표 2건 + 주석 처리된 호출). 남는 원인은 ~~① 미매핑 플러그인 타입~~(2026-08-07 타입 맵 전환으로 해소) ② 실제로 없는 모듈(`local_ubion/assign`·`mod_ubboard/ubboard` — 죽은 참조) ③ 겹따옴표 리터럴(실측 2건) ④ `lib/components.json`이 없는 구버전(3.5·2.9)에서 코어 서브시스템 모듈. 
 - **전역 색인은 세션 중 갱신되지 않는다**: 코어 클래스·설정 키 색인은 첫 요청에 한 번 만들고 전체 재빌드에서도 다시 만들지 않는다. 플러그인 `settings.php`에 설정을 추가하면 창을 다시 열기 전까지 `$CFG->` 완성에 나타나지 않는다(코어 클래스는 편집 대상이 아니라 문제되지 않는다). 타입 맵의 `coreSubsystemDirs` 메모이즈 항목과 같은 자리에서 함께 처리할 수 있다.
+- **mustache 진단 없음**: `.mustache`의 `{{#str}}`는 이동·hover·하이라이트만 있고 누락 키 경고는 없다. 인자가 변수인 형태와 조건부 블록이 섞여 오탐 위험을 따로 재야 한다(실측 해석률은 99.2%로 높아 검토할 값어치는 있다). `{{#pix}}`(832)·`{{#js}}`(457)·`{{#userdate}}`(62)와 `{{$block}}` 구조, mustache 변수와 PHP 컨텍스트의 연결도 대상 밖이다.
 - **SQL이 아닌 문자열의 오검출**: 테이블 참조는 문자열 안 `{이름}`을 모두 후보로 보고 색인에 있는 이름만 반응하므로, `index.php?id={course}`처럼 테이블과 같은 이름이 든 비SQL 문자열에도 링크 색상이 붙을 수 있다(F12는 무해, 실측 해석된 4,384건 중 이런 유형이 최대 280건).
 - **lang 증분의 제거 비용**: `StringIndexStore.removeFile`이 색인 전체를 스캔하므로 lang 저장 시 증분이 실측 p50 2.2ms·p90 3.4ms·최악 10.4ms다(lang 645개 기준 — 색인이 커지면 이 비용도 함께 커진다). 전체 재색인(122ms)보다 훨씬 빠르지만 1ms 미만은 아니다. uri→key 역인덱스를 도입하면 더 줄일 수 있다.
 
@@ -26,7 +27,7 @@ Phase 1 (DB stdClass 인텔리전스)은 완료되었습니다. 아래는 종합
 4. ~~**symlink 플러그인 디렉터리 색인**~~ — ✅ 완료 (2026-08-04, 설계: `docs/superpowers/specs/2026-08-04-symlink-index-hardening-design.md`). 심볼릭 링크 엔트리만 statSync로 확인, 깨진 링크는 조용히 제외.
 5. ~~**비동기 활성화 색인**~~ — ✅ 완료 (2026-08-05, 설계: `docs/superpowers/specs/2026-08-05-indexing-performance-design.md`). 열거·읽기 모두 `fs.promises` + 200항목마다 양보, 상태바 진행률. 실측 활성화 블로킹 콜드 ~1,730ms → 0(비동기). 워처도 전체 재색인에서 파일 단위 증분으로(lang 저장 실측 122ms → 한 자릿수 ms, 최악 ~10ms).
 6. ~~**nested subplugin 색인**~~ — ✅ 완료 (2026-08-07, 설계: `docs/superpowers/specs/2026-08-07-plugin-type-map-design.md`). 타입 맵을 Moodle 선언(`lib/components.json` + `db/subplugins.json|php`)에서 읽어 잔여 타입(qbank·tiny·quizaccess·assignsubmission 등)이 모두 해소됐다. hlulxp 실측 타입 30 → 65, 플러그인 +146.
-7. **dead code 정리 또는 결선**: `parseFrankenstyle`, `TableRepository.allTableNames()`, `RecordAssignment.receiver`. (`IndexStore.updateFile/removeFile`은 2026-08-05 증분 워처에 결선되어 해소됨.)
+7. **dead code 정리 또는 결선**: `PhpUsageIndex`는 이제 PHP·JS·mustache를 모두 훑으므로 이름이 맞지 않는다(`UsageIndex`로 rename — 추출 로직 변경과 같은 커밋에 섞지 않으려고 미뤘다). `parseFrankenstyle`, `TableRepository.allTableNames()`, `RecordAssignment.receiver`. (`IndexStore.updateFile/removeFile`은 2026-08-05 증분 워처에 결선되어 해소됨.)
 8. **resolve/describe 중복 제거**: 프로퍼티 접근 lookup을 `findPropertyAccessAt(facts, atIndex)` 헬퍼로 추출.
 9. **테스트 커버리지 보강**: `sameScope` 크로스스코프(추가됨), `parseFrankenstyle` null, `closestColumn` 비기본/동점, 다중 TABLE install.xml, `updateFile/removeFile/safeParse` 실패 경로.
 10. **.vsix 정리**: `.gitignore`/`.mocharc.json`/`tsconfig.test.json` 등 dev 파일 제외.

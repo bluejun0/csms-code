@@ -53,7 +53,10 @@
 42. 상태 표시줄 왼쪽에 `csms-intelli`와 테이블 수가 보이고, 마우스를 올리면 루트 경로와 네 색인 수가 나옴. 워크스페이스를 열 때는 회전 아이콘이었다가 색인이 끝나면 숫자로 바뀜
 43. 자동완성 목록의 각 항목 오른쪽 끝과 hover 아래에 `csms-intelli` 표시가 보임. `csmscode.showSourceLabel=false`로 끄면 표시만 사라지고 기능은 그대로
 44. Problems 패널에서 진단 출처가 `csms-intelli`이고 코드가 종류에 맞는지 — 컬럼 오타는 `csms.column.<제안>`, 언어 문자열 오타는 `csms.string.<제안>`. 두 경우 모두 전구(QuickFix)로 제안 값으로 고쳐지는지
-45. 색인 규칙 밖 경로(예: `PLUGIN_DIRS`에 없는 플러그인 타입)의 install.xml·lang·.mustache를 저장 → 아무 일도 일어나지 않음(경고·재색인 없음). 그런 경로는 애초에 색인 대상이 아니다.
+45. `.mustache` 안에서: `{{> theme_coursemos/foo}}`에 F12 → 그 파일로 이동, `{{#str}}attendance_book, local_ubattend{{/str}}`의 키에 F12 → lang 파일로, hover → 한국어 값. 해석되는 것만 링크 색상
+46. 템플릿 파일에서 Shift+F12 → PHP·JS 호출처와 **다른 mustache의 partial 참조가 함께** 나옴. 테마 오버라이드 파일에서 물어도 같은 목록
+47. `grade/templates/*.mustache`(코어 서브시스템)에서도 위가 동작 — 이전에는 컴포넌트 자체가 식별되지 않았음
+48. 색인 규칙 밖 경로(예: `PLUGIN_DIRS`에 없는 플러그인 타입)의 install.xml·lang·.mustache를 저장 → 아무 일도 일어나지 않음(경고·재색인 없음). 그런 경로는 애초에 색인 대상이 아니다.
 
 ## 알려진 제한 (Known limitations)
 
@@ -70,8 +73,8 @@ kill-on-reassign(2026-07-31)으로 추적되지만, 구조 분해(`[$a,$b] = …
 참조 색인은 저장된 파일 기준입니다(미저장 편집은 저장 시 반영). 변수 key/component 호출은
 참조·하이라이팅 모두에서 포착되지 않습니다.
 
-템플릿 색인은 플러그인·코어(lib/templates)·테마 경로 규칙만 따릅니다 — 코어 서브시스템 템플릿
-(`grade/templates` 등)과 JS의 `Templates.render()` 호출, 동적 인자 호출은 침묵합니다. 문자열과 마찬가지로 겹따옴표 리터럴(`render_from_template("a/b")`)은 정의 이동·하이라이팅에서
+템플릿 색인은 플러그인·코어(`lib/templates`)·코어 서브시스템(`grade/templates` 등)·테마 경로 규칙을 따릅니다 —
+동적 인자 호출은 침묵합니다. 문자열과 마찬가지로 겹따옴표 리터럴(`render_from_template("a/b")`)은 정의 이동·하이라이팅에서
 인식되지 않습니다(참조 목록에는 나타납니다 — 사용처 색인은 두 따옴표를 모두 훑습니다. 실측:
 커스텀 코드에서 홑따옴표 444건 대 겹따옴표 1건).
 
