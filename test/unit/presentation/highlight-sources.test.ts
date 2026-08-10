@@ -1,10 +1,10 @@
 import { strict as assert } from 'assert';
-import { HighlightSource } from '../../../src/presentation/resolved-highlight';
+import { HighlightSource, sourceApplies } from '../../../src/presentation/highlight-source';
 
 /** registerResolvedHighlight가 문서 언어·설정으로 소스를 고르는 규칙을 순수 함수로 재현해 검증한다
  *  (vscode 결선 자체는 통합 테스트 몫 — 여기서는 라우팅 계약만 고정한다). */
-function pick(sources: HighlightSource[], languageId: string, enabled: Record<string, boolean>): HighlightSource[] {
-  return sources.filter(s => s.languages.includes(languageId)).filter(s => enabled[s.setting] !== false);
+function pick(sources: HighlightSource[], languageId: string, enabled: Record<string, boolean>, fsPath = '/w/a.php'): HighlightSource[] {
+  return sources.filter(s => sourceApplies(s, languageId, fsPath)).filter(s => enabled[s.setting] !== false);
 }
 
 const S = 'strings.highlightResolved';
@@ -18,6 +18,7 @@ const sources: HighlightSource[] = [
   { setting: A, languages: ['php'], run: () => [] },
   { setting: S, languages: ['javascript'], run: () => [] },
   { setting: T, languages: ['javascript'], run: () => [] },
+  { setting: T, languages: [], pathSuffix: '.mustache', run: () => [] },
 ];
 
 describe('하이라이트 소스 라우팅', () => {
@@ -43,6 +44,17 @@ describe('하이라이트 소스 라우팅', () => {
   it('AMD 소스는 javascript에 없다', () => {
     assert.ok(!pick(sources, 'javascript', {}).some(s => s.setting === A));
   });
+  it('mustache는 언어가 아니라 경로 접미사로 고른다', () => {
+    const r = pick(sources, 'plaintext', {}, '/w/theme/x/templates/a.mustache');
+    assert.equal(r.length, 1);
+    assert.equal(r[0].setting, T);
+    assert.equal(pick(sources, 'plaintext', {}, '/w/a.php').length, 0, '접미사가 다르면 안 고른다');
+  });
+
+  it('mustache 소스도 설정으로 꺼진다', () => {
+    assert.equal(pick(sources, 'html', { [T]: false }, '/w/templates/a.mustache').length, 0);
+  });
+
   it('테이블 소스는 javascript에 없다', () => {
     assert.ok(!pick(sources, 'javascript', {}).some(s => s.setting === B));
   });

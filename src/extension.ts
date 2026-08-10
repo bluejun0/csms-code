@@ -36,6 +36,11 @@ import { FindTemplateReferences } from './application/find-template-references';
 import { ListResolvedTemplateCalls } from './application/list-resolved-template-calls';
 import { TemplateDefinitionProvider } from './presentation/providers/template-definition-provider';
 import { TemplateReferenceProvider } from './presentation/providers/template-reference-provider';
+import { ResolveMustacheDefinition } from './application/resolve-mustache-definition';
+import { DescribeMustacheSymbol } from './application/describe-mustache-symbol';
+import { ListResolvedMustacheRefs } from './application/list-resolved-mustache-refs';
+import { MustacheDefinitionProvider } from './presentation/providers/mustache-definition-provider';
+import { MustacheHoverProvider } from './presentation/providers/mustache-hover-provider';
 import { AmdIndex } from './infrastructure/amd/amd-index';
 import { ResolveAmdDefinition } from './application/resolve-amd-definition';
 import { ListResolvedAmdCalls } from './application/list-resolved-amd-calls';
@@ -106,6 +111,11 @@ export async function activate(ctx: vscode.ExtensionContext) {
   const findTplRefs = new FindTemplateReferences(usageIndex);
   const listResolvedTpl = new ListResolvedTemplateCalls(syntax, templates);
 
+  const mustacheSelector: vscode.DocumentSelector = { scheme: 'file', pattern: '**/templates/**/*.mustache' };
+  const resolveMustache = new ResolveMustacheDefinition(templates, strings);
+  const describeMustache = new DescribeMustacheSymbol(templates, strings);
+  const listResolvedMustache = new ListResolvedMustacheRefs(templates, strings);
+
   const resolveAmd = new ResolveAmdDefinition(syntax, amd);
   const listResolvedAmd = new ListResolvedAmdCalls(syntax, amd);
   const findAmdRefs = new FindAmdReferences(usageIndex);
@@ -160,6 +170,8 @@ export async function activate(ctx: vscode.ExtensionContext) {
         built: () => usageIndex.isBuilt,
         build: cb => usageBuild ?? (usageBuild = usageIndex.buildFromRoot(root, cb)),
       }, file => componentOfTemplateFile(root, file))),
+    vscode.languages.registerDefinitionProvider(mustacheSelector, new MustacheDefinitionProvider(resolveMustache)),
+    vscode.languages.registerHoverProvider(mustacheSelector, new MustacheHoverProvider(describeMustache)),
     vscode.languages.registerDefinitionProvider(php, new TableDefinitionProvider(resolveTbl)),
     vscode.languages.registerCompletionItemProvider(php, new GlobalMemberCompletionProvider(completeGlobal, globalsHandle), '>'),
     vscode.languages.registerHoverProvider(php, new GlobalHoverProvider(describeGlobal, globalsHandle)),
@@ -180,6 +192,8 @@ export async function activate(ctx: vscode.ExtensionContext) {
     { setting: 'templates.highlightResolved', languages: ['php'], run: t => listResolvedTpl.run(t) },
     { setting: 'tables.highlightResolved', languages: ['php'], run: t => listResolvedTbl.run(t) },
     { setting: 'amd.highlightResolved', languages: ['php'], run: t => listResolvedAmd.run(t) },
+    { setting: 'templates.highlightResolved', languages: [], pathSuffix: '.mustache', run: t => listResolvedMustache.runTemplates(t) },
+    { setting: 'strings.highlightResolved', languages: [], pathSuffix: '.mustache', run: t => listResolvedMustache.runStrings(t) },
     { setting: 'strings.highlightResolved', languages: ['javascript'], run: t => listResolvedJs.runStrings(t) },
     { setting: 'templates.highlightResolved', languages: ['javascript'], run: t => listResolvedJs.runTemplates(t) },
   ]);
