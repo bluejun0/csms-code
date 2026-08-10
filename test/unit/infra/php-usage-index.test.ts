@@ -169,3 +169,54 @@ describe('PhpUsageIndex — js_call_amd 사용처', () => {
     assert.equal(idx.amdRefsOf('local_x', 'mod').length, 0);
   });
 });
+
+describe('PhpUsageIndex — mustache 사용처', () => {
+  const MUSTACHE = [
+    '<div>',
+    '  {{> theme_coursemos/header }}',
+    '  {{#str}}attendance_book, local_ubattend{{/str}}',
+    '</div>',
+  ].join('\n');
+
+  it('partial은 템플릿 사용처, {{#str}}는 문자열 사용처로 들어간다', () => {
+    const idx = new PhpUsageIndex(() => true);
+    const uri = '/w/theme/coursemos/templates/page.mustache';
+    idx.updateFileText(uri, MUSTACHE);
+
+    const t = idx.templateRefsOf('theme_coursemos', 'header');
+    assert.equal(t.length, 1);
+    assert.equal(t[0].line, 1);
+    assert.equal(MUSTACHE.split('\n')[1].slice(t[0].column, t[0].column + 'theme_coursemos/header'.length),
+      'theme_coursemos/header');
+
+    const s = idx.referencesOf('local_ubattend', 'attendance_book');
+    assert.equal(s.length, 1);
+    assert.equal(s[0].line, 2);
+  });
+
+  it('같은 파일을 다시 넣어도 중복되지 않고, 내용이 사라지면 함께 사라진다', () => {
+    const idx = new PhpUsageIndex(() => true);
+    const uri = '/w/a.mustache';
+    idx.updateFileText(uri, MUSTACHE);
+    idx.updateFileText(uri, MUSTACHE);
+    assert.equal(idx.templateRefsOf('theme_coursemos', 'header').length, 1);
+    idx.updateFileText(uri, '<div></div>');
+    assert.equal(idx.templateRefsOf('theme_coursemos', 'header').length, 0);
+    assert.equal(idx.referencesOf('local_ubattend', 'attendance_book').length, 0);
+  });
+
+  it('문자열 component가 PHP와 같은 규칙으로 정규화된다', () => {
+    const core = new PhpUsageIndex(c => c === 'core_grades');
+    core.updateFileText('/w/a.mustache', '{{#str}}welcome, grades{{/str}}');
+    assert.equal(core.referencesOf('core_grades', 'welcome').length, 1,
+      '정규화를 거치지 않으면 lang 쪽 참조 목록에서 갈린다');
+
+    const legacy = new PhpUsageIndex(() => false);
+    legacy.updateFileText('/w/b.mustache', '{{#str}}welcome, forum{{/str}}');
+    assert.equal(legacy.referencesOf('mod_forum', 'welcome').length, 1, '레거시 mod 단축도 같다');
+  });
+
+  it('.mustache가 색인 대상 경로다', () => {
+    assert.equal(isIndexableSourcePath('/w', '/w/theme/x/templates/a.mustache'), true);
+  });
+});

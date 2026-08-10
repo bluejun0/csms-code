@@ -6,6 +6,7 @@ import { TemplateUsageRepository } from '../../domain/template-model/ports/templ
 import { AmdUsageRepository } from '../../domain/amd-model/ports/amd-usage-repository';
 import { normalizeComponent } from '../../domain/lang-model/services/component-normalizer';
 import { scanJsCalls } from '../../domain/code-analysis/js-call-scanner';
+import { scanMustache } from '../../domain/code-analysis/mustache-scanner';
 
 // 리터럴 key(+선택적 리터럴 component) — 변수/보간은 비매칭(침묵 원칙)
 const USAGE_RE = /get_string\(\s*['"]([\w:./-]+)['"]\s*(?:,\s*['"](\w+)['"])?/g;
@@ -21,8 +22,8 @@ interface UsageEntry { component: string; key: string; loc: SourceLocation; }
 interface TemplateEntry { ref: string; loc: SourceLocation; }
 interface AmdEntry { ref: string; loc: SourceLocation; }
 
-/** get_string·render_from_template·js_call_amd 사용처의 워크스페이스 색인 — lazy 빌드 + 저장/삭제 시
- *  파일 단위 증분. 세 종류를 한 번의 파일 읽기에서 함께 추출한다(스캔 중복 방지). */
+/** 문자열·템플릿·AMD 사용처의 워크스페이스 색인 — PHP·JS·mustache를 한 번의 스캔에서 함께 훑는다.
+ *  lazy 빌드 + 저장/삭제 시 파일 단위 증분. */
 export class PhpUsageIndex implements StringUsageRepository, TemplateUsageRepository, AmdUsageRepository {
   private byComponent = new Map<string, Map<string, SourceLocation[]>>();
   private byFile = new Map<string, UsageEntry[]>();
@@ -62,9 +63,9 @@ export class PhpUsageIndex implements StringUsageRepository, TemplateUsageReposi
     const prevA = this.amdByFile.get(uri);
     if (prevA) { for (const e of prevA) this.removeAmdEntry(e); this.amdByFile.delete(uri); }
 
-    const { entries, tEntries, aEntries } = uri.endsWith('.js')
-      ? this.extractJs(uri, text)
-      : this.extractPhp(uri, text);
+    const { entries, tEntries, aEntries } = uri.endsWith('.js') ? this.extractJs(uri, text)
+      : uri.endsWith('.mustache') ? this.extractMustache(uri, text)
+        : this.extractPhp(uri, text);
 
     for (const e of entries) this.addEntry(e);
     for (const e of tEntries) this.addTemplateEntry(e);
@@ -111,6 +112,21 @@ export class PhpUsageIndex implements StringUsageRepository, TemplateUsageReposi
       aEntries.push({ ref: m[1], loc: { uri, line: aLastLine, column } });
     }
     return { entries, tEntries, aEntries };
+  }
+
+  /** mustache의 `{{> }}`·`{{< }}`는 템플릿 사용처, `{{#str}}`는 문자열 사용처다.
+   *  component는 PHP 경로와 같은 정규화를 거쳐야 lang 쪽 참조 목록에서 갈리지 않는다. */
+  private extractMustache(uri: string, text: string): { entries: UsageEntry[]; tEntries: TemplateEntry[]; aEntries: AmdEntry[] } {
+    const refs = scanMustache(text);
+    return {
+      aEntries: [],
+      entries: refs.stringRefs.map(r => ({
+        component: normalizeComponent(r.component, this.hasCanonical),
+        key: r.key,
+        loc: { uri, line: r.keyLine, column: r.keyColumn },
+      })),
+      tEntries: refs.templateRefs.map(r => ({ ref: r.ref, loc: { uri, line: r.line, column: r.column } })),
+    };
   }
 
   /** JS에는 js_call_amd가 없다(모듈 로딩은 import·require) — aEntries는 항상 비어 있다. */
@@ -202,7 +218,7 @@ async function listSourceFiles(root: string): Promise<string[]> {
 /** 콜드 스캔과 저장 증분이 같은 제외 규칙을 쓰게 하는 단일 술어.
  *  amd/build는 amd/src의 미니파이 사본이라 색인하면 참조가 중복되고 생성 파일로 점프한다. */
 export function isIndexableSourcePath(root: string, fsPath: string): boolean {
-  if (!fsPath.endsWith('.php') && !fsPath.endsWith('.js')) return false;
+  if (!fsPath.endsWith('.php') && !fsPath.endsWith('.js') && !fsPath.endsWith('.mustache')) return false;
   if (fsPath.endsWith('.min.js')) return false;
   const rel = path.relative(root, fsPath);
   if (rel.startsWith('..') || path.isAbsolute(rel)) return false;
