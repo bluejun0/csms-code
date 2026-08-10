@@ -237,3 +237,37 @@ describe('MoodleRootResolver — 선언에서 온 서브플러그인 타입', ()
     assert.deepEqual(a, s);
   });
 });
+
+// 코어 서브시스템 템플릿 — 디렉터리가 플러그인 타입과 겹치므로 더 긴 쪽이 이겨야 한다.
+describe('MoodleRootResolver — 코어 서브시스템 템플릿', () => {
+  const subRoot = join(__dirname, '../../fixtures/subplugin-moodle');
+  beforeEach(() => clearPluginTypeCache());
+
+  it('서브시스템 templates를 core_<키>로 역산한다', () => {
+    assert.deepEqual(
+      componentOfTemplateFile(subRoot, join(subRoot, 'lib/form/templates/element.mustache')),
+      { component: 'core_form', name: 'element' });
+    assert.deepEqual(
+      componentOfTemplateFile(subRoot, join(subRoot, 'course/templates/activity.mustache')),
+      { component: 'core_course', name: 'activity' });
+  });
+
+  it('겹치는 경로는 더 긴 쪽이 이긴다', () => {
+    assert.deepEqual(
+      componentOfTemplateFile(subRoot, join(subRoot, 'course/format/templates/fileuploader.mustache')),
+      { component: 'core_courseformat', name: 'fileuploader' }, '서브시스템 course가 아니라 courseformat');
+    assert.deepEqual(
+      componentOfTemplateFile(subRoot, join(subRoot, 'course/format/topics/templates/section.mustache')),
+      { component: 'format_topics', name: 'section' }, '플러그인 규칙이 우선');
+  });
+
+  it('열거에도 포함되고 비동기와 같다', async () => {
+    const key = (xs: TemplateFileRef[]) => xs.map(x => `${x.component}/${x.name}`).sort();
+    const sync = key(listTemplateFiles(subRoot));
+    assert.ok(sync.includes('core_form/element'), sync.join(','));
+    assert.ok(sync.includes('core_courseformat/fileuploader'));
+    assert.ok(sync.includes('format_topics/section'));
+    clearPluginTypeCache();
+    assert.deepEqual(key(await listTemplateFilesAsync(subRoot)), sync);
+  });
+});

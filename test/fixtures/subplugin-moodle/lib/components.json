@@ -3,10 +3,13 @@
     "local": "local",
     "mod": "mod",
     "block": "blocks",
-    "report": "custom/report"
+    "report": "custom/report",
+    "format": "course/format"
   },
   "subsystems": {
     "form": "lib/form",
-    "access": null
+    "access": null,
+    "course": "course",
+    "courseformat": "course/format"
   }
 }

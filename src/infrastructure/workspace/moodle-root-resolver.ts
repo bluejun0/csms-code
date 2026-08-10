@@ -153,15 +153,35 @@ export function componentOfTemplateFile(root: string, file: string): { component
     return { component: 'core', name: stripMustache(parts.slice(2).join('/')) };
   }
   const hit = pluginTypeOfRel(root, rel);
-  if (!hit) return null;
+  if (!hit) return subsystemTemplateOf(root, rel);
   const restParts = hit.rest.split('/');
-  if (restParts[0] !== 'templates' || restParts.length < 2) return null;
+  if (restParts[0] !== 'templates' || restParts.length < 2) return subsystemTemplateOf(root, rel);
   const inner = restParts.slice(1);
   // 테마의 `templates/<component>/…`는 그 컴포넌트의 오버라이드
   if (hit.type === 'theme' && inner.length >= 2 && looksLikeComponent(inner[0])) {
     return { component: inner[0], name: stripMustache(inner.slice(1).join('/')) };
   }
   return { component: `${hit.type}_${hit.name}`, name: stripMustache(inner.join('/')) };
+}
+
+/** 코어 서브시스템의 `<dir>/templates/**` → `core_<서브시스템>`.
+ *  디렉터리가 겹치므로(서브시스템 `course`와 플러그인 타입 `course/format`) 더 긴 쪽이 이긴다. */
+function subsystemTemplateOf(root: string, rel: string): { component: string; name: string } | null {
+  const parts = rel.split(path.sep);
+  let best: { component: string; name: string; depth: number } | null = null;
+  for (const [sub, dir] of coreSubsystemDirs(root)) {
+    const dirParts = dir.split('/');
+    if (parts.length < dirParts.length + 2) continue;
+    if (!dirParts.every((seg, i) => parts[i] === seg)) continue;
+    if (parts[dirParts.length] !== 'templates') continue;
+    if (best && best.depth >= dirParts.length) continue;
+    best = {
+      component: `core_${sub}`,
+      name: stripMustache(parts.slice(dirParts.length + 1).join('/')),
+      depth: dirParts.length,
+    };
+  }
+  return best ? { component: best.component, name: best.name } : null;
 }
 
 function stripMustache(s: string): string { return s.endsWith('.mustache') ? s.slice(0, -9) : s; }
@@ -184,6 +204,10 @@ export function listTemplateFiles(root: string): TemplateFileRef[] {
   };
   const coreDir = path.join(root, 'lib', 'templates');
   if (fs.existsSync(coreDir)) walk(coreDir);
+  for (const rel of coreSubsystemDirs(root).values()) {
+    const sdir = path.join(root, rel, 'templates');
+    if (fs.existsSync(sdir)) walk(sdir);
+  }
   for (const relDir of new Set(pluginTypeDirs(root).values())) {
     const typeDir = path.join(root, relDir);
     if (!fs.existsSync(typeDir)) continue;
@@ -399,6 +423,10 @@ export async function listTemplateFilesAsync(root: string): Promise<TemplateFile
   };
   const coreDir = path.join(root, 'lib', 'templates');
   if (await existsAsync(coreDir)) await walk(coreDir);
+  for (const rel of (await coreSubsystemDirsAsync(root)).values()) {
+    const sdir = path.join(root, rel, 'templates');
+    if (await existsAsync(sdir)) await walk(sdir);
+  }
   for (const relDir of new Set(typeDirs.values())) {
     const typeDir = path.join(root, relDir);
     if (!await existsAsync(typeDir)) continue;
