@@ -1,5 +1,4 @@
 import * as vscode from 'vscode';
-import { RangeItem } from '../application/dto';
 import { KeyedDebouncer } from './keyed-debouncer';
 import { HighlightSource, sourceApplies } from './highlight-source';
 
