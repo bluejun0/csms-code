@@ -38,7 +38,8 @@ Moodle 코드는 DB 레코드를 대부분 `stdClass`로 다루기 때문에, �
   누르면 `local/ubion/amd/src/user.js`로 이동하고, 모듈 파일에서 Shift+F12로 그 모듈을 부르는 호출처를
   찾습니다. 해석되는 참조는 링크 색상으로 표시됩니다. 중첩 경로(`local_x/foo/bar`)와 코어 서브시스템
   (`core_form/submit` → `lib/form/amd/src/submit.js`)도 해석합니다.
-- **SQL 테이블 참조 이동**: SQL 문자열의 `{tablename}`에서 F12를 누르면 그 테이블을 선언한
+- **테이블 참조 이동**: SQL 문자열의 `{tablename}`과 `$DB->update_record('local_x', …)` 같은 DML 메서드의
+  테이블 인자에서 F12를 누르면 그 테이블을 선언한
   `install.xml`의 `<TABLE>` 줄로 이동하고, 해석되는 참조를 링크 색상으로 표시합니다.
   단일 인용·이중 인용·heredoc·nowdoc을 모두 지원하며, `install.xml`에 없는 이름
   (정규식 수량자 `{4}`, 다른 템플릿 문법 `{Bucket}` 등)에는 아무 반응도 하지 않습니다.

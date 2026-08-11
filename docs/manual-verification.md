@@ -56,7 +56,8 @@
 45. `.mustache` 안에서: `{{> theme_coursemos/foo}}`에 F12 → 그 파일로 이동, `{{#str}}attendance_book, local_ubattend{{/str}}`의 키에 F12 → lang 파일로, hover → 한국어 값. 해석되는 것만 링크 색상
 46. 템플릿 파일에서 Shift+F12 → PHP·JS 호출처와 **다른 mustache의 partial 참조가 함께** 나옴. 테마 오버라이드 파일에서 물어도 같은 목록
 47. `grade/templates/*.mustache`(코어 서브시스템)에서도 위가 동작 — 이전에는 컴포넌트 자체가 식별되지 않았음
-48. 색인 규칙 밖 경로(예: `PLUGIN_DIRS`에 없는 플러그인 타입)의 install.xml·lang·.mustache를 저장 → 아무 일도 일어나지 않음(경고·재색인 없음). 그런 경로는 애초에 색인 대상이 아니다.
+48. `$DB->update_record('local_ubattend_config', $data)`의 테이블 인자에 F12 → install.xml `<TABLE>` 줄로 이동하고 링크 색상이 붙음. `$DB->sql_like('email', …)`처럼 SQL 조각 헬퍼의 첫 인자에는 아무 일도 없어야 함(컬럼 이름이라서)
+49. 색인 규칙 밖 경로(예: `PLUGIN_DIRS`에 없는 플러그인 타입)의 install.xml·lang·.mustache를 저장 → 아무 일도 일어나지 않음(경고·재색인 없음). 그런 경로는 애초에 색인 대상이 아니다.
 
 ## 알려진 제한 (Known limitations)
 

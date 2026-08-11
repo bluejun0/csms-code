@@ -75,6 +75,16 @@ const Q_TEMPLATE_CALL = `
 const Q_METHOD_CALL = `
   (member_call_expression object: (variable_name (name) @var) name: (name) @method)`;
 
+// $DB 메서드의 첫 문자열 인자 — Moodle DML은 여기에 테이블 이름을 받는다.
+// get_records_sql처럼 SQL을 받는 메서드도 매칭되지만 그 문자열은 테이블로 해석되지 않아 침묵한다.
+// sql_like·sql_compare_text 등 SQL 조각 헬퍼는 첫 인자가 컬럼·식이라 테이블이 아니다.
+const DB_NON_TABLE_PREFIX = 'sql_';
+const Q_DB_TABLE_ARG = `
+  (member_call_expression
+    object: (variable_name (name) @recv)
+    name: (name) @method
+    arguments: (arguments . (argument (string (string_content) @table))))`;
+
 // 문자열 내용 노드. string_content 하나가 단일 인용·이중 인용·heredoc를 모두 덮고, nowdoc만 별도 타입이다.
 // 이중 인용에서 `{$var}` 보간은 별도 노드로 쪼개지므로 문자열 내용에 남지 않는다.
 const Q_STRING_BODY = `
@@ -96,6 +106,7 @@ interface CompiledQueries {
   templateCall: Parser.Query;
   stringBody: Parser.Query;
   methodCall: Parser.Query;
+  dbTableArg: Parser.Query;
 }
 
 export class TreeSitterPhpSyntax implements PhpSyntax {
@@ -125,6 +136,7 @@ export class TreeSitterPhpSyntax implements PhpSyntax {
       templateCall: lang.query(Q_TEMPLATE_CALL),
       stringBody: lang.query(Q_STRING_BODY),
       methodCall: lang.query(Q_METHOD_CALL),
+      dbTableArg: lang.query(Q_DB_TABLE_ARG),
     };
     return new TreeSitterPhpSyntax(parser, queries);
   }
@@ -286,6 +298,19 @@ export class TreeSitterPhpSyntax implements PhpSyntax {
         nameLine: m.startPosition.row, nameColumn: m.startPosition.column, nameIndex: m.startIndex,
         index: v.startIndex, scope: scopeOf(v) };
     });
+
+    // $DB->update_record('user', …)의 'user'도 테이블 참조다 — SQL의 {user}와 같은 팩트에 담아
+    // 정의 이동·하이라이트가 한 경로를 타게 한다.
+    for (const { caps } of runMatches(this.queries.dbTableArg)) {
+      if (caps.get('recv')!.text !== 'DB') continue;
+      if (caps.get('method')!.text.startsWith(DB_NON_TABLE_PREFIX)) continue;
+      const table = caps.get('table')!;
+      tableRefs.push({
+        name: table.text,
+        nameLine: table.startPosition.row, nameColumn: table.startPosition.column,
+        nameIndex: table.startIndex,
+      });
+    }
 
     const propertyAccesses: PropertyAccess[] = runMatches(this.queries.prop).map(({ caps }) => {
       const v = caps.get('var')!, p = caps.get('prop')!;

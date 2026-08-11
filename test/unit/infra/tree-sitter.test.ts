@@ -398,3 +398,50 @@ describe('TreeSitterPhpSyntax — methodCalls', () => {
     assert.ok(f.methodCalls[0].scope.end > f.methodCalls[0].scope.start);
   });
 });
+
+// $DB 메서드의 테이블 인자도 SQL의 {table}과 같은 팩트에 담긴다.
+const CODE11 = `<?php
+function q() {
+  $DB->update_record('local_ubattend_config', $data);
+  $r = $DB->get_record('user', ['id' => 1]);
+  $DB->get_records_sql('SELECT * FROM {course} WHERE x = ?');
+  $DB->get_field('user', 'firstname', []);
+  $OUTPUT->render_from_template('local_ubattend/setting', []);
+  $other->update_record('not_db', $x);
+  $DB->sql_like('user', ':pattern');
+}
+`;
+
+describe('TreeSitterPhpSyntax — $DB 테이블 인자', () => {
+  let syn: TreeSitterPhpSyntax; let f: any;
+  before(async () => { syn = await TreeSitterPhpSyntax.create(); f = syn.facts(CODE11); });
+
+  it('첫 문자열 인자를 테이블 참조로 담는다', () => {
+    const names = f.tableRefs.map((r: any) => r.name);
+    assert.ok(names.includes('local_ubattend_config'));
+    assert.ok(names.includes('user'), 'get_record·get_field 모두');
+  });
+
+  it('SQL 안의 {table}과 같은 배열에 함께 담긴다', () => {
+    assert.ok(f.tableRefs.some((r: any) => r.name === 'course'), '{course}');
+  });
+
+  it('$DB가 아닌 수신자와 다른 메서드의 첫 인자는 담지 않는다', () => {
+    const names = f.tableRefs.map((r: any) => r.name);
+    assert.ok(!names.includes('not_db'), '$other-> 는 대상 아님');
+    assert.ok(!names.includes('local_ubattend/setting'), 'render_from_template은 대상 아님');
+  });
+
+  it('sql_ 헬퍼의 첫 인자는 컬럼·식이라 담지 않는다', () => {
+    // 'user'는 테이블 이름이기도 해서, 메서드로 걸러내지 않으면 컬럼을 테이블로 링크한다.
+    const userRefs = f.tableRefs.filter((r: any) => r.name === 'user');
+    assert.equal(userRefs.length, 2, 'get_record와 get_field의 것만');
+  });
+
+  it('테이블 인자 위치가 정확하다', () => {
+    const r = f.tableRefs.find((x: any) => x.name === 'local_ubattend_config');
+    assert.equal(CODE11.slice(r.nameIndex, r.nameIndex + r.name.length), 'local_ubattend_config');
+    assert.equal(r.nameLine, 2);
+    assert.equal(r.nameColumn, CODE11.split('\n')[2].indexOf('local_ubattend_config'));
+  });
+});
