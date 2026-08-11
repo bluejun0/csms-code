@@ -30,6 +30,7 @@ import { ListResolvedStringCalls } from './application/list-resolved-string-call
 import { LangReferenceProvider } from './presentation/providers/lang-reference-provider';
 import { registerResolvedHighlight } from './presentation/resolved-highlight';
 import { registerStatusBar } from './presentation/status-bar';
+import { registerPhpWordPattern } from './presentation/register-php-word-pattern';
 import { TemplateIndex } from './infrastructure/templates/template-index';
 import { ResolveTemplateDefinition } from './application/resolve-template-definition';
 import { FindTemplateReferences } from './application/find-template-references';
@@ -74,6 +75,7 @@ export async function activate(ctx: vscode.ExtensionContext) {
   // 막으므로, 프로바이더 등록 전에 비동기로 만들어 둔다.
   await pluginTypeDirsAsync(root);
 
+  registerPhpWordPattern(ctx);
   const status = registerStatusBar(ctx, root);
 
   const store = new IndexStore();

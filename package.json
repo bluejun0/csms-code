@@ -2,7 +2,7 @@
   "name": "csms-code",
   "displayName": "CSMS Code",
   "description": "CSMS/Moodle 개발 지원 — DB 컬럼·언어 문자열·템플릿·AMD 모듈·SQL 테이블·전역 인텔리전스",
-  "version": "0.12.0",
+  "version": "0.13.0",
   "publisher": "bluesoft",
   "license": "MIT",
   "engines": { "vscode": "^1.85.0" },
@@ -33,6 +33,10 @@
         "csmscode.templates.highlightResolved": {
           "type": "boolean", "default": true,
           "description": "해석되는 render_from_template 참조를 링크 색상(textLink.foreground)으로 하이라이팅합니다."
+        },
+        "csmscode.php.selectDollarInWord": {
+          "type": "boolean", "default": true,
+          "description": "PHP에서 `$`를 단어의 일부로 봅니다. 더블클릭·Ctrl+D가 `$config`를 통째로 선택합니다(기본 동작은 `config`만 선택). 다른 PHP 확장이 같은 설정을 덮어쓰면 그쪽이 이길 수 있습니다."
         },
         "csmscode.showSourceLabel": {
           "type": "boolean", "default": true,

@@ -57,6 +57,7 @@ Moodle 코드는 DB 레코드를 대부분 `stdClass`로 다루기 때문에, �
 
 | 설정 | 타입 | 기본값 | 설명 |
 |---|---|---|---|
+| `csmscode.php.selectDollarInWord` | `boolean` | `true` | PHP에서 `$`를 단어의 일부로 봅니다 — 더블클릭·Ctrl+D가 `$config`를 통째로 선택합니다. |
 | `csmscode.showSourceLabel` | `boolean` | `true` | 자동완성·hover에 `csms-intelli` 출처 표시를 붙입니다. |
 | `csmscode.detectInSubfolders` | `string[]` | `["moodle"]` | Moodle 루트가 워크스페이스 하위 폴더에 있을 때 탐색할 폴더명 목록. `version.php`와 `lib/db/install.xml`이 함께 있을 때만 루트로 인정합니다. |
 | `csmscode.diagnostics.enable` | `boolean` | `true` | DB 레코드 컬럼 오타 진단을 켭니다. `false`로 설정하면 진단이 즉시 사라집니다. |
