@@ -2,12 +2,13 @@ import { PhpSyntax } from '../domain/code-analysis/ports/php-syntax';
 import { StringRepository } from '../domain/lang-model/ports/string-repository';
 import { closestKey } from '../domain/lang-model/services/string-validator';
 import { DiagnosticItem } from './dto';
+import { allStringCalls } from './string-call-lookup';
 
 export class ValidateStringKeys {
   constructor(private syntax: PhpSyntax, private strings: StringRepository) {}
   run(text: string): DiagnosticItem[] {
     const out: DiagnosticItem[] = [];
-    for (const c of this.syntax.facts(text).stringCalls) {
+    for (const c of allStringCalls(this.syntax.facts(text))) {
       if (!this.strings.hasComponent(c.component)) continue; // 미색인 컴포넌트는 침묵(오탐 방지)
       if (this.strings.getString(c.component, c.key)) continue;
       out.push({

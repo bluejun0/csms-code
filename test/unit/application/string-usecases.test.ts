@@ -72,3 +72,68 @@ describe('참조·하이라이트 유즈케이스', () => {
     assert.equal(new FindStringReferences(fake).run('local_ubattend', 'x')[0].uri, 'local_ubattend/x');
   });
 });
+
+// 컴포넌트가 리터럴이 아닌 호출도 같은 파일의 리터럴로 해석되면 네 기능이 동작한다.
+const DYN = `<?php
+class Provider {
+    protected $pluginname = 'local_ubattend';
+    public function label() {
+        $comp = 'local_ubattend';
+        $a = get_string('attendance_book', $comp);
+        $b = get_string('attendance_book', $this->pluginname);
+        $c = get_string('no_such_key', $comp);
+        $d = get_string('attendance_book', $unknown);
+        $e = get_string('attendance_book', $ambiguous);
+        $ambiguous = 'local_ubattend';
+        $ambiguous = 'block_testblock';
+        return [$a, $b, $c, $d, $e];
+    }
+}
+`;
+
+describe('언어 문자열 — 동적 컴포넌트 전파 (E2E)', () => {
+  let syn: TreeSitterPhpSyntax;
+  before(async () => { syn = await TreeSitterPhpSyntax.create(); });
+  const at = (needle: string, nth = 0) => {
+    let i = -1;
+    for (let n = 0; n <= nth; n++) i = DYN.indexOf(needle, i + 1);
+    return i + 2;
+  };
+
+  it('정의 이동: 변수·프로퍼티에서 해석된다', () => {
+    const uc = new ResolveStringDefinition(syn, store);
+    assert.ok(uc.run(DYN, at('attendance_book', 0)).length > 0, '변수');
+    assert.ok(uc.run(DYN, at('attendance_book', 1)).length > 0, '$this 프로퍼티');
+  });
+
+  it('hover: 해석된 컴포넌트의 값을 보여준다', () => {
+    const h = new DescribeString(syn, store).run(DYN, at('attendance_book', 0));
+    assert.ok(h && /출석부/.test(h.markdown), h?.markdown);
+  });
+
+  it('하이라이트: 해석되는 키만', () => {
+    const r = new ListResolvedStringCalls(syn, store).run(DYN);
+    assert.equal(r.length, 2, '변수·프로퍼티 두 건만(없는 키·미해석은 제외)');
+  });
+
+  it('진단: 해석된 컴포넌트의 누락 키만 경고한다', () => {
+    const diags = new ValidateStringKeys(syn, store).run(DYN);
+    assert.equal(diags.length, 1);
+    assert.match(diags[0].message, /no_such_key/);
+  });
+
+  it('진단: 정의 없는 변수·모호한 변수에는 경고가 없다', () => {
+    const diags = new ValidateStringKeys(syn, store).run(DYN);
+    assert.ok(!diags.some(d => /attendance_book/.test(d.message)), '해석되지 않은 호출은 검사 대상이 아니다');
+  });
+
+  it('리터럴이 아닌 대입에서 온 컴포넌트에는 진단이 없다', () => {
+    const code = `<?php\nfunction f() { $c = get_component(); echo get_string('no_such_key', $c); }\n`;
+    assert.deepEqual(new ValidateStringKeys(syn, store).run(code), []);
+  });
+
+  it('리터럴 컴포넌트 호출은 목록에 한 번만 나온다', () => {
+    const code = `<?php\nfunction f() { echo get_string('attendance_book', 'local_ubattend'); }\n`;
+    assert.equal(new ListResolvedStringCalls(syn, store).run(code).length, 1);
+  });
+});
