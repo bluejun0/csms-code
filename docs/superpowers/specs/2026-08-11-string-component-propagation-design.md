@@ -25,6 +25,8 @@
 
 **모호성은 0건이다.** 리터럴이 잡히는 2,106건 전부 같은 파일에 서로 다른 리터럴이 하나뿐이다(변수 1,435 / 프로퍼티 671). 따라서 "리터럴이 유일할 때만 해석" 가드는 커버리지를 깎지 않는다.
 
+프로퍼티 쪽은 출처를 더 갈라 재봤다. 해석되는 671건이 **전부 선언 기본값**(`protected $pluginname = 'local_x';`)이고 `$this->prop = '리터럴'` 형태의 생성자 대입은 **0건**이며, 이 호출들이 있는 파일에 클래스가 둘 이상인 경우도 **0건**이다. 그래서 프로퍼티 출처는 **선언 기본값만** 본다 — 생성자 대입을 파일 범위로 병합하다 다른 클래스의 사용처로 새는 위험이 아예 없어진다. 한 파일에 두 클래스가 같은 이름을 다른 값으로 선언하면 값이 둘이 되어 모호성 가드가 침묵시킨다.
+
 ## 2. 목표
 
 컴포넌트 인자가 **같은 파일의 문자열 리터럴로 한 단계 거슬러 올라가면** 그 컴포넌트로 해석해, 기존 문자열 표면 네 가지(정의 이동·hover·하이라이트·누락 키 진단)를 그대로 적용한다.
@@ -59,7 +61,7 @@ export interface DynamicStringCall {
 
 /** `$x = 'literal'` — RHS 리터럴이 필요해 plainAssignments로는 안 된다. */
 export interface LiteralAssignment { varName: string; value: string; index: number; scope: Scope; }
-/** `$this->p = 'literal'`과 선언 기본값 `public $p = 'literal';` — 파일 범위로 본다. */
+/** 프로퍼티 **선언 기본값** `public $p = 'literal';` — 생성자 대입은 담지 않는다(실측 0건). */
 export interface PropertyLiteral { property: string; value: string; index: number; }
 /** `const NAME = 'literal';` — 파일 범위. */
 export interface ConstLiteral { name: string; value: string; index: number; }
@@ -75,6 +77,8 @@ export interface ConstLiteral { name: string; value: string; index: number; }
 (function_call_expression function: (name) @fn arguments: (arguments
   . (argument (string (string_content) @key))
   . (argument (member_access_expression object: (variable_name) @recv name: (name) @comp))))
+; 프로퍼티 선언 기본값
+(property_declaration (property_element (variable_name (name) @prop) (property_initializer (string (string_content) @value))))
 ; Class::CONST
 (function_call_expression function: (name) @fn arguments: (arguments
   . (argument (string (string_content) @key))
@@ -89,7 +93,7 @@ export interface ConstLiteral { name: string; value: string; index: number; }
 ```ts
 export function resolveComponentRef(facts: DocumentFacts, call: DynamicStringCall): string | null;
 ```
-- `var`: 같은 스코프의 `literalAssignments` 중 그 이름의 **서로 다른 값이 하나뿐일 때** 그 값. 둘 이상이면 null.
+- `var`: **같은 스코프에서 그 이름에 대입된 서로 다른 리터럴이 하나뿐일 때** 그 값. 둘 이상이면 null. 레코드 추론의 `nearestPreceding`·kill은 쓰지 않는다 — 컴포넌트 변수는 함수 중간에 다른 값으로 바뀌지 않고(실측 모호성 0), 규칙이 하나여야 구현이 갈리지 않는다.
 - `prop`: `propertyLiterals` 중 그 이름의 서로 다른 값이 하나뿐일 때 그 값(파일 범위).
 - `const`: `constLiterals` 동일 규칙.
 
@@ -108,13 +112,14 @@ export function allStringCalls(facts: DocumentFacts): StringCall[];
 
 **진단**: 해석된 컴포넌트도 누락 키 검사를 받는다. 기존 가드(색인에 없는 컴포넌트는 경고하지 않음)가 그대로 적용되고, 전파 쪽에는 "리터럴이 유일할 때만" 가드가 더 붙는다.
 
-**사용처 색인**(`php-usage-index.ts`)은 정규식 기반이라 이번 범위 밖이다 — lang 파일의 Shift+F12에는 동적 컴포넌트 호출이 여전히 안 나온다. 알려진 제한으로 적는다.
+**사용처 색인**(`php-usage-index.ts`)은 정규식 기반이라 이번 범위 밖이다 — lang 파일의 Shift+F12에는 동적 컴포넌트 호출이 여전히 안 나온다. 정의 이동은 되는데 역참조는 안 되는 비대칭이라 **README의 알려진 제한에도 적는다**(백로그만으로는 사용자가 버그로 읽는다).
 
 ## 4. 테스트 전략
 
 - **팩트**: 세 형태 각각 추출, `$this` 아닌 수신자 비추출, `get_string` 아닌 함수 비추출, 위치 정확성, 리터럴 컴포넌트 호출은 기존 `stringCalls`에만 담기고 동적 목록에는 없음.
 - **해석**: 변수·프로퍼티·상수 각각 해석, 서로 다른 리터럴이 둘이면 null, 다른 스코프의 대입은 변수 해석에 쓰이지 않음, 정의가 없으면 null.
-- **통합**: `allStringCalls`가 리터럴+동적을 합치고 해석 실패를 뺀다. 네 유즈케이스가 동적 호출에서도 동작(정의 이동·hover·하이라이트·진단) — E2E로.
+- **통합**: `allStringCalls`가 리터럴+동적을 합치고 해석 실패를 뺀다. **리터럴 컴포넌트 호출이 정확히 한 번만 나온다**(두 쿼리가 겹치면 하이라이트·진단이 두 번 나온다).
+- **오탐 경로**: `$component = get_component();` 처럼 리터럴이 아닌 대입에서 온 컴포넌트는 진단이 붙지 않는다. 네 유즈케이스가 동적 호출에서도 동작(정의 이동·hover·하이라이트·진단) — E2E로.
 - **진단 안전성**: 해석된 컴포넌트가 색인에 없으면 경고 없음. 모호한 전파는 경고 없음.
 - **회귀**: 기존 357건 녹색.
 
