@@ -445,3 +445,60 @@ describe('TreeSitterPhpSyntax — $DB 테이블 인자', () => {
     assert.equal(r.nameColumn, CODE11.split('\n')[2].indexOf('local_ubattend_config'));
   });
 });
+
+// 컴포넌트가 리터럴이 아닌 get_string — 형태를 담고 리터럴 출처도 함께 뽑는다.
+const CODE12 = `<?php
+class X {
+    protected $pluginname = 'local_ubattend';
+    const NAME = 'local_const';
+    public function f() {
+        $comp = 'local_var';
+        echo get_string('k1', $comp);
+        echo get_string('k2', $this->pluginname);
+        echo get_string('k3', self::NAME);
+        echo get_string('k4', X::NAME);
+        echo get_string('k5', $other->pluginname);
+        echo get_string('k6', 'local_literal');
+        echo other_func('k7', $comp);
+    }
+}
+`;
+
+describe('TreeSitterPhpSyntax — 동적 컴포넌트 호출', () => {
+  let syn: TreeSitterPhpSyntax; let f: any;
+  before(async () => { syn = await TreeSitterPhpSyntax.create(); f = syn.facts(CODE12); });
+
+  it('변수·$this 프로퍼티·상수 세 형태를 담는다', () => {
+    const got = f.dynamicStringCalls.map((c: any) => `${c.key}:${c.comp.kind}:${c.comp.name}`);
+    assert.deepEqual(got, ['k1:var:comp', 'k2:prop:pluginname', 'k3:const:NAME', 'k4:const:NAME']);
+  });
+
+  it('$this 아닌 수신자와 get_string 아닌 함수는 담지 않는다', () => {
+    const keys = f.dynamicStringCalls.map((c: any) => c.key);
+    assert.ok(!keys.includes('k5'), '$other->는 이 파일에서 정의를 알 수 없다');
+    assert.ok(!keys.includes('k7'), 'other_func은 대상 아님');
+  });
+
+  it('리터럴 컴포넌트 호출은 기존 stringCalls에만 담긴다', () => {
+    assert.ok(f.stringCalls.some((c: any) => c.key === 'k6' && c.component === 'local_literal'));
+    assert.ok(!f.dynamicStringCalls.some((c: any) => c.key === 'k6'), '두 목록에 겹치면 진단·하이라이트가 두 번 나온다');
+  });
+
+  it('키 위치와 스코프를 담는다', () => {
+    const c = f.dynamicStringCalls[0];
+    assert.equal(CODE12.slice(c.keyIndex, c.keyIndex + c.key.length), 'k1');
+    assert.equal(c.keyLine, 6);
+    assert.ok(c.scope.end > c.scope.start);
+  });
+
+  it('리터럴 출처 세 종류를 뽑는다', () => {
+    assert.deepEqual(f.literalAssignments.map((a: any) => `${a.varName}=${a.value}`), ['comp=local_var']);
+    assert.deepEqual(f.propertyLiterals.map((p: any) => `${p.property}=${p.value}`), ['pluginname=local_ubattend']);
+    assert.deepEqual(f.constLiterals.map((c: any) => `${c.name}=${c.value}`), ['NAME=local_const']);
+  });
+
+  it('생성자 대입은 프로퍼티 출처로 담지 않는다', () => {
+    const code = `<?php\nclass Y { function __construct() { $this->pluginname = 'local_ctor'; } }\n`;
+    assert.deepEqual(syn.facts(code).propertyLiterals, []);
+  });
+});

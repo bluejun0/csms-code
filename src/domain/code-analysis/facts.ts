@@ -15,6 +15,25 @@ export interface TemplateCall {
   refLine: number; refColumn: number; refIndex: number;
   index: number;
 }
+/** `get_string('key', <표현식>)`의 컴포넌트 인자 형태. 리터럴이 아니면 이 참조로 담고
+ *  같은 파일의 리터럴 정의로 한 단계 거슬러 올라가 해석한다. */
+export type ComponentRef =
+  | { kind: 'var'; name: string }
+  | { kind: 'prop'; name: string }
+  | { kind: 'const'; name: string };
+
+export interface DynamicStringCall {
+  key: string; comp: ComponentRef;
+  keyLine: number; keyColumn: number; keyIndex: number;
+  index: number; scope: Scope;
+}
+/** `$x = 'literal'` — RHS 리터럴이 필요해 plainAssignments로는 안 된다. */
+export interface LiteralAssignment { varName: string; value: string; index: number; scope: Scope; }
+/** 프로퍼티 선언 기본값 `public $p = 'literal';` — 생성자 대입은 담지 않는다. */
+export interface PropertyLiteral { property: string; value: string; index: number; }
+/** `const NAME = 'literal';` */
+export interface ConstLiteral { name: string; value: string; index: number; }
+
 /** `$var->method(…)` 호출 — 프로퍼티 접근(member_access_expression)과는 다른 노드다. */
 export interface MethodCall {
   varName: string; method: string;
@@ -43,6 +62,10 @@ export interface DocumentFacts {
   templateCalls: TemplateCall[];
   amdCalls: AmdCall[];
   methodCalls: MethodCall[];
+  dynamicStringCalls: DynamicStringCall[];
+  literalAssignments: LiteralAssignment[];
+  propertyLiterals: PropertyLiteral[];
+  constLiterals: ConstLiteral[];
   tableRefs: TableRef[];
 }
 
@@ -51,5 +74,6 @@ export function emptyFacts(): DocumentFacts {
   return {
     assignments: [], foreachBindings: [], dataArgBindings: [], phpdocVars: [],
     propertyAccesses: [], plainAssignments: [], stringCalls: [], templateCalls: [], amdCalls: [], methodCalls: [], tableRefs: [],
+    dynamicStringCalls: [], literalAssignments: [], propertyLiterals: [], constLiterals: [],
   };
 }

@@ -1,7 +1,7 @@
 import * as path from 'path';
 import Parser from 'web-tree-sitter';
 import {
-  AmdCall, DocumentFacts, MethodCall, emptyFacts, RecordAssignment, ForeachBinding, DataArgBinding, PhpdocVar, PlainAssignment, PropertyAccess, Scope, StringCall, TableRef, TemplateCall,
+  AmdCall, ComponentRef, ConstLiteral, DocumentFacts, DynamicStringCall, LiteralAssignment, MethodCall, PropertyLiteral, emptyFacts, RecordAssignment, ForeachBinding, DataArgBinding, PhpdocVar, PlainAssignment, PropertyAccess, Scope, StringCall, TableRef, TemplateCall,
 } from '../../domain/code-analysis/facts';
 import { PhpSyntax, RawClassMember } from '../../domain/code-analysis/ports/php-syntax';
 
@@ -63,6 +63,28 @@ const Q_STRING_CALL = `
       . (argument (string (string_content) @key))
       . (argument (string (string_content) @component))))`;
 
+// get_string의 컴포넌트 인자가 리터럴이 아닌 세 형태. 표현식 종류가 달라 패턴을 따로 둔다.
+const Q_STRING_CALL_VAR = `
+  (function_call_expression function: (name) @fn arguments: (arguments
+    . (argument (string (string_content) @key)) . (argument (variable_name (name) @comp))))`;
+const Q_STRING_CALL_PROP = `
+  (function_call_expression function: (name) @fn arguments: (arguments
+    . (argument (string (string_content) @key))
+    . (argument (member_access_expression object: (variable_name) @recv name: (name) @comp))))`;
+// `X::NAME`은 name 노드가 둘이라 노드 전체를 잡고 마지막 name을 쓴다(self::NAME은 하나).
+const Q_STRING_CALL_CONST = `
+  (function_call_expression function: (name) @fn arguments: (arguments
+    . (argument (string (string_content) @key)) . (argument (class_constant_access_expression) @cc)))`;
+
+// 리터럴 출처 — 전파의 도착점.
+const Q_LITERAL_ASSIGN = `
+  (assignment_expression left: (variable_name (name) @var) right: (string (string_content) @val))`;
+const Q_PROPERTY_LITERAL = `
+  (property_declaration (property_element (variable_name (name) @prop)
+    (property_initializer (string (string_content) @value))))`;
+const Q_CONST_LITERAL = `
+  (const_declaration (const_element (name) @cname (string (string_content) @cval)))`;
+
 // 첫 인자가 문자열 리터럴인 메서드 호출 — 수신자를 제약하지 않아 $OUTPUT->render_from_template와
 // $PAGE->requires->js_call_amd를 함께 잡는다. 종류는 메서드명으로 가른다.
 // 동적 인자는 string_content가 없어 비매칭이다.
@@ -107,6 +129,12 @@ interface CompiledQueries {
   stringBody: Parser.Query;
   methodCall: Parser.Query;
   dbTableArg: Parser.Query;
+  stringCallVar: Parser.Query;
+  stringCallProp: Parser.Query;
+  stringCallConst: Parser.Query;
+  literalAssign: Parser.Query;
+  propertyLiteral: Parser.Query;
+  constLiteral: Parser.Query;
 }
 
 export class TreeSitterPhpSyntax implements PhpSyntax {
@@ -137,6 +165,12 @@ export class TreeSitterPhpSyntax implements PhpSyntax {
       stringBody: lang.query(Q_STRING_BODY),
       methodCall: lang.query(Q_METHOD_CALL),
       dbTableArg: lang.query(Q_DB_TABLE_ARG),
+      stringCallVar: lang.query(Q_STRING_CALL_VAR),
+      stringCallProp: lang.query(Q_STRING_CALL_PROP),
+      stringCallConst: lang.query(Q_STRING_CALL_CONST),
+      literalAssign: lang.query(Q_LITERAL_ASSIGN),
+      propertyLiteral: lang.query(Q_PROPERTY_LITERAL),
+      constLiteral: lang.query(Q_CONST_LITERAL),
     };
     return new TreeSitterPhpSyntax(parser, queries);
   }
@@ -299,6 +333,51 @@ export class TreeSitterPhpSyntax implements PhpSyntax {
         index: v.startIndex, scope: scopeOf(v) };
     });
 
+    // 컴포넌트가 리터럴이 아닌 get_string — 형태만 담고 해석은 도메인이 한다.
+    const dynamicStringCalls: DynamicStringCall[] = [];
+    const pushDynamic = (key: Parser.SyntaxNode, fn: Parser.SyntaxNode, comp: ComponentRef) => {
+      dynamicStringCalls.push({
+        key: key.text, comp,
+        keyLine: key.startPosition.row, keyColumn: key.startPosition.column, keyIndex: key.startIndex,
+        index: fn.startIndex, scope: scopeOf(fn),
+      });
+    };
+    for (const { caps } of runMatches(this.queries.stringCallVar)) {
+      const fn = caps.get('fn')!;
+      if (fn.text !== 'get_string') continue;
+      pushDynamic(caps.get('key')!, fn, { kind: 'var', name: caps.get('comp')!.text });
+    }
+    for (const { caps } of runMatches(this.queries.stringCallProp)) {
+      const fn = caps.get('fn')!;
+      if (fn.text !== 'get_string') continue;
+      // 다른 객체의 프로퍼티는 이 파일에서 정의를 알 수 없다.
+      if (caps.get('recv')!.text !== '$this') continue;
+      pushDynamic(caps.get('key')!, fn, { kind: 'prop', name: caps.get('comp')!.text });
+    }
+    for (const { caps } of runMatches(this.queries.stringCallConst)) {
+      const fn = caps.get('fn')!;
+      if (fn.text !== 'get_string') continue;
+      // `X::NAME`은 name 노드가 둘(클래스·상수)이라 마지막을 쓴다.
+      const cc = caps.get('cc')!;
+      const names = cc.descendantsOfType('name');
+      const last = names[names.length - 1];
+      if (!last) continue;
+      pushDynamic(caps.get('key')!, fn, { kind: 'const', name: last.text });
+    }
+
+    const literalAssignments: LiteralAssignment[] = runMatches(this.queries.literalAssign).map(({ caps }) => {
+      const v = caps.get('var')!;
+      return { varName: v.text, value: caps.get('val')!.text, index: v.startIndex, scope: scopeOf(v) };
+    });
+    const propertyLiterals: PropertyLiteral[] = runMatches(this.queries.propertyLiteral).map(({ caps }) => {
+      const p = caps.get('prop')!;
+      return { property: p.text, value: caps.get('value')!.text, index: p.startIndex };
+    });
+    const constLiterals: ConstLiteral[] = runMatches(this.queries.constLiteral).map(({ caps }) => {
+      const n = caps.get('cname')!;
+      return { name: n.text, value: caps.get('cval')!.text, index: n.startIndex };
+    });
+
     // $DB->update_record('user', …)의 'user'도 테이블 참조다 — SQL의 {user}와 같은 팩트에 담아
     // 정의 이동·하이라이트가 한 경로를 타게 한다.
     for (const { caps } of runMatches(this.queries.dbTableArg)) {
@@ -324,7 +403,8 @@ export class TreeSitterPhpSyntax implements PhpSyntax {
     // 반환하는 팩트 객체는 안전하다(트리 노드에 대한 참조를 들고 있지 않음). 호출마다 트리를 쌓아두지 않도록 해제한다.
     tree.delete();
 
-    return { assignments, foreachBindings, dataArgBindings, phpdocVars, propertyAccesses, plainAssignments, stringCalls, templateCalls, amdCalls, methodCalls, tableRefs };
+    return { assignments, foreachBindings, dataArgBindings, phpdocVars, propertyAccesses, plainAssignments, stringCalls, templateCalls, amdCalls, methodCalls, tableRefs,
+      dynamicStringCalls, literalAssignments, propertyLiterals, constLiterals };
   }
 }
 
