@@ -58,7 +58,10 @@
 47. `grade/templates/*.mustache`(코어 서브시스템)에서도 위가 동작 — 이전에는 컴포넌트 자체가 식별되지 않았음
 48. `$DB->update_record('local_ubattend_config', $data)`의 테이블 인자에 F12 → install.xml `<TABLE>` 줄로 이동하고 링크 색상이 붙음. `$DB->sql_like('email', …)`처럼 SQL 조각 헬퍼의 첫 인자에는 아무 일도 없어야 함(컬럼 이름이라서)
 49. PHP에서 `$config`를 더블클릭 → `$`까지 함께 선택됨. `$config->courseid`의 `courseid`를 더블클릭하면 `courseid`만. `csmscode.php.selectDollarInWord=false`로 끄면 기본 동작(`config`만)으로 돌아옴 — 창 재시작 없이
-50. 색인 규칙 밖 경로(예: `PLUGIN_DIRS`에 없는 플러그인 타입)의 install.xml·lang·.mustache를 저장 → 아무 일도 일어나지 않음(경고·재색인 없음). 그런 경로는 애초에 색인 대상이 아니다.
+50. `$comp = 'local_ubattend'; get_string('attendance_book', $comp);` 에서 키에 F12·hover가 동작. `protected $pluginname = 'local_ubattend';` 를 쓰는 클래스의 `get_string('k', $this->pluginname)`도 동작
+51. 같은 파일에서 그 변수에 서로 다른 리터럴을 두 번 대입하면 아무 반응도 없음(모호하면 침묵)
+52. 겹따옴표(`$string['k'] = "값";`)와 연결(`'a' . $string['b']`)로 정의된 키에도 hover·F12가 되고 경고가 없음
+53. 색인 규칙 밖 경로(예: `PLUGIN_DIRS`에 없는 플러그인 타입)의 install.xml·lang·.mustache를 저장 → 아무 일도 일어나지 않음(경고·재색인 없음). 그런 경로는 애초에 색인 대상이 아니다.
 
 ## 알려진 제한 (Known limitations)
 
@@ -69,9 +72,9 @@ kill-on-reassign(2026-07-31)으로 추적되지만, 구조 분해(`[$a,$b] = …
 오탐 시 `csmscode.diagnostics.enable`로 진단을 끄거나 해당 변수에 정확한 `@var`
 주석을 달 수 있습니다.
 
-문자열 색인은 lang 파일의 단일 인용부호 관례(`$string['k'] = 'v';`)만 지원합니다 — 연결 연산·쌍따옴표
-항목은 색인되지 않아 해당 키 사용처에 누락 경고가 뜰 수 있고(진단 off로 회피), 한 인자 호출
-(`get_string('ok')`)과 쌍따옴표 호출은 인텔리전스가 침묵합니다.
+문자열 색인은 홑따옴표·겹따옴표 값과 `.` 연결을 모두 읽습니다(연결 안의 비리터럴 조각은 `…`로 표시).
+한 인자 호출(`get_string('ok')`)과 키가 쌍따옴표인 호출은 여전히 침묵합니다. 컴포넌트가 동적인 호출은
+같은 파일의 리터럴로 해석되면 동작하지만, 문자열 보간·연결·함수 반환값에서 온 컴포넌트는 침묵합니다.
 참조 색인은 저장된 파일 기준입니다(미저장 편집은 저장 시 반영). 변수 key/component 호출은
 참조·하이라이팅 모두에서 포착되지 않습니다.
 
