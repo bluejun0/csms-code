@@ -123,7 +123,7 @@ export async function activate(ctx: vscode.ExtensionContext) {
   // 사용처 색인은 첫 참조 요청(또는 버튼 클릭)에 만든다 — 활성화 비용 0. 참조 프로바이더 여섯 개와 명령이 이 핸들 하나를 공유한다.
   const usageHandle: UsageIndexHandle = {
     built: () => usageIndex.isBuilt,
-    // 빌드가 끝나면 렌즈 라벨이 "사용처 보기"에서 개수로 바뀌어야 한다
+    // 빌드가 끝나면 렌즈 라벨이 "사용 찾기"에서 개수로 바뀌어야 한다
     build: cb => usageBuild ?? (usageBuild = usageIndex.buildFromRoot(root, cb).then(() => langLens.refresh())),
   };
   registerShowStringReferences(ctx, findRefs, usageHandle);

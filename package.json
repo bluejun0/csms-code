@@ -32,7 +32,7 @@
         },
         "csmscode.strings.codeLens": {
           "type": "boolean", "default": true,
-          "description": "lang 파일의 $string['key'] 줄 위에 \"사용처 N곳\" 버튼(CodeLens)을 표시합니다. 클릭하면 그 자리에서 사용처 목록이 열립니다. 사용처 색인이 아직 없으면 \"사용처 보기\"로 표시되고 클릭 시 색인을 만듭니다."
+          "description": "lang 파일의 $string['key'] 줄 위에 \"사용 N건\" 버튼(CodeLens)을 표시합니다. 클릭하면 그 자리에서 사용처 목록이 열립니다. 사용처 색인이 아직 없으면 \"사용 찾기\"로 표시되고 클릭 시 색인을 만듭니다."
         },
         "csmscode.templates.highlightResolved": {
           "type": "boolean", "default": true,

@@ -64,8 +64,8 @@
 53. 색인 규칙 밖 경로(예: `PLUGIN_DIRS`에 없는 플러그인 타입)의 install.xml·lang·.mustache를 저장 → 아무 일도 일어나지 않음(경고·재색인 없음). 그런 경로는 애초에 색인 대상이 아니다.
 54. 코드의 `get_string('attendance_book', 'local_ubattend')` 키 위에서 Shift+F12 → 사용처 목록에 lang ko·en 정의가 함께 나옴(첫 요청 시 진행률 알림, 이후 즉시). 사용처가 하나뿐이고 lang 정의도 하나뿐이면 목록 대신 바로 그 사용처로 점프하는 것이 정상(VS Code의 참조 2건 축약). `amd/src` JS의 `getString(...)`·mustache의 `{{#str}}` 키 위에서도 같은 목록
 55. `print_string('k', 'local_ubattend')`에서 완성·F12·hover·하이라이트·누락 키 경고·Shift+F12가 `get_string`과 똑같이 동작. `print_string('k', $this->pluginname)`도 F12·hover
-56. lang/ko/local_ubattend.php를 열면 `$string[...]` 줄마다 위에 "사용처 보기"(색인 전) 버튼이 보임. 클릭 → 색인 진행률 후 그 자리에서 참조 peek이 열리고, 모든 버튼이 "사용처 N곳"으로 바뀜. 사용처 파일에서 호출을 추가·저장하면 개수가 갱신됨. `lang/en/moodle.php`(키 수천 개)를 열어도 스크롤이 버벅이지 않음
-57. 코드 쪽 문자열 hover 맨 아래 "사용처 N곳 보기" 링크 클릭 → 같은 peek. 색인 전에는 "사용처 보기". 템플릿 hover에는 링크가 없음
+56. lang/ko/local_ubattend.php를 열면 `$string[...]` 줄마다 위에 "사용 찾기"(색인 전) 버튼이 보임. 클릭 → 색인 진행률 후 그 자리에서 참조 peek이 열리고, 모든 버튼이 "사용 N건"으로 바뀜. 사용처 파일에서 호출을 추가·저장하면 개수가 갱신됨. `lang/en/moodle.php`(키 수천 개)를 열어도 스크롤이 버벅이지 않음
+57. 코드 쪽 문자열 hover 맨 아래 "사용 N건 보기" 링크 클릭 → 같은 peek. 색인 전에는 "사용 찾기". 템플릿 hover에는 링크가 없음
 58. `csmscode.strings.codeLens=false` → 버튼이 즉시 사라지고 Shift+F12·hover 링크는 그대로. `$string["key"]`(겹따옴표 키) 줄에서도 Shift+F12 동작
 
 ## 알려진 제한 (Known limitations)

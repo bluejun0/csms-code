@@ -8,9 +8,9 @@ class LangStringLens extends vscode.CodeLens {
   constructor(range: vscode.Range, readonly args: ShowStringReferencesArgs) { super(range); }
 }
 
-/** lang 파일의 `$string['key']` 줄마다 "사용처 N곳" 버튼. 클릭하면 그 자리에서 참조 peek이 열린다.
+/** lang 파일의 `$string['key']` 줄마다 "사용 N건" 버튼. 클릭하면 그 자리에서 참조 peek이 열린다.
  *  개수는 보이는 렌즈에만(resolve) 계산한다 — moodle.php처럼 키가 수천 개인 파일에서 전부 세지 않는다.
- *  색인 전에는 "사용처 보기"만 — 파일을 여는 것만으로 워크스페이스 스캔을 시작하지 않는다(클릭이 시작한다). */
+ *  색인 전에는 "사용 찾기"만 — 파일을 여는 것만으로 워크스페이스 스캔을 시작하지 않는다(클릭이 시작한다). */
 export class LangCodeLensProvider implements vscode.CodeLensProvider, vscode.Disposable {
   private changed = new vscode.EventEmitter<void>();
   readonly onDidChangeCodeLenses = this.changed.event;

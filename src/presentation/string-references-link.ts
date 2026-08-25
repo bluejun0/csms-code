@@ -16,7 +16,7 @@ export interface ShowStringReferencesArgs {
 /** CodeLens 라벨. 색인 전(null)에는 개수를 알 수 없으니 버튼만 보여 준다.
  *  0건도 숫자로 적는다 — 비우면 색인이 안 된 것과 구별되지 않는다. */
 export function lensTitle(count: number | null): string {
-  return count === null ? '사용처 보기' : `사용처 ${count}곳`;
+  return count === null ? '사용 찾기' : `사용 ${count}건`;
 }
 
 export function referencesCommandUri(args: ShowStringReferencesArgs): string {
@@ -25,6 +25,6 @@ export function referencesCommandUri(args: ShowStringReferencesArgs): string {
 
 /** hover 본문 아래에 붙는 링크 한 줄. 렌더링에는 MarkdownString.isTrusted가 필요하다. */
 export function referencesLinkMarkdown(args: ShowStringReferencesArgs, count: number | null): string {
-  const text = count === null ? '사용처 보기' : `사용처 ${count}곳 보기`;
+  const text = count === null ? '사용 찾기' : `사용 ${count}건 보기`;
   return `[${text}](${referencesCommandUri(args)})`;
 }
