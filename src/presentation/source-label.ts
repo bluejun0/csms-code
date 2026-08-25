@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { completionLabelParts, hoverMarkdownWithSource, SOURCE_LABEL } from './source-label-text';
+import { SHOW_STRING_REFERENCES_COMMAND } from './string-references-link';
 
 export { SOURCE_LABEL };
 
@@ -16,6 +17,11 @@ export function withSource(item: vscode.CompletionItem, enabled: boolean, labelD
   return item;
 }
 
-export function hoverWithSource(markdown: string): vscode.Hover {
-  return new vscode.Hover(new vscode.MarkdownString(hoverMarkdownWithSource(markdown, sourceLabelEnabled())));
+/** hover 본문 + (선택) 명령 링크 + 출처. 링크가 있을 때만, 그 명령 하나만 신뢰한다 —
+ *  본문에는 lang 값(사용자 텍스트)이 들어가므로 전체를 신뢰하면 그 안의 명령 링크도 실행된다. */
+export function hoverWithSource(markdown: string, commandLink?: string): vscode.Hover {
+  const body = commandLink ? `${markdown}\n\n${commandLink}` : markdown;
+  const md = new vscode.MarkdownString(hoverMarkdownWithSource(body, sourceLabelEnabled()));
+  if (commandLink) md.isTrusted = { enabledCommands: [SHOW_STRING_REFERENCES_COMMAND] };
+  return new vscode.Hover(md);
 }

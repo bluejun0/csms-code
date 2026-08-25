@@ -43,6 +43,10 @@ describe('JS 유즈케이스 (E2E)', () => {
     const r = describe_.run(CODE, CODE.indexOf('attendance_book') + 3)!;
     assert.match(r.markdown, /출석부/);
   });
+  it('hover: 문자열 결과에 canonical 대상이 실린다(사용처 링크용)', () => {
+    const r = describe_.run(CODE, CODE.indexOf('attendance_book') + 3)!;
+    assert.deepEqual(r.target, { component: 'local_ubattend', key: 'attendance_book' });
+  });
   it('hover: 템플릿은 컴포넌트·이름 표시', () => {
     const r = describe_.run(CODE, CODE.indexOf('local_ubattend/setting') + 3)!;
     assert.match(r.markdown, /local_ubattend/);

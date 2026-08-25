@@ -1,6 +1,6 @@
 import { StringRepository } from '../domain/lang-model/ports/string-repository';
 import { TemplateRepository } from '../domain/template-model/ports/template-repository';
-import { normalizeComponent } from '../domain/lang-model/services/component-normalizer';
+import { canonicalComponent } from './canonical-component';
 import { parseModuleRef } from '../domain/shared/module-ref';
 import { scanMustache } from '../domain/code-analysis/mustache-scanner';
 import { RangeItem } from './dto';
@@ -22,7 +22,7 @@ export class ListResolvedMustacheRefs {
   runStrings(text: string): RangeItem[] {
     const out: RangeItem[] = [];
     for (const s of scanMustache(text).stringRefs) {
-      const component = normalizeComponent(s.component, c => this.strings.hasComponent(c));
+      const component = canonicalComponent(this.strings, s.component);
       if (!this.strings.getString(component, s.key)) continue;
       out.push({ line: s.keyLine, column0: s.keyColumn, length: s.key.length });
     }

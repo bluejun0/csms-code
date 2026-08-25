@@ -24,7 +24,7 @@ Moodle 코드는 DB 레코드를 대부분 `stdClass`로 다루기 때문에, �
   파일 변경을 감지해 증분 갱신합니다. 플러그인 타입 → 디렉터리 매핑은 Moodle 자신의 선언
   (`lib/components.json`, 각 플러그인의 `db/subplugins.json`·`.php`)에서 읽으므로 서브플러그인
   (`quizaccess`·`assignsubmission`·`qbank`·`tiny` 등)도 함께 색인됩니다.
-- **언어 문자열 인텔리전스**: `get_string('key', 'component')`뿐 아니라 **컴포넌트가 변수·`$this->프로퍼티`·클래스 상수인 호출도** 같은 파일의 문자열 리터럴까지 거슬러 올라가 해석합니다. 키 자동완성(한국어 값 미리보기)·정의로 이동(ko/en)·hover·누락 키 진단·해석 키 하이라이팅, lang 파일에서 사용처 참조 이동(Shift+F12)
+- **언어 문자열 인텔리전스**: `get_string`·`print_string('key', 'component')`뿐 아니라 **컴포넌트가 변수·`$this->프로퍼티`·클래스 상수인 호출도** 같은 파일의 문자열 리터럴까지 거슬러 올라가 해석합니다. 키 자동완성(한국어 값 미리보기)·정의로 이동(ko/en)·hover·누락 키 진단·해석 키 하이라이팅. 사용처 참조(Shift+F12)는 **코드의 키 위에서도, lang 파일의 `$string` 줄에서도** 동작하고, 단축키를 몰라도 찾아갈 수 있게 lang 파일에는 줄마다 **"사용처 N곳" 버튼**(CodeLens)이, 코드 쪽 hover 아래에는 **"사용처 N곳 보기" 링크**가 붙습니다.
 - **Mustache 템플릿 인텔리전스**: `render_from_template('component/name', …)`에서 `.mustache` 파일로 이동(테마 오버라이드가 있으면 함께 표시)·템플릿 파일에서 사용처 참조 이동(Shift+F12)·해석되는 참조 하이라이팅
 - **전역 인텔리전스**: `global $DB, $CFG, $USER;`로 가져온 전역에 완성·hover·정의 이동을 제공합니다.
   `$DB->`·`$PAGE->`·`$OUTPUT->`은 코어 클래스의 메서드·프로퍼티(매직 프로퍼티 포함),
@@ -62,6 +62,7 @@ Moodle 코드는 DB 레코드를 대부분 `stdClass`로 다루기 때문에, �
 | `csmscode.detectInSubfolders` | `string[]` | `["moodle"]` | Moodle 루트가 워크스페이스 하위 폴더에 있을 때 탐색할 폴더명 목록. `version.php`와 `lib/db/install.xml`이 함께 있을 때만 루트로 인정합니다. |
 | `csmscode.diagnostics.enable` | `boolean` | `true` | DB 레코드 컬럼 오타 진단을 켭니다. `false`로 설정하면 진단이 즉시 사라집니다. |
 | `csmscode.strings.highlightResolved` | `boolean` | `true` | 해석되는 get_string 키를 링크 색상으로 하이라이팅 |
+| `csmscode.strings.codeLens` | `boolean` | `true` | lang 파일의 `$string['key']` 줄 위에 "사용처 N곳" 버튼(CodeLens)을 표시. 색인 전에는 "사용처 보기"로 보이고 클릭이 색인을 만듭니다 |
 | `csmscode.templates.highlightResolved` | `boolean` | `true` | 해석되는 render_from_template 참조를 링크 색상으로 하이라이팅 |
 | `csmscode.amd.highlightResolved` | `boolean` | `true` | 해석되는 AMD 모듈 참조(`js_call_amd`의 첫 인자)를 링크 색상으로 하이라이팅 |
 | `csmscode.tables.highlightResolved` | `boolean` | `true` | SQL 문자열에서 install.xml로 해석되는 테이블 참조(`{table}`)를 링크 색상으로 하이라이팅 |
@@ -88,8 +89,8 @@ npm run package         # esbuild(production) + vsce package → csms-code-<vers
 인텔리전스가 전부 침묵합니다(다른 파일에는 영향이 없습니다). 실측상 vendor·번들 라이브러리 파일에만
 해당합니다.
 
-컴포넌트가 동적인 `get_string` 호출은 정의 이동·hover·하이라이트·진단이 되지만, **lang 파일에서
-Shift+F12로 역참조할 때는 나타나지 않습니다**(사용처 색인이 정규식 기반이라 리터럴 컴포넌트만 봅니다).
+컴포넌트가 동적인 `get_string` 호출은 정의 이동·hover·하이라이트·진단이 되지만, **사용처 목록(Shift+F12)과
+"사용처 N곳" 개수에는 나타나지 않습니다**(사용처 색인이 정규식 기반이라 리터럴 컴포넌트만 봅니다).
 
 전체 목록은 [docs/PHASE2-BACKLOG.md](docs/PHASE2-BACKLOG.md)의 "알려진 제한"을 참고하세요.
 버전별 변경 이력은 [CHANGELOG.md](CHANGELOG.md)에 있습니다.

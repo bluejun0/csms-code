@@ -1,6 +1,7 @@
 import { PhpSyntax } from '../domain/code-analysis/ports/php-syntax';
 import { StringRepository } from '../domain/lang-model/ports/string-repository';
 import { HoverResult } from './dto';
+import { canonicalComponent } from './canonical-component';
 import { findStringCallAt } from './string-call-lookup';
 
 export class DescribeString {
@@ -13,6 +14,7 @@ export class DescribeString {
     const parts = [`**${call.component} / ${call.key}**`];
     if (s.ko) parts.push(`ko: ${s.ko.value}`);
     if (s.en) parts.push(`en: ${s.en.value}`);
-    return { markdown: parts.join('\n\n') };
+    const component = canonicalComponent(this.strings, call.component);
+    return { markdown: parts.join('\n\n'), target: { component, key: call.key } };
   }
 }

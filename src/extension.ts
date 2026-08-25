@@ -28,6 +28,12 @@ import { PhpUsageIndex, isIndexableSourcePath } from './infrastructure/usage/php
 import { FindStringReferences } from './application/find-string-references';
 import { ListResolvedStringCalls } from './application/list-resolved-string-calls';
 import { LangReferenceProvider } from './presentation/providers/lang-reference-provider';
+import { UsageIndexHandle } from './presentation/providers/usage-index-handle';
+import { StringReferenceProvider } from './presentation/providers/string-reference-provider';
+import { LangCodeLensProvider } from './presentation/providers/lang-code-lens-provider';
+import { registerShowStringReferences } from './presentation/show-string-references';
+import { LocateStringTarget } from './application/locate-string-target';
+import { parseLangFile } from './infrastructure/lang/lang-file-parser';
 import { registerResolvedHighlight } from './presentation/resolved-highlight';
 import { registerStatusBar } from './presentation/status-bar';
 import { registerPhpWordPattern } from './presentation/register-php-word-pattern';
@@ -106,7 +112,21 @@ export async function activate(ctx: vscode.ExtensionContext) {
 
   const usageIndex = new PhpUsageIndex(c => strings.hasComponent(c));
   let usageBuild: Promise<void> | undefined;
-  const findRefs = new FindStringReferences(usageIndex);
+  const findRefs = new FindStringReferences(usageIndex, strings);
+  const locate = new LocateStringTarget(syntax, strings);
+  // 버튼(CodeLens)·링크(hover)는 개수만 묻는다 — 색인을 깨우는 쪽은 명령과 참조 프로바이더다
+  const refCounter = { built: () => usageIndex.isBuilt, count: (c: string, k: string) => findRefs.run(c, k).length };
+  const parseLangSafe = (text: string) => { try { return parseLangFile(text); } catch { return []; } };
+  const langLens = new LangCodeLensProvider(parseLangSafe, file => componentOfLangFile(root, file), refCounter,
+    () => vscode.workspace.getConfiguration('csmscode').get<boolean>('strings.codeLens', true));
+  ctx.subscriptions.push(langLens);
+  // 사용처 색인은 첫 참조 요청(또는 버튼 클릭)에 만든다 — 활성화 비용 0. 참조 프로바이더 여섯 개와 명령이 이 핸들 하나를 공유한다.
+  const usageHandle: UsageIndexHandle = {
+    built: () => usageIndex.isBuilt,
+    // 빌드가 끝나면 렌즈 라벨이 "사용처 보기"에서 개수로 바뀌어야 한다
+    build: cb => usageBuild ?? (usageBuild = usageIndex.buildFromRoot(root, cb).then(() => langLens.refresh())),
+  };
+  registerShowStringReferences(ctx, findRefs, usageHandle);
   const listResolved = new ListResolvedStringCalls(syntax, strings);
 
   const resolveTpl = new ResolveTemplateDefinition(syntax, templates);
@@ -158,22 +178,22 @@ export async function activate(ctx: vscode.ExtensionContext) {
     vscode.languages.registerCodeActionsProvider(php, new SuggestionQuickFixProvider(), { providedCodeActionKinds: [vscode.CodeActionKind.QuickFix] }),
     vscode.languages.registerCompletionItemProvider(php, new StringKeyCompletionProvider(completeStr), "'", '"'),
     vscode.languages.registerDefinitionProvider(php, new StringDefinitionProvider(resolveStr)),
-    vscode.languages.registerHoverProvider(php, new StringHoverProvider(describeStr)),
+    vscode.languages.registerHoverProvider(php, new StringHoverProvider(describeStr, refCounter)),
     vscode.languages.registerReferenceProvider(
       { language: 'php', scheme: 'file', pattern: '**/lang/*/*.php' },
-      new LangReferenceProvider(findRefs, {
-        built: () => usageIndex.isBuilt,
-        build: cb => usageBuild ?? (usageBuild = usageIndex.buildFromRoot(root, cb)),
-      }, file => componentOfLangFile(root, file))),
+      new LangReferenceProvider(findRefs, usageHandle, file => componentOfLangFile(root, file))),
+    // 코드 쪽에서도 Shift+F12 — F12가 되는 자리에서 참조만 안 되면 사용자는 버그로 읽는다
+    vscode.languages.registerReferenceProvider(php, new StringReferenceProvider((t, at) => locate.php(t, at), findRefs, usageHandle)),
+    vscode.languages.registerReferenceProvider(js, new StringReferenceProvider((t, at) => locate.js(t, at), findRefs, usageHandle)),
+    vscode.languages.registerReferenceProvider(mustacheSelector, new StringReferenceProvider((t, at) => locate.mustache(t, at), findRefs, usageHandle)),
+    vscode.languages.registerCodeLensProvider({ language: 'php', scheme: 'file', pattern: '**/lang/*/*.php' }, langLens),
+    vscode.workspace.onDidChangeConfiguration(e => { if (e.affectsConfiguration('csmscode.strings.codeLens')) langLens.refresh(); }),
     vscode.languages.registerDefinitionProvider(php, new TemplateDefinitionProvider(resolveTpl)),
     vscode.languages.registerReferenceProvider(
       { scheme: 'file', pattern: '**/templates/**/*.mustache' },
-      new TemplateReferenceProvider(findTplRefs, {
-        built: () => usageIndex.isBuilt,
-        build: cb => usageBuild ?? (usageBuild = usageIndex.buildFromRoot(root, cb)),
-      }, file => componentOfTemplateFile(root, file))),
+      new TemplateReferenceProvider(findTplRefs, usageHandle, file => componentOfTemplateFile(root, file))),
     vscode.languages.registerDefinitionProvider(mustacheSelector, new MustacheDefinitionProvider(resolveMustache)),
-    vscode.languages.registerHoverProvider(mustacheSelector, new MustacheHoverProvider(describeMustache)),
+    vscode.languages.registerHoverProvider(mustacheSelector, new MustacheHoverProvider(describeMustache, refCounter)),
     vscode.languages.registerDefinitionProvider(php, new TableDefinitionProvider(resolveTbl)),
     vscode.languages.registerCompletionItemProvider(php, new GlobalMemberCompletionProvider(completeGlobal, globalsHandle), '>'),
     vscode.languages.registerHoverProvider(php, new GlobalHoverProvider(describeGlobal, globalsHandle)),
@@ -181,12 +201,9 @@ export async function activate(ctx: vscode.ExtensionContext) {
     vscode.languages.registerDefinitionProvider(php, new AmdDefinitionProvider(resolveAmd)),
     vscode.languages.registerReferenceProvider(
       { scheme: 'file', pattern: '**/amd/src/**/*.js' },
-      new AmdReferenceProvider(findAmdRefs, {
-        built: () => usageIndex.isBuilt,
-        build: cb => usageBuild ?? (usageBuild = usageIndex.buildFromRoot(root, cb)),
-      }, file => componentOfAmdFile(root, file))),
+      new AmdReferenceProvider(findAmdRefs, usageHandle, file => componentOfAmdFile(root, file))),
     vscode.languages.registerDefinitionProvider(js, new JsDefinitionProvider(resolveJs)),
-    vscode.languages.registerHoverProvider(js, new JsHoverProvider(describeJs)),
+    vscode.languages.registerHoverProvider(js, new JsHoverProvider(describeJs, refCounter)),
   );
   const diagnostics = registerDiagnostics(ctx, validate, validateStr);
   const highlight = registerResolvedHighlight(ctx, [
@@ -335,6 +352,7 @@ export async function activate(ctx: vscode.ExtensionContext) {
   ctx.subscriptions.push(vscode.workspace.onDidSaveTextDocument(d => {
     if (d.uri.scheme === 'file' && usageIndex.isBuilt && isIndexableSourcePath(root, d.uri.fsPath)) {
       usageIndex.updateFileText(d.uri.fsPath, d.getText());
+      langLens.refresh(); // 개수가 달라졌을 수 있다
     }
   }));
 
@@ -342,6 +360,7 @@ export async function activate(ctx: vscode.ExtensionContext) {
   ctx.subscriptions.push(vscode.workspace.onDidDeleteFiles(e => {
     if (!usageIndex.isBuilt) return;
     for (const f of e.files) usageIndex.updateFileText(f.fsPath, '');
+    langLens.refresh();
   }));
 }
 export function deactivate() { /* noop */ }

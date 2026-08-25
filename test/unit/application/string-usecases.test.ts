@@ -44,6 +44,11 @@ describe('언어 문자열 유즈케이스 (E2E)', () => {
     assert.match(r.markdown, /출석부/);
     assert.match(r.markdown, /Attendance book/);
   });
+  it('hover 결과에 canonical 대상이 실린다 — 사용처 링크가 이 좌표로 색인을 조회한다', async () => {
+    const syn = await TreeSitterPhpSyntax.create();
+    const r = new DescribeString(syn, store).run(CODE, CODE.indexOf('attendance_book') + 3)!;
+    assert.deepEqual(r.target, { component: 'local_ubattend', key: 'attendance_book' });
+  });
   it('진단: 누락 키만 경고 + 가장 가까운 키 제안, 미색인 컴포넌트는 침묵', async () => {
     const syn = await TreeSitterPhpSyntax.create();
     const diags = new ValidateStringKeys(syn, store).run(CODE);
@@ -52,6 +57,12 @@ describe('언어 문자열 유즈케이스 (E2E)', () => {
     assert.equal(diags[0].suggestion, 'attendance_book');
     assert.equal(diags[0].kind, 'string', '문자열 진단은 string 종류여야 한다');
     assert.equal(diags[0].length, 'attendance_bok'.length);
+  });
+  it('진단: print_string의 누락 키도 경고한다', async () => {
+    const syn = await TreeSitterPhpSyntax.create();
+    const diags = new ValidateStringKeys(syn, store).run("<?php\nprint_string('attendance_bok', 'local_ubattend');\n");
+    assert.equal(diags.length, 1);
+    assert.equal(diags[0].suggestion, 'attendance_book');
   });
   it('hover/정의: 커서가 key 밖(component 위)이면 null/[]', async () => {
     const syn = await TreeSitterPhpSyntax.create();
@@ -69,7 +80,7 @@ describe('참조·하이라이트 유즈케이스', () => {
   });
   it('FindStringReferences: 포트 위임', () => {
     const fake = { referencesOf: (c: string, k: string) => [{ uri: `${c}/${k}`, line: 0, column: 0 }] };
-    assert.equal(new FindStringReferences(fake).run('local_ubattend', 'x')[0].uri, 'local_ubattend/x');
+    assert.equal(new FindStringReferences(fake, store).run('local_ubattend', 'x')[0].uri, 'local_ubattend/x');
   });
 });
 

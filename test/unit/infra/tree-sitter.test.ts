@@ -502,3 +502,29 @@ describe('TreeSitterPhpSyntax — 동적 컴포넌트 호출', () => {
     assert.deepEqual(syn.facts(code).propertyLiterals, []);
   });
 });
+
+describe('TreeSitterPhpSyntax — print_string', () => {
+  const CODE = `<?php
+class x {
+  public $pluginname = 'local_ubattend';
+  function f() {
+    print_string('attendance_book', 'local_ubattend');
+    print_string('attendance_rate', $this->pluginname);
+  }
+}
+`;
+  let f: any;
+  before(async () => { f = (await TreeSitterPhpSyntax.create()).facts(CODE); });
+
+  it('리터럴 컴포넌트 print_string은 stringCalls에 담긴다', () => {
+    const c = f.stringCalls.find((x: any) => x.key === 'attendance_book');
+    assert.ok(c, 'print_string 호출이 잡혀야 한다');
+    assert.equal(c.component, 'local_ubattend');
+    assert.equal(c.keyIndex, CODE.indexOf('attendance_book'));
+  });
+  it('동적 컴포넌트 print_string은 dynamicStringCalls에 담긴다', () => {
+    const c = f.dynamicStringCalls.find((x: any) => x.key === 'attendance_rate');
+    assert.ok(c, '동적 print_string 호출이 잡혀야 한다');
+    assert.deepEqual(c.comp, { kind: 'prop', name: 'pluginname' });
+  });
+});

@@ -12,6 +12,11 @@ describe('langKeyAt', () => {
     assert.equal(langKeyAt(LINE, LINE.indexOf('출석부')), null));
   it('$string 패턴 없는 줄 → null', () =>
     assert.equal(langKeyAt('echo $x;', 3), null));
+  it('겹따옴표 키($string["key"])도 인식', () => {
+    const line = '$string["attendance_book"] = "출석부";';
+    assert.equal(langKeyAt(line, line.indexOf('attendance_book') + 3), 'attendance_book');
+    assert.equal(langKeyAt(line, line.indexOf('출석부')), null);
+  });
   it("키가 '$string[' 자신과 충돌('string')해도 정확", () => {
     const line = "$string['string'] = 'x';";
     assert.equal(langKeyAt(line, line.indexOf("'string'") + 3), 'string');

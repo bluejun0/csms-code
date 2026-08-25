@@ -63,6 +63,10 @@ describe('Mustache 유즈케이스 (E2E)', () => {
     assert.match(t!.markdown, /2곳/, '오버라이드가 있으면 개수를 알려준다');
   });
 
+  it('hover: 문자열 결과에 canonical 대상이 실린다(사용처 링크용), 템플릿 결과에는 없다', () => {
+    assert.deepEqual(describe_.run(CODE, at('attendance_book'))!.target, { component: 'local_ubattend', key: 'attendance_book' });
+    assert.equal(describe_.run(CODE, at('local_ubattend/setting'))!.target, undefined);
+  });
   it('하이라이트는 템플릿과 문자열을 따로, 해석되는 것만 준다', () => {
     const t = list.runTemplates(CODE);
     assert.deepEqual(t.map(r => r.length), ['local_ubattend/setting'.length]);

@@ -60,6 +60,14 @@ describe('PhpUsageIndex', () => {
     assert.equal(refs.length, 1);
     assert.equal(refs[0].column, 17);
   });
+  it("print_string도 사용처로 잡힌다(컬럼은 키 시작)", () => {
+    const idx2 = new PhpUsageIndex(() => false);
+    idx2.updateFileText('/p.php', "<?php\nprint_string('attendance_book', 'local_ubattend');\n");
+    const refs = idx2.referencesOf('local_ubattend', 'attendance_book');
+    assert.equal(refs.length, 1);
+    assert.equal(refs[0].line, 1);
+    assert.equal(refs[0].column, 14); // "print_string('" 다음 = 키 시작
+  });
   it("lang 디렉터리는 스캔에서 제외 — 값/노트 속 get_string 유령 매치 방지", () => {
     assert.equal(idx.referencesOf('local_ubattend', 'ghost_key').length, 0);
   });

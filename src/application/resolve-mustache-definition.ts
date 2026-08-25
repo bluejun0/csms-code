@@ -1,6 +1,7 @@
 import { StringRepository } from '../domain/lang-model/ports/string-repository';
 import { TemplateRepository } from '../domain/template-model/ports/template-repository';
-import { normalizeComponent } from '../domain/lang-model/services/component-normalizer';
+import { canonicalComponent } from './canonical-component';
+import { itemWithKeyAt } from '../domain/code-analysis/key-at';
 import { parseModuleRef } from '../domain/shared/module-ref';
 import { scanMustache } from '../domain/code-analysis/mustache-scanner';
 import { DefinitionResult } from './dto';
@@ -17,9 +18,9 @@ export class ResolveMustacheDefinition {
       if (!ref) return [];
       return this.templates.locationsOf(ref.component, ref.name).map(location => ({ location }));
     }
-    const s = refs.stringRefs.find(r => r.keyIndex <= atIndex && atIndex <= r.keyIndex + r.key.length);
+    const s = itemWithKeyAt(refs.stringRefs, atIndex);
     if (!s) return [];
-    const component = normalizeComponent(s.component, c => this.strings.hasComponent(c));
+    const component = canonicalComponent(this.strings, s.component);
     const found = this.strings.getString(component, s.key);
     if (!found) return [];
     const out: DefinitionResult[] = [];

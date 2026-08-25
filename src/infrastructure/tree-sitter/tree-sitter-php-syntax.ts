@@ -4,6 +4,7 @@ import {
   AmdCall, ComponentRef, ConstLiteral, DocumentFacts, DynamicStringCall, LiteralAssignment, MethodCall, PropertyLiteral, emptyFacts, RecordAssignment, ForeachBinding, DataArgBinding, PhpdocVar, PlainAssignment, PropertyAccess, Scope, StringCall, TableRef, TemplateCall,
 } from '../../domain/code-analysis/facts';
 import { PhpSyntax, RawClassMember } from '../../domain/code-analysis/ports/php-syntax';
+import { isStringFunction } from '../../domain/code-analysis/string-functions';
 
 const SCOPE_TYPES = new Set([
   'function_definition', 'method_declaration',
@@ -54,7 +55,7 @@ const DATAARG_WRITE_METHODS = new Set(['insert_record', 'update_record']);
 const Q_PLAIN_ASSIGN = `
   (assignment_expression left: (variable_name (name) @var))`;
 
-// get_string('key','component') 리터럴 호출 — 함수명 필터는 캡처 후 코드에서 한다(술어 미지원).
+// get_string·print_string('key','component') 리터럴 호출 — 함수명 필터는 캡처 후 코드에서 한다(술어 미지원).
 // 변수 키/컴포넌트·보간 문자열은 string_content 캡처가 없어 매칭 자체가 안 된다(자연 침묵).
 const Q_STRING_CALL = `
   (function_call_expression
@@ -63,7 +64,7 @@ const Q_STRING_CALL = `
       . (argument (string (string_content) @key))
       . (argument (string (string_content) @component))))`;
 
-// get_string의 컴포넌트 인자가 리터럴이 아닌 세 형태. 표현식 종류가 달라 패턴을 따로 둔다.
+// 문자열 함수의 컴포넌트 인자가 리터럴이 아닌 세 형태. 표현식 종류가 달라 패턴을 따로 둔다.
 const Q_STRING_CALL_VAR = `
   (function_call_expression function: (name) @fn arguments: (arguments
     . (argument (string (string_content) @key)) . (argument (variable_name (name) @comp))))`;
@@ -273,7 +274,7 @@ export class TreeSitterPhpSyntax implements PhpSyntax {
     const stringCalls: StringCall[] = [];
     for (const { caps } of runMatches(this.queries.stringCall)) {
       const fn = caps.get('fn')!;
-      if (fn.text !== 'get_string') continue;
+      if (!isStringFunction(fn.text)) continue;
       const key = caps.get('key')!, component = caps.get('component')!;
       stringCalls.push({
         key: key.text, component: component.text,
@@ -333,7 +334,7 @@ export class TreeSitterPhpSyntax implements PhpSyntax {
         index: v.startIndex, scope: scopeOf(v) };
     });
 
-    // 컴포넌트가 리터럴이 아닌 get_string — 형태만 담고 해석은 도메인이 한다.
+    // 컴포넌트가 리터럴이 아닌 문자열 호출 — 형태만 담고 해석은 도메인이 한다.
     const dynamicStringCalls: DynamicStringCall[] = [];
     const pushDynamic = (key: Parser.SyntaxNode, fn: Parser.SyntaxNode, comp: ComponentRef) => {
       dynamicStringCalls.push({
@@ -344,19 +345,19 @@ export class TreeSitterPhpSyntax implements PhpSyntax {
     };
     for (const { caps } of runMatches(this.queries.stringCallVar)) {
       const fn = caps.get('fn')!;
-      if (fn.text !== 'get_string') continue;
+      if (!isStringFunction(fn.text)) continue;
       pushDynamic(caps.get('key')!, fn, { kind: 'var', name: caps.get('comp')!.text });
     }
     for (const { caps } of runMatches(this.queries.stringCallProp)) {
       const fn = caps.get('fn')!;
-      if (fn.text !== 'get_string') continue;
+      if (!isStringFunction(fn.text)) continue;
       // 다른 객체의 프로퍼티는 이 파일에서 정의를 알 수 없다.
       if (caps.get('recv')!.text !== '$this') continue;
       pushDynamic(caps.get('key')!, fn, { kind: 'prop', name: caps.get('comp')!.text });
     }
     for (const { caps } of runMatches(this.queries.stringCallConst)) {
       const fn = caps.get('fn')!;
-      if (fn.text !== 'get_string') continue;
+      if (!isStringFunction(fn.text)) continue;
       // `X::NAME`은 name 노드가 둘(클래스·상수)이라 마지막을 쓴다.
       const cc = caps.get('cc')!;
       const names = cc.descendantsOfType('name');
