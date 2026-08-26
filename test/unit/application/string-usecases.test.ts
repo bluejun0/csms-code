@@ -47,7 +47,7 @@ describe('언어 문자열 유즈케이스 (E2E)', () => {
   it('hover 결과에 canonical 대상이 실린다 — 사용처 링크가 이 좌표로 색인을 조회한다', async () => {
     const syn = await TreeSitterPhpSyntax.create();
     const r = new DescribeString(syn, store).run(CODE, CODE.indexOf('attendance_book') + 3)!;
-    assert.deepEqual(r.target, { component: 'local_ubattend', key: 'attendance_book' });
+    assert.deepEqual(r.target, { kind: 'string', component: 'local_ubattend', key: 'attendance_book' });
   });
   it('진단: 누락 키만 경고 + 가장 가까운 키 제안, 미색인 컴포넌트는 침묵', async () => {
     const syn = await TreeSitterPhpSyntax.create();
