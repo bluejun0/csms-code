@@ -561,3 +561,38 @@ $h = new help_icon('hkey', 'local_ubattend');
     assert.equal(comp('hkey'), 'local_ubattend');
   });
 });
+
+describe('TreeSitterPhpSyntax — 설정 호출', () => {
+  const CODE = `<?php
+class y {
+  public $pluginname = 'local_ubattend';
+  function f() {
+    $a = get_config('local_ubattend', 'apikey');
+    set_config('mode', 1, 'local_ubattend');
+    set_config('arr', ['a' => 1], 'local_ubattend');
+    $b = get_config($this->pluginname, 'dyn');
+    set_config('dyn2', $b, $this->pluginname);
+    $c = get_config('local_ubattend');
+    $d = get_config('local_ubattend', $k);
+    echo get_string('apikey', 'local_ubattend');
+  }
+}
+`;
+  let f: any;
+  before(async () => { f = (await TreeSitterPhpSyntax.create()).facts(CODE); });
+
+  it('get_config(plugin, key) → get, set_config(key, value, plugin) → set(값이 배열이어도)', () => {
+    assert.deepEqual(f.configCalls.map((c: any) => `${c.kind}:${c.plugin}/${c.key}`).sort(),
+      ['get:local_ubattend/apikey', 'set:local_ubattend/arr', 'set:local_ubattend/mode']);
+    const mode = f.configCalls.find((c: any) => c.key === 'mode');
+    assert.equal(mode.keyIndex, CODE.indexOf("'mode'") + 1);
+  });
+  it('플러그인이 $this->프로퍼티면 dynamicConfigCalls', () => {
+    assert.deepEqual(f.dynamicConfigCalls.map((c: any) => `${c.kind}:${c.key}:${c.comp.kind}:${c.comp.name}`).sort(),
+      ['get:dyn:prop:pluginname', 'set:dyn2:prop:pluginname']);
+  });
+  it('한 인자·동적 키는 팩트 없음, get_string은 설정 호출이 아니다', () => {
+    assert.ok(!f.configCalls.some((c: any) => c.key === 'local_ubattend'));
+    assert.equal(f.stringCalls.filter((c: any) => c.key === 'apikey').length, 1, 'get_string만');
+  });
+});
