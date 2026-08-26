@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { completionLabelParts, hoverMarkdownWithSource, SOURCE_LABEL } from './source-label-text';
-import { SHOW_STRING_REFERENCES_COMMAND } from './string-references-link';
+import { SHOW_CONFIG_REFERENCES_COMMAND, SHOW_STRING_REFERENCES_COMMAND } from './references-link';
 
 export { SOURCE_LABEL };
 
@@ -22,6 +22,6 @@ export function withSource(item: vscode.CompletionItem, enabled: boolean, labelD
 export function hoverWithSource(markdown: string, commandLink?: string): vscode.Hover {
   const body = commandLink ? `${markdown}\n\n${commandLink}` : markdown;
   const md = new vscode.MarkdownString(hoverMarkdownWithSource(body, sourceLabelEnabled()));
-  if (commandLink) md.isTrusted = { enabledCommands: [SHOW_STRING_REFERENCES_COMMAND] };
+  if (commandLink) md.isTrusted = { enabledCommands: [SHOW_STRING_REFERENCES_COMMAND, SHOW_CONFIG_REFERENCES_COMMAND] };
   return new vscode.Hover(md);
 }

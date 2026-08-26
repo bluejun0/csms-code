@@ -15,6 +15,6 @@ export class DescribeString {
     if (s.ko) parts.push(`ko: ${s.ko.value}`);
     if (s.en) parts.push(`en: ${s.en.value}`);
     const component = canonicalComponent(this.strings, call.component);
-    return { markdown: parts.join('\n\n'), target: { component, key: call.key } };
+    return { markdown: parts.join('\n\n'), target: { kind: 'string', component, key: call.key } };
   }
 }

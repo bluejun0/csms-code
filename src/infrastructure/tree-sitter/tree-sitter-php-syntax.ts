@@ -1,10 +1,11 @@
 import * as path from 'path';
 import Parser from 'web-tree-sitter';
 import {
-  AmdCall, ComponentRef, ConstLiteral, DocumentFacts, DynamicStringCall, LiteralAssignment, MethodCall, PropertyLiteral, emptyFacts, RecordAssignment, ForeachBinding, DataArgBinding, PhpdocVar, PlainAssignment, PropertyAccess, Scope, StringCall, TableRef, TemplateCall,
+  AmdCall, ComponentRef, ConfigCall, ConstLiteral, DocumentFacts, DynamicConfigCall, DynamicStringCall, LiteralAssignment, MethodCall, PropertyLiteral, emptyFacts, RecordAssignment, ForeachBinding, DataArgBinding, PhpdocVar, PlainAssignment, PropertyAccess, Scope, StringCall, TableRef, TemplateCall,
 } from '../../domain/code-analysis/facts';
 import { PhpSyntax, RawClassMember } from '../../domain/code-analysis/ports/php-syntax';
 import { StringCallForm, stringFunctionForm, stringClassForm, effectiveComponent } from '../../domain/code-analysis/string-functions';
+import { configFunctionKind } from '../../domain/code-analysis/config-functions';
 
 const SCOPE_TYPES = new Set([
   'function_definition', 'method_declaration',
@@ -94,6 +95,22 @@ const Q_STRING_CALL_CONST = `
   (function_call_expression function: (name) @fn arguments: (arguments
     . (argument (string (string_content) @key)) . (argument (class_constant_access_expression) @cc)))`;
 
+// get_config('plugin', 'key') / set_config('key', value, 'plugin') — 플러그인이 리터럴. 함수명 필터는 캡처 후 코드에서 한다.
+const Q_CONFIG_GET = `
+  (function_call_expression function: (name) @fn arguments: (arguments
+    . (argument (string (string_content) @plugin)) . (argument (string (string_content) @key))))`;
+const Q_CONFIG_SET = `
+  (function_call_expression function: (name) @fn arguments: (arguments
+    . (argument (string (string_content) @key)) . (argument) . (argument (string (string_content) @plugin))))`;
+// 플러그인 인자가 변수·$this->프로퍼티·클래스 상수 — 문자열의 동적 컴포넌트와 같은 세 형태
+const DYN_ARG = `[(variable_name (name) @var) (member_access_expression object: (variable_name) @recv name: (name) @prop) (class_constant_access_expression) @cc]`;
+const Q_CONFIG_GET_DYN = `
+  (function_call_expression function: (name) @fn arguments: (arguments
+    . (argument ${DYN_ARG}) . (argument (string (string_content) @key))))`;
+const Q_CONFIG_SET_DYN = `
+  (function_call_expression function: (name) @fn arguments: (arguments
+    . (argument (string (string_content) @key)) . (argument) . (argument ${DYN_ARG})))`;
+
 // 리터럴 출처 — 전파의 도착점.
 const Q_LITERAL_ASSIGN = `
   (assignment_expression left: (variable_name (name) @var) right: (string (string_content) @val))`;
@@ -153,6 +170,10 @@ interface CompiledQueries {
   stringCallVar: Parser.Query;
   stringCallProp: Parser.Query;
   stringCallConst: Parser.Query;
+  configGet: Parser.Query;
+  configSet: Parser.Query;
+  configGetDyn: Parser.Query;
+  configSetDyn: Parser.Query;
   literalAssign: Parser.Query;
   propertyLiteral: Parser.Query;
   constLiteral: Parser.Query;
@@ -192,6 +213,10 @@ export class TreeSitterPhpSyntax implements PhpSyntax {
       stringCallVar: lang.query(Q_STRING_CALL_VAR),
       stringCallProp: lang.query(Q_STRING_CALL_PROP),
       stringCallConst: lang.query(Q_STRING_CALL_CONST),
+      configGet: lang.query(Q_CONFIG_GET),
+      configSet: lang.query(Q_CONFIG_SET),
+      configGetDyn: lang.query(Q_CONFIG_GET_DYN),
+      configSetDyn: lang.query(Q_CONFIG_SET_DYN),
       literalAssign: lang.query(Q_LITERAL_ASSIGN),
       propertyLiteral: lang.query(Q_PROPERTY_LITERAL),
       constLiteral: lang.query(Q_CONST_LITERAL),
@@ -323,6 +348,39 @@ export class TreeSitterPhpSyntax implements PhpSyntax {
       if (form) pushCall(form, cls, caps.get('key')!, '');
     }
 
+    // 설정 호출 — 리터럴 플러그인은 그대로, 동적 플러그인은 형태만 담고 해석은 도메인이 한다.
+    const configCalls: ConfigCall[] = [];
+    const dynamicConfigCalls: DynamicConfigCall[] = [];
+    const configLiteral = (q: Parser.Query, kind: 'get' | 'set') => {
+      for (const { caps } of runMatches(q)) {
+        const fn = caps.get('fn')!;
+        if (configFunctionKind(fn.text) !== kind) continue;
+        const key = caps.get('key')!;
+        configCalls.push({
+          plugin: caps.get('plugin')!.text, key: key.text, kind,
+          keyLine: key.startPosition.row, keyColumn: key.startPosition.column, keyIndex: key.startIndex, index: fn.startIndex,
+        });
+      }
+    };
+    configLiteral(this.queries.configGet, 'get');
+    configLiteral(this.queries.configSet, 'set');
+    const configDynamic = (q: Parser.Query, kind: 'get' | 'set') => {
+      for (const { caps } of runMatches(q)) {
+        const fn = caps.get('fn')!;
+        if (configFunctionKind(fn.text) !== kind) continue;
+        const comp = componentRefOf(caps);
+        if (!comp) continue;
+        const key = caps.get('key')!;
+        dynamicConfigCalls.push({
+          key: key.text, comp, kind,
+          keyLine: key.startPosition.row, keyColumn: key.startPosition.column, keyIndex: key.startIndex,
+          index: fn.startIndex, scope: scopeOf(fn),
+        });
+      }
+    };
+    configDynamic(this.queries.configGetDyn, 'get');
+    configDynamic(this.queries.configSetDyn, 'set');
+
     const templateCalls: TemplateCall[] = [];
     const amdCalls: AmdCall[] = [];
     for (const { caps } of runMatches(this.queries.templateCall)) {
@@ -445,8 +503,24 @@ export class TreeSitterPhpSyntax implements PhpSyntax {
     tree.delete();
 
     return { assignments, foreachBindings, dataArgBindings, phpdocVars, propertyAccesses, plainAssignments, stringCalls, templateCalls, amdCalls, methodCalls, tableRefs,
-      dynamicStringCalls, literalAssignments, propertyLiterals, constLiterals };
+      dynamicStringCalls, literalAssignments, propertyLiterals, constLiterals, configCalls, dynamicConfigCalls };
   }
+}
+
+/** 동적 인자 캡처를 컴포넌트 참조로. 다른 객체의 프로퍼티는 이 파일에서 정의를 알 수 없어 null.
+ *  `X::NAME`은 name 노드가 둘(클래스·상수)이라 마지막을 쓴다. */
+function componentRefOf(caps: Map<string, Parser.SyntaxNode>): ComponentRef | null {
+  const v = caps.get('var');
+  if (v) return { kind: 'var', name: v.text };
+  const p = caps.get('prop');
+  if (p) return caps.get('recv')!.text === '$this' ? { kind: 'prop', name: p.text } : null;
+  const cc = caps.get('cc');
+  if (cc) {
+    const names = cc.descendantsOfType('name');
+    const last = names[names.length - 1];
+    return last ? { kind: 'const', name: last.text } : null;
+  }
+  return null;
 }
 
 /** @var Type $x — comment 노드 텍스트에 정규식(트리시터가 phpdoc 내부를 파싱 안 함) */

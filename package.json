@@ -2,7 +2,7 @@
   "name": "csms-code",
   "displayName": "CSMS Code",
   "description": "CSMS/Moodle 개발 지원 — DB 컬럼·언어 문자열·템플릿·AMD 모듈·SQL 테이블·전역 인텔리전스",
-  "version": "0.16.0",
+  "version": "0.17.0",
   "publisher": "bluesoft",
   "license": "MIT",
   "engines": { "vscode": "^1.85.0" },
@@ -49,6 +49,14 @@
         "csmscode.amd.highlightResolved": {
           "type": "boolean", "default": true,
           "description": "해석되는 AMD 모듈 참조(js_call_amd의 첫 인자)를 링크 색상(textLink.foreground)으로 하이라이팅합니다."
+        },
+        "csmscode.config.highlightResolved": {
+          "type": "boolean", "default": true,
+          "description": "settings.php 선언으로 해석되는 get_config·set_config 키를 링크 색상(textLink.foreground)으로 하이라이팅합니다."
+        },
+        "csmscode.config.codeLens": {
+          "type": "boolean", "default": true,
+          "description": "settings.php의 admin_setting 선언 줄 위에 \"사용 N건\" 버튼(CodeLens)을 표시합니다. 클릭하면 그 자리에서 get_config·set_config 사용처 목록이 열립니다."
         },
         "csmscode.tables.highlightResolved": {
           "type": "boolean", "default": true,

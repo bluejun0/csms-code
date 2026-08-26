@@ -4,6 +4,8 @@ import { SourceLocation } from '../../domain/shared/value-objects';
 import { StringUsageRepository } from '../../domain/lang-model/ports/string-usage-repository';
 import { TemplateUsageRepository } from '../../domain/template-model/ports/template-usage-repository';
 import { AmdUsageRepository } from '../../domain/amd-model/ports/amd-usage-repository';
+import { ConfigUsageRepository } from '../../domain/moodle-model/ports/config-usage-repository';
+import { configKeyId } from '../../domain/moodle-model/services/config-plugin';
 import { normalizeComponent } from '../../domain/lang-model/services/component-normalizer';
 import { STRING_FUNCTION_ALTERNATION, STRING_CLASS_ALTERNATION, stringFunctionForm, stringClassForm, effectiveComponent } from '../../domain/code-analysis/string-functions';
 import { scanJsCalls } from '../../domain/code-analysis/js-call-scanner';
@@ -16,6 +18,10 @@ const USAGE_RE = new RegExp(String.raw`(?:\b(${STRING_FUNCTION_ALTERNATION})|new
 const TEMPLATE_USAGE_RE = /render_from_template\(\s*['"]([\w:./-]+)['"]/g;
 // AMD 모듈 사용처 — 같은 스캔에서 함께 수집한다
 const AMD_USAGE_RE = /js_call_amd\(\s*['"]([\w:./-]+)['"]/g;
+// 설정 사용처 — get_config(plugin, key) / set_config(key, value, plugin). 값에 괄호가 있으면 어디서 끝나는지 정규식으로 알 수 없어 비매칭.
+// `->get_config(…)`·`::get_config(…)`는 다른 의미의 메서드라 제외한다(팩트도 함수 호출만 본다).
+const CONFIG_GET_RE = /(?<![>\w$:])get_config\(\s*['"](\w+)['"]\s*,\s*['"](\w+)['"]\s*\)/g;
+const CONFIG_SET_RE = /(?<![>\w$:])set_config\(\s*['"](\w+)['"]\s*,\s*[^;()]*?,\s*['"](\w+)['"]\s*\)/g;
 // 'lang'은 lang 팩 자체 — 사용처가 아니고, 값 텍스트 속 "get_string(" 유령 매치 방지를 겸한다
 const SKIP_DIRS = new Set(['node_modules', 'vendor', '.git', '.superpowers', 'dist', 'lang']);
 const YIELD_EVERY = 200;
@@ -23,16 +29,20 @@ const YIELD_EVERY = 200;
 interface UsageEntry { component: string; key: string; loc: SourceLocation; }
 interface TemplateEntry { ref: string; loc: SourceLocation; }
 interface AmdEntry { ref: string; loc: SourceLocation; }
+interface ConfigEntry { id: string; loc: SourceLocation; }
+interface Extracted { entries: UsageEntry[]; tEntries: TemplateEntry[]; aEntries: AmdEntry[]; cEntries: ConfigEntry[]; }
 
-/** 문자열·템플릿·AMD 사용처의 워크스페이스 색인 — PHP·JS·mustache를 한 번의 스캔에서 함께 훑는다.
+/** 문자열·템플릿·AMD·설정 사용처의 워크스페이스 색인 — PHP·JS·mustache를 한 번의 스캔에서 함께 훑는다.
  *  lazy 빌드 + 저장/삭제 시 파일 단위 증분. */
-export class PhpUsageIndex implements StringUsageRepository, TemplateUsageRepository, AmdUsageRepository {
+export class PhpUsageIndex implements StringUsageRepository, TemplateUsageRepository, AmdUsageRepository, ConfigUsageRepository {
   private byComponent = new Map<string, Map<string, SourceLocation[]>>();
   private byFile = new Map<string, UsageEntry[]>();
   private byTemplateRef = new Map<string, SourceLocation[]>();
   private templatesByFile = new Map<string, TemplateEntry[]>();
   private byAmdRef = new Map<string, SourceLocation[]>();
   private amdByFile = new Map<string, AmdEntry[]>();
+  private byConfigId = new Map<string, SourceLocation[]>();
+  private configByFile = new Map<string, ConfigEntry[]>();
   private builtFlag = false;
 
   constructor(private hasCanonical: (c: string) => boolean) {}
@@ -64,66 +74,58 @@ export class PhpUsageIndex implements StringUsageRepository, TemplateUsageReposi
     if (prevT) { for (const e of prevT) this.removeTemplateEntry(e); this.templatesByFile.delete(uri); }
     const prevA = this.amdByFile.get(uri);
     if (prevA) { for (const e of prevA) this.removeAmdEntry(e); this.amdByFile.delete(uri); }
+    const prevC = this.configByFile.get(uri);
+    if (prevC) { for (const e of prevC) this.removeConfigEntry(e); this.configByFile.delete(uri); }
 
-    const { entries, tEntries, aEntries } = uri.endsWith('.js') ? this.extractJs(uri, text)
+    const { entries, tEntries, aEntries, cEntries } = uri.endsWith('.js') ? this.extractJs(uri, text)
       : uri.endsWith('.mustache') ? this.extractMustache(uri, text)
         : this.extractPhp(uri, text);
 
     for (const e of entries) this.addEntry(e);
     for (const e of tEntries) this.addTemplateEntry(e);
     for (const e of aEntries) this.addAmdEntry(e);
+    for (const e of cEntries) this.addConfigEntry(e);
     if (entries.length) this.byFile.set(uri, entries);
     if (tEntries.length) this.templatesByFile.set(uri, tEntries);
     if (aEntries.length) this.amdByFile.set(uri, aEntries);
+    if (cEntries.length) this.configByFile.set(uri, cEntries);
   }
 
-  private extractPhp(uri: string, text: string): { entries: UsageEntry[]; tEntries: TemplateEntry[]; aEntries: AmdEntry[] } {
+  private extractPhp(uri: string, text: string): Extracted {
     const entries: UsageEntry[] = [];
     const tEntries: TemplateEntry[] = [];
     const aEntries: AmdEntry[] = [];
-    USAGE_RE.lastIndex = 0;
-    let m: RegExpExecArray | null;
-    let lastIdx = 0, lastLine = 0, lastLineStart = 0; // 증분 라인 계산 — 전체 접두부 재스캔(O(n²)) 금지
-    while ((m = USAGE_RE.exec(text))) {
-      for (let i = lastIdx; i < m.index; i++) {
-        if (text.charCodeAt(i) === 10) { lastLine++; lastLineStart = i + 1; }
-      }
-      lastIdx = m.index;
+    const cEntries: ConfigEntry[] = [];
+    // 키 리터럴 내용 시작 = 매치 안 첫 따옴표 다음
+    const firstLiteralColumn = (m: RegExpExecArray, lineStart: number) => m.index - lineStart + m[0].search(/['"]/) + 1;
+    forEachMatch(text, USAGE_RE, (m, line, lineStart) => {
       const form = m[1] ? stringFunctionForm(m[1]) : stringClassForm(m[2]);
-      if (!form) continue;
+      if (!form) return;
       const component = normalizeComponent(effectiveComponent(form, m[4] ?? ''), this.hasCanonical);
-      const column = m.index - lastLineStart + m[0].search(/['"]/) + 1; // 키 리터럴 내용 시작 = 첫 따옴표 다음
-      entries.push({ component, key: m[3], loc: { uri, line: lastLine, column } });
-    }
-    TEMPLATE_USAGE_RE.lastIndex = 0;
-    let tLastIdx = 0, tLastLine = 0, tLastLineStart = 0;
-    while ((m = TEMPLATE_USAGE_RE.exec(text))) {
-      for (let i = tLastIdx; i < m.index; i++) {
-        if (text.charCodeAt(i) === 10) { tLastLine++; tLastLineStart = i + 1; }
-      }
-      tLastIdx = m.index;
-      const column = m.index - tLastLineStart + m[0].search(/['"]/) + 1;
-      tEntries.push({ ref: m[1], loc: { uri, line: tLastLine, column } });
-    }
-    AMD_USAGE_RE.lastIndex = 0;
-    let aLastIdx = 0, aLastLine = 0, aLastLineStart = 0;
-    while ((m = AMD_USAGE_RE.exec(text))) {
-      for (let i = aLastIdx; i < m.index; i++) {
-        if (text.charCodeAt(i) === 10) { aLastLine++; aLastLineStart = i + 1; }
-      }
-      aLastIdx = m.index;
-      const column = m.index - aLastLineStart + m[0].search(/['"]/) + 1;
-      aEntries.push({ ref: m[1], loc: { uri, line: aLastLine, column } });
-    }
-    return { entries, tEntries, aEntries };
+      entries.push({ component, key: m[3], loc: { uri, line, column: firstLiteralColumn(m, lineStart) } });
+    });
+    forEachMatch(text, TEMPLATE_USAGE_RE, (m, line, lineStart) => {
+      tEntries.push({ ref: m[1], loc: { uri, line, column: firstLiteralColumn(m, lineStart) } });
+    });
+    forEachMatch(text, AMD_USAGE_RE, (m, line, lineStart) => {
+      aEntries.push({ ref: m[1], loc: { uri, line, column: firstLiteralColumn(m, lineStart) } });
+    });
+    forEachMatch(text, CONFIG_GET_RE, (m, line, lineStart) => {
+      const keyOffset = m[0].indexOf(m[2], m[0].indexOf(',')); // 둘째 리터럴의 내용 시작
+      cEntries.push({ id: configKeyId(m[1], m[2]), loc: { uri, line, column: m.index - lineStart + keyOffset } });
+    });
+    forEachMatch(text, CONFIG_SET_RE, (m, line, lineStart) => {
+      cEntries.push({ id: configKeyId(m[2], m[1]), loc: { uri, line, column: firstLiteralColumn(m, lineStart) } });
+    });
+    return { entries, tEntries, aEntries, cEntries };
   }
 
   /** mustache의 `{{> }}`·`{{< }}`는 템플릿 사용처, `{{#str}}`는 문자열 사용처다.
    *  component는 PHP 경로와 같은 정규화를 거쳐야 lang 쪽 참조 목록에서 갈리지 않는다. */
-  private extractMustache(uri: string, text: string): { entries: UsageEntry[]; tEntries: TemplateEntry[]; aEntries: AmdEntry[] } {
+  private extractMustache(uri: string, text: string): Extracted {
     const refs = scanMustache(text);
     return {
-      aEntries: [],
+      aEntries: [], cEntries: [],
       entries: refs.stringRefs.map(r => ({
         component: normalizeComponent(r.component, this.hasCanonical),
         key: r.key,
@@ -134,10 +136,10 @@ export class PhpUsageIndex implements StringUsageRepository, TemplateUsageReposi
   }
 
   /** JS에는 js_call_amd가 없다(모듈 로딩은 import·require) — aEntries는 항상 비어 있다. */
-  private extractJs(uri: string, text: string): { entries: UsageEntry[]; tEntries: TemplateEntry[]; aEntries: AmdEntry[] } {
+  private extractJs(uri: string, text: string): Extracted {
     const calls = scanJsCalls(text);
     return {
-      aEntries: [],
+      aEntries: [], cEntries: [],
       entries: calls.stringCalls.map(c => ({
         component: normalizeComponent(c.component, this.hasCanonical),
         key: c.key,
@@ -157,6 +159,10 @@ export class PhpUsageIndex implements StringUsageRepository, TemplateUsageReposi
 
   amdRefsOf(component: string, name: string): SourceLocation[] {
     return this.byAmdRef.get(`${component}/${name}`) ?? [];
+  }
+
+  configRefsOf(plugin: string, key: string): SourceLocation[] {
+    return this.byConfigId.get(configKeyId(plugin, key)) ?? [];
   }
 
   private addEntry(e: UsageEntry): void {
@@ -191,6 +197,28 @@ export class PhpUsageIndex implements StringUsageRepository, TemplateUsageReposi
     if (!arr) return;
     const i = arr.indexOf(e.loc);
     if (i >= 0) arr.splice(i, 1);
+  }
+  private addConfigEntry(e: ConfigEntry): void {
+    const arr = this.byConfigId.get(e.id);
+    if (arr) arr.push(e.loc); else this.byConfigId.set(e.id, [e.loc]);
+  }
+  private removeConfigEntry(e: ConfigEntry): void {
+    const arr = this.byConfigId.get(e.id);
+    if (!arr) return;
+    const i = arr.indexOf(e.loc);
+    if (i >= 0) arr.splice(i, 1);
+  }
+}
+
+/** 매치마다 (줄, 줄 시작 오프셋)을 누적해서 준다 — 매치마다 앞을 되짚으면 매치 수에 제곱이 된다. */
+function forEachMatch(text: string, re: RegExp, fn: (m: RegExpExecArray, line: number, lineStart: number) => void): void {
+  re.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  let lastIdx = 0, line = 0, lineStart = 0;
+  while ((m = re.exec(text))) {
+    for (let i = lastIdx; i < m.index; i++) if (text.charCodeAt(i) === 10) { line++; lineStart = i + 1; }
+    lastIdx = m.index;
+    fn(m, line, lineStart);
   }
 }
 

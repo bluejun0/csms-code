@@ -20,7 +20,7 @@ export class DescribeMustacheSymbol {
       const parts = [`**${component}/${s.key}**`];
       if (found.ko) parts.push(found.ko.value);
       if (found.en) parts.push(`en: ${found.en.value}`);
-      return { markdown: parts.join('\n\n'), target: { component, key: s.key } };
+      return { markdown: parts.join('\n\n'), target: { kind: 'string', component, key: s.key } };
     }
     const t = refs.templateRefs.find(r => r.index <= atIndex && atIndex <= r.index + r.ref.length);
     if (!t) return null;

@@ -70,6 +70,11 @@
 59. `throw new moodle_exception('nope')`(컴포넌트 없음) → `'core_error'에 'nope' 문자열이 없습니다` 경고. `error.php`에 있는 코드(`invalidcoursemodule`)는 경고 없이 F12가 `lang/en/error.php`로 이동. `new \moodle_exception(...)`·`print_error('nope', 'moodle')`도 같은 규칙
 60. `print_error('k', 'local_ubattend')`·`new lang_string('k', 'local_ubattend')`·`new help_icon('k', 'local_ubattend')`에서 완성·F12·hover·하이라이트·Shift+F12가 `get_string`과 똑같이 동작하고, lang 파일의 "사용 N건"에 이 호출들이 포함됨
 61. `get_string('ok')`(한 인자)에서 F12 → `lang/en/moodle.php`. `new moodle_exception('` 입력 시 `error.php` 키가 완성 목록에 뜨고, `get_string('` 뒤에 컴포넌트도 닫는 괄호도 없으면 목록이 뜨지 않음
+62. `local/csmsmedia/lib.php`(또는 `get_config('local_csmsmedia', 'organization_code')`가 있는 파일)의 키 위에서 F12 → `local/csmsmedia/settings.php`의 `new admin_setting_configtext($name, …)` 줄로 이동(`$name = $pluginname . '/organization_code'` 관용구). 첫 요청은 선언 색인을 만드느라 잠깐 걸리고 이후 즉시. hover → `**local_csmsmedia / organization_code**`·`admin_setting_configtext`·`local/csmsmedia/settings.php:N`·아래 "사용 N건 보기"
+63. 같은 키에서 Shift+F12 → `get_config`·`set_config` 호출처 + 선언이 함께 나옴. `settings.php`의 그 선언 줄에서 Shift+F12 → 호출처. `get_config($this->pluginname, 'k')`에서도 F12·hover가 되고, 그 호출은 목록·개수에는 없음(문자열과 같은 제한)
+64. `local/csmsmedia/settings.php`를 열면 잠시 후 선언 줄마다 "사용 N건"(사용처 색인 전이면 "사용 찾기") 버튼. 클릭 → 그 자리에서 peek. `csmscode.config.codeLens=false`로 사라짐
+65. `settings.php`에 `$name = $pluginname . '/newkey'; $settings->add(new admin_setting_configtext($name, …));`를 추가해 저장 → 코드의 `get_config('local_csmsmedia', 'newkey')`가 바로 링크 색상이 되고 F12가 됨(창 재시작 없이). `csmscode.config.highlightResolved=false`로 색이 사라짐
+66. `get_config('local_csmsmedia', '` 입력 → 그 플러그인의 선언된 키 목록(설정 클래스가 detail). `get_config('mod_ubboard', 'k')`처럼 선언이 `ubboard/k`인 키에는 이동·색·완성이 없어야 함(플러그인 이름은 그대로 비교)
 
 ## 알려진 제한 (Known limitations)
 

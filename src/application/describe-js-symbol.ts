@@ -18,7 +18,7 @@ export class DescribeJsSymbol {
       if (found.ko) parts.push(`ko: ${found.ko.value}`);
       if (found.en) parts.push(`en: ${found.en.value}`);
       const component = canonicalComponent(this.strings, s.component);
-      return { markdown: parts.join('\n\n'), target: { component, key: s.key } };
+      return { markdown: parts.join('\n\n'), target: { kind: 'string', component, key: s.key } };
     }
     const t = calls.templateCalls.find(c => c.refIndex <= atIndex && atIndex <= c.refIndex + c.ref.length);
     if (!t) return null;

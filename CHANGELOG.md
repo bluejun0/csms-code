@@ -10,6 +10,22 @@
 - **버전 유지**: 개발 문서만 바뀔 때(`docs/` 백로그·스펙·계획, 테스트 추가) — 사용자가 받는 것이 달라지지 않으므로 올리지 않습니다.
 - 판단 기준은 "사이클이 끝났는가"가 아니라 **"사용자가 받는 산출물(.vsix)이 달라지는가"**입니다. 달라지는 사이클이 `main`에 병합될 때 **같은 사이클 안에서** 버전을 올리고 이 파일에 항목을 추가합니다 — 병합 후 별도 커밋으로 미루지 않습니다. 달라지지 않으면(위 "버전 유지") 올리지 않습니다.
 
+## [0.17.0] — 2026-08-26
+
+### 추가
+- **플러그인 설정 키 인텔리전스.** `get_config('local_x', 'key')`·`set_config('key', $v, 'local_x')`의 키에서 F12 → `settings.php`의 `admin_setting_*` 선언, hover(설정 클래스·선언 위치), 해석 키 하이라이팅(`csmscode.config.highlightResolved`), 코드↔선언 양방향 Shift+F12, `settings.php` 선언 줄 위 "사용 N건" 버튼(`csmscode.config.codeLens`)과 hover 아래 "사용 N건 보기" 링크, `get_config('local_x', '|')` 키 완성. 플러그인이 `$this->pluginname`·`$var`·`Class::CONST`인 호출도 문자열과 같은 전파로 해석합니다.
+  - 선언은 `$pluginname = 'local_x'; $name = $pluginname . '/key'; new admin_setting_configtext($name, …)` 관용구를 등장 순서대로 따라가 읽습니다(리터럴·`$name` 변수·연결·보간·코어 특수 설정의 `parent::__construct`·복수형 클래스명 포함). 실측(hlulxp 커스텀 코드) `get_config('p','k')` 427건 중 **383건(89.7%)** 이 선언으로 해석됩니다 — 리터럴 선언만 보면 16%였습니다.
+  - 플러그인 이름은 저장 키 그대로 비교합니다(`ubboard`≠`mod_ubboard` — `config_plugins`의 다른 행). `''`·`moodle`·`core`만 core로 접습니다.
+- **선언 색인은 첫 요청에서 만들고(활성화 비용 0) `$CFG->` 전역 색인과 공유합니다.** `settings.php`를 열거나(`config.codeLens`가 켜져 있을 때), 설정 호출이 있는 문서를 열거나(`config.highlightResolved`가 켜져 있을 때), 설정 키에서 F12·hover·Shift+F12·완성을 쓰면 만들어집니다. 주석 처리된 선언은 무시합니다.
+
+### 수정
+- **`settings.php`를 저장하면 선언 색인이 그 파일만 즉시 갱신됩니다.** 전역 색인 중 설정 키가 처음으로 세션 중 갱신되는 색인이 됐습니다(클래스 멤버 색인은 여전히 첫 요청 한 번).
+
+### 비고
+- 사용처 목록·개수에는 플러그인이 리터럴인 호출만 들어갑니다(사용처 색인이 정규식 기반 — 문자열과 같은 제한). 값에 괄호가 든 `set_config('k', get_config(…), 'p')`는 어디서 끝나는지 정규식으로 알 수 없어 목록에서 빠집니다.
+- 비목표(백로그): 코어 키(`$CFG->x` 18,894건 — 사용처 색인이 크게 무거워지고 커스텀 코드의 `get_config('core', …)`는 0건), `$c = get_config('local_x'); $c->key` 통째 접근(72건), 누락 키 진단(런타임 전용 키 때문에 오탐 필연), hover에 설정 제목·기본값 표시.
+- 문자열용이던 참조 프로바이더·CodeLens·hover 링크·명령을 대상 종류(string/config)에 일반화했습니다 — 라벨·명령 이름은 그대로입니다.
+
 ## [0.16.0] — 2026-08-26
 
 ### 추가
