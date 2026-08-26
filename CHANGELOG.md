@@ -10,6 +10,22 @@
 - **버전 유지**: 개발 문서만 바뀔 때(`docs/` 백로그·스펙·계획, 테스트 추가) — 사용자가 받는 것이 달라지지 않으므로 올리지 않습니다.
 - 판단 기준은 "사이클이 끝났는가"가 아니라 **"사용자가 받는 산출물(.vsix)이 달라지는가"**입니다. 달라지는 사이클이 `main`에 병합될 때 **같은 사이클 안에서** 버전을 올리고 이 파일에 항목을 추가합니다 — 병합 후 별도 커밋으로 미루지 않습니다. 달라지지 않으면(위 "버전 유지") 올리지 않습니다.
 
+## [0.16.0] — 2026-08-26
+
+### 추가
+- **문자열 호출 가족 확장.** `get_string`·`print_string`에 더해 다음이 같은 인텔리전스(완성·정의 이동·hover·하이라이트·누락 키 진단·사용처 참조·"사용 N건")를 받습니다: `print_error('code', 'comp')`, `new moodle_exception('code', 'comp')`(`\moodle_exception` 접두 포함), `new lang_string('key', 'comp')`, `new help_icon('key', 'comp')`. 형태 표(`string-functions.ts`) 한 곳에 이름과 기본 컴포넌트를 두고 팩트 추출·사용처 색인·완성 트리거가 공유합니다.
+- **컴포넌트를 생략한 한 인자 호출을 인식합니다.** `get_string('ok')`는 core(`lang/en/moodle.php`)로, `print_error`·`moodle_exception`은 컴포넌트 생략·`moodle`·`core`일 때 **`error`**(`lang/en/error.php`)로 갑니다 — Moodle의 `moodle_exception` 규칙 그대로입니다.
+  - 실측(hlulxp 커스텀 코드): 한 인자 `get_string` 534건 중 core에 없는 키 5건(0.9%). 한 인자 `moodle_exception`/`print_error` 172건 중 `error.php`에 없는 코드 **118건(68.6%)** — 이 코드들은 런타임에 `[[code]]`로 표시되므로 새로 붙는 경고는 실제 결함입니다.
+- 키 완성이 한 인자 꼴(`new moodle_exception('|')`)에서도 뜹니다 — 그 형태의 기본 컴포넌트(error/core) 키를 제안합니다. 컴포넌트도 닫는 괄호도 아직 없으면 전처럼 제안하지 않습니다.
+
+### 수정
+- 사용처 색인이 `get_string('k', $comp)`처럼 컴포넌트가 변수인 호출을 core로 잘못 귀속시키던 것을 고쳤습니다 — 이제 팩트 쪽과 같이 침묵합니다.
+- 누락 키 진단 메시지가 호출에 적힌 이름 대신 lang 파일의 컴포넌트(canonical — `core_error`, `mod_testmod`)를 씁니다.
+
+### 비고
+- 실측 규모: 커스텀 코드 `get_string` 8,064건 대비 새로 들어온 형태는 약 240건(`moodle_exception` 164·`print_error` 39·`lang_string` 22·`help_icon` 8). 이름은 많지만 호출은 적습니다.
+- 비목표(백로그): 키가 2번째 인자인 `->addHelpButton($el, 'k', 'c')`(20건), `->help_icon()`·`get_string_manager()->…` 메서드 호출(11건), `get_strings([...])`, `new` 꼴의 동적 컴포넌트(`new moodle_exception('k', $this->component)` 10건).
+
 ## [0.15.0] — 2026-08-25
 
 ### 추가

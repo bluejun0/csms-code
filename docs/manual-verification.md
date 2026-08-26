@@ -67,6 +67,9 @@
 56. lang/ko/local_ubattend.php를 열면 `$string[...]` 줄마다 위에 "사용 찾기"(색인 전) 버튼이 보임. 클릭 → 색인 진행률 후 그 자리에서 참조 peek이 열리고, 모든 버튼이 "사용 N건"으로 바뀜. 사용처 파일에서 호출을 추가·저장하면 개수가 갱신됨. `lang/en/moodle.php`(키 수천 개)를 열어도 스크롤이 버벅이지 않음
 57. 코드 쪽 문자열 hover 맨 아래 "사용 N건 보기" 링크 클릭 → 같은 peek. 색인 전에는 "사용 찾기". 템플릿 hover에는 링크가 없음
 58. `csmscode.strings.codeLens=false` → 버튼이 즉시 사라지고 Shift+F12·hover 링크는 그대로. `$string["key"]`(겹따옴표 키) 줄에서도 Shift+F12 동작
+59. `throw new moodle_exception('nope')`(컴포넌트 없음) → `'core_error'에 'nope' 문자열이 없습니다` 경고. `error.php`에 있는 코드(`invalidcoursemodule`)는 경고 없이 F12가 `lang/en/error.php`로 이동. `new \moodle_exception(...)`·`print_error('nope', 'moodle')`도 같은 규칙
+60. `print_error('k', 'local_ubattend')`·`new lang_string('k', 'local_ubattend')`·`new help_icon('k', 'local_ubattend')`에서 완성·F12·hover·하이라이트·Shift+F12가 `get_string`과 똑같이 동작하고, lang 파일의 "사용 N건"에 이 호출들이 포함됨
+61. `get_string('ok')`(한 인자)에서 F12 → `lang/en/moodle.php`. `new moodle_exception('` 입력 시 `error.php` 키가 완성 목록에 뜨고, `get_string('` 뒤에 컴포넌트도 닫는 괄호도 없으면 목록이 뜨지 않음
 
 ## 알려진 제한 (Known limitations)
 

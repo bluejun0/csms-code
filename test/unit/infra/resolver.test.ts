@@ -94,7 +94,7 @@ describe('MoodleRootResolver — symlink 플러그인 색인', () => {
 describe('MoodleRootResolver — lang 파일 열거', () => {
   it('코어(en)·플러그인(en/ko)·mod 파일명 예외를 컴포넌트·locale과 함께 열거', () => {
     const list = listLangFiles(root).map(x => `${x.component}:${x.locale}`).sort();
-    assert.deepEqual(list, ['block_testblock:en', 'core:en', 'core_grades:en', 'local_ubattend:en', 'local_ubattend:ko', 'mod_testmod:en', 'tool_testtool:en']);
+    assert.deepEqual(list, ['block_testblock:en', 'core:en', 'core_error:en', 'core_grades:en', 'local_ubattend:en', 'local_ubattend:ko', 'mod_testmod:en', 'tool_testtool:en']);
   });
 });
 

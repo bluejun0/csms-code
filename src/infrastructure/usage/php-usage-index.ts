@@ -5,12 +5,13 @@ import { StringUsageRepository } from '../../domain/lang-model/ports/string-usag
 import { TemplateUsageRepository } from '../../domain/template-model/ports/template-usage-repository';
 import { AmdUsageRepository } from '../../domain/amd-model/ports/amd-usage-repository';
 import { normalizeComponent } from '../../domain/lang-model/services/component-normalizer';
-import { STRING_FUNCTION_ALTERNATION } from '../../domain/code-analysis/string-functions';
+import { STRING_FUNCTION_ALTERNATION, STRING_CLASS_ALTERNATION, stringFunctionForm, stringClassForm, effectiveComponent } from '../../domain/code-analysis/string-functions';
 import { scanJsCalls } from '../../domain/code-analysis/js-call-scanner';
 import { scanMustache } from '../../domain/code-analysis/mustache-scanner';
 
-// 리터럴 key(+선택적 리터럴 component) — 변수/보간은 비매칭(침묵 원칙)
-const USAGE_RE = new RegExp(String.raw`(?:${STRING_FUNCTION_ALTERNATION})\(\s*['"]([\w:./-]+)['"]\s*(?:,\s*['"](\w+)['"])?`, 'g');
+// 리터럴 key + (닫힘 | 리터럴 component). 컴포넌트가 변수·보간이면 통째로 비매칭 — 기본 컴포넌트로 오귀속하지 않는다(침묵 원칙).
+// 1=함수 이름 2=클래스 이름(`new` 꼴) 3=key 4=component(생략이면 undefined)
+const USAGE_RE = new RegExp(String.raw`(?:\b(${STRING_FUNCTION_ALTERNATION})|new\s+\\?(${STRING_CLASS_ALTERNATION}))\(\s*['"]([\w:./-]+)['"]\s*(?:\)|,\s*['"](\w*)['"])`, 'g');
 // 템플릿 사용처 — 같은 스캔에서 함께 수집한다(23초 스캔을 두 번 돌리지 않기 위해)
 const TEMPLATE_USAGE_RE = /render_from_template\(\s*['"]([\w:./-]+)['"]/g;
 // AMD 모듈 사용처 — 같은 스캔에서 함께 수집한다
@@ -88,9 +89,11 @@ export class PhpUsageIndex implements StringUsageRepository, TemplateUsageReposi
         if (text.charCodeAt(i) === 10) { lastLine++; lastLineStart = i + 1; }
       }
       lastIdx = m.index;
-      const component = m[2] ? normalizeComponent(m[2], this.hasCanonical) : 'core';
+      const form = m[1] ? stringFunctionForm(m[1]) : stringClassForm(m[2]);
+      if (!form) continue;
+      const component = normalizeComponent(effectiveComponent(form, m[4] ?? ''), this.hasCanonical);
       const column = m.index - lastLineStart + m[0].search(/['"]/) + 1; // 키 리터럴 내용 시작 = 첫 따옴표 다음
-      entries.push({ component, key: m[1], loc: { uri, line: lastLine, column } });
+      entries.push({ component, key: m[3], loc: { uri, line: lastLine, column } });
     }
     TEMPLATE_USAGE_RE.lastIndex = 0;
     let tLastIdx = 0, tLastLine = 0, tLastLineStart = 0;

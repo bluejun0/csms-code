@@ -68,6 +68,17 @@ describe('PhpUsageIndex', () => {
     assert.equal(refs[0].line, 1);
     assert.equal(refs[0].column, 14); // "print_string('" 다음 = 키 시작
   });
+  it("print_error·new \\moodle_exception도 사용처로 잡히고, 컴포넌트가 변수인 호출은 core로 오귀속되지 않는다", () => {
+    const idx2 = new PhpUsageIndex(c => ['core_error', 'local_ubattend'].includes(c));
+    idx2.updateFileText('/e.php', "<?php\nprint_error('nocode');\nthrow new \\moodle_exception('excode', 'local_ubattend');\necho get_string('dyn', $comp);\n");
+    const e = idx2.referencesOf('core_error', 'nocode');
+    assert.equal(e.length, 1, 'print_error 한 인자 → core_error');
+    assert.equal(e[0].column, 13); // "print_error('" 다음
+    const x = idx2.referencesOf('local_ubattend', 'excode');
+    assert.equal(x.length, 1);
+    assert.equal(x[0].column, 29); // "throw new \\moodle_exception('" 다음
+    assert.equal(idx2.referencesOf('core', 'dyn').length, 0, '컴포넌트가 리터럴이 아니면 침묵');
+  });
   it("lang 디렉터리는 스캔에서 제외 — 값/노트 속 get_string 유령 매치 방지", () => {
     assert.equal(idx.referencesOf('local_ubattend', 'ghost_key').length, 0);
   });

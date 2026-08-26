@@ -4,7 +4,7 @@ import {
   AmdCall, ComponentRef, ConstLiteral, DocumentFacts, DynamicStringCall, LiteralAssignment, MethodCall, PropertyLiteral, emptyFacts, RecordAssignment, ForeachBinding, DataArgBinding, PhpdocVar, PlainAssignment, PropertyAccess, Scope, StringCall, TableRef, TemplateCall,
 } from '../../domain/code-analysis/facts';
 import { PhpSyntax, RawClassMember } from '../../domain/code-analysis/ports/php-syntax';
-import { isStringFunction } from '../../domain/code-analysis/string-functions';
+import { StringCallForm, stringFunctionForm, stringClassForm, effectiveComponent } from '../../domain/code-analysis/string-functions';
 
 const SCOPE_TYPES = new Set([
   'function_definition', 'method_declaration',
@@ -63,6 +63,23 @@ const Q_STRING_CALL = `
     arguments: (arguments
       . (argument (string (string_content) @key))
       . (argument (string (string_content) @component))))`;
+
+// 한 인자 호출 — 컴포넌트 생략은 형태별 기본 컴포넌트로 간다(get_string은 core, print_error는 error).
+const Q_STRING_CALL_ONE = `
+  (function_call_expression
+    function: (name) @fn
+    arguments: (arguments . (argument (string (string_content) @key)) .))`;
+// `new moodle_exception('key', 'component')` 류 — 클래스 이름은 맨이름과 `\\` 접두 모두 잡는다.
+const Q_NEW_STRING = `
+  (object_creation_expression
+    [(name) @cls (qualified_name (name) @cls)]
+    (arguments
+      . (argument (string (string_content) @key))
+      . (argument (string (string_content) @component))))`;
+const Q_NEW_STRING_ONE = `
+  (object_creation_expression
+    [(name) @cls (qualified_name (name) @cls)]
+    (arguments . (argument (string (string_content) @key)) .))`;
 
 // 문자열 함수의 컴포넌트 인자가 리터럴이 아닌 세 형태. 표현식 종류가 달라 패턴을 따로 둔다.
 const Q_STRING_CALL_VAR = `
@@ -126,6 +143,9 @@ interface CompiledQueries {
   dataArg: Parser.Query;
   plainAssign: Parser.Query;
   stringCall: Parser.Query;
+  stringCallOne: Parser.Query;
+  newString: Parser.Query;
+  newStringOne: Parser.Query;
   templateCall: Parser.Query;
   stringBody: Parser.Query;
   methodCall: Parser.Query;
@@ -162,6 +182,9 @@ export class TreeSitterPhpSyntax implements PhpSyntax {
       dataArg: lang.query(Q_DATAARG),
       plainAssign: lang.query(Q_PLAIN_ASSIGN),
       stringCall: lang.query(Q_STRING_CALL),
+      stringCallOne: lang.query(Q_STRING_CALL_ONE),
+      newString: lang.query(Q_NEW_STRING),
+      newStringOne: lang.query(Q_NEW_STRING_ONE),
       templateCall: lang.query(Q_TEMPLATE_CALL),
       stringBody: lang.query(Q_STRING_BODY),
       methodCall: lang.query(Q_METHOD_CALL),
@@ -272,15 +295,32 @@ export class TreeSitterPhpSyntax implements PhpSyntax {
     }
 
     const stringCalls: StringCall[] = [];
+    const pushCall = (form: StringCallForm, nameNode: Parser.SyntaxNode, key: Parser.SyntaxNode, rawComponent: string) => {
+      stringCalls.push({
+        key: key.text, component: effectiveComponent(form, rawComponent),
+        keyLine: key.startPosition.row, keyColumn: key.startPosition.column, keyIndex: key.startIndex,
+        index: nameNode.startIndex,
+      });
+    };
     for (const { caps } of runMatches(this.queries.stringCall)) {
       const fn = caps.get('fn')!;
-      if (!isStringFunction(fn.text)) continue;
-      const key = caps.get('key')!, component = caps.get('component')!;
-      stringCalls.push({
-        key: key.text, component: component.text,
-        keyLine: key.startPosition.row, keyColumn: key.startPosition.column, keyIndex: key.startIndex,
-        index: fn.startIndex,
-      });
+      const form = stringFunctionForm(fn.text);
+      if (form) pushCall(form, fn, caps.get('key')!, caps.get('component')!.text);
+    }
+    for (const { caps } of runMatches(this.queries.stringCallOne)) {
+      const fn = caps.get('fn')!;
+      const form = stringFunctionForm(fn.text);
+      if (form) pushCall(form, fn, caps.get('key')!, '');
+    }
+    for (const { caps } of runMatches(this.queries.newString)) {
+      const cls = caps.get('cls')!;
+      const form = stringClassForm(cls.text);
+      if (form) pushCall(form, cls, caps.get('key')!, caps.get('component')!.text);
+    }
+    for (const { caps } of runMatches(this.queries.newStringOne)) {
+      const cls = caps.get('cls')!;
+      const form = stringClassForm(cls.text);
+      if (form) pushCall(form, cls, caps.get('key')!, '');
     }
 
     const templateCalls: TemplateCall[] = [];
@@ -345,19 +385,19 @@ export class TreeSitterPhpSyntax implements PhpSyntax {
     };
     for (const { caps } of runMatches(this.queries.stringCallVar)) {
       const fn = caps.get('fn')!;
-      if (!isStringFunction(fn.text)) continue;
+      if (!stringFunctionForm(fn.text)) continue;
       pushDynamic(caps.get('key')!, fn, { kind: 'var', name: caps.get('comp')!.text });
     }
     for (const { caps } of runMatches(this.queries.stringCallProp)) {
       const fn = caps.get('fn')!;
-      if (!isStringFunction(fn.text)) continue;
+      if (!stringFunctionForm(fn.text)) continue;
       // 다른 객체의 프로퍼티는 이 파일에서 정의를 알 수 없다.
       if (caps.get('recv')!.text !== '$this') continue;
       pushDynamic(caps.get('key')!, fn, { kind: 'prop', name: caps.get('comp')!.text });
     }
     for (const { caps } of runMatches(this.queries.stringCallConst)) {
       const fn = caps.get('fn')!;
-      if (!isStringFunction(fn.text)) continue;
+      if (!stringFunctionForm(fn.text)) continue;
       // `X::NAME`은 name 노드가 둘(클래스·상수)이라 마지막을 쓴다.
       const cc = caps.get('cc')!;
       const names = cc.descendantsOfType('name');

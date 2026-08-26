@@ -528,3 +528,36 @@ class x {
     assert.deepEqual(c.comp, { kind: 'prop', name: 'pluginname' });
   });
 });
+
+describe('TreeSitterPhpSyntax — 문자열 호출 가족(한 인자·print_error·new 식)', () => {
+  const CODE = `<?php
+echo get_string('ok');
+print_error('nocode');
+print_error('mcode', 'moodle');
+print_error('lcode', 'local_ubattend');
+throw new moodle_exception('excode', 'local_ubattend');
+throw new \\moodle_exception('bare');
+$s = new lang_string('lscode');
+$h = new help_icon('hkey', 'local_ubattend');
+`;
+  let f: any;
+  before(async () => { f = (await TreeSitterPhpSyntax.create()).facts(CODE); });
+  const comp = (key: string) => f.stringCalls.find((x: any) => x.key === key)?.component;
+
+  it('한 인자 get_string은 core', () => assert.equal(comp('ok'), 'core'));
+  it('print_error는 컴포넌트 생략·moodle이면 error, 명시하면 그대로', () => {
+    assert.equal(comp('nocode'), 'error');
+    assert.equal(comp('mcode'), 'error');
+    assert.equal(comp('lcode'), 'local_ubattend');
+  });
+  it('new moodle_exception — 두 인자·네임스페이스 접두 한 인자', () => {
+    assert.equal(comp('excode'), 'local_ubattend');
+    assert.equal(comp('bare'), 'error');
+    const c = f.stringCalls.find((x: any) => x.key === 'bare');
+    assert.equal(c.keyIndex, CODE.indexOf("'bare'") + 1, '키 위치는 리터럴 내용 시작');
+  });
+  it('new lang_string(한 인자 → core)·new help_icon', () => {
+    assert.equal(comp('lscode'), 'core');
+    assert.equal(comp('hkey'), 'local_ubattend');
+  });
+});

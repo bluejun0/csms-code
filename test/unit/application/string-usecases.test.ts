@@ -64,6 +64,22 @@ describe('언어 문자열 유즈케이스 (E2E)', () => {
     assert.equal(diags.length, 1);
     assert.equal(diags[0].suggestion, 'attendance_book');
   });
+  it('진단: moodle_exception 코드가 error.php에 없으면 core_error 누락 경고', async () => {
+    const syn = await TreeSitterPhpSyntax.create();
+    const diags = new ValidateStringKeys(syn, store).run("<?php\nthrow new moodle_exception('nope_code');\n");
+    assert.equal(diags.length, 1);
+    assert.match(diags[0].message, /core_error/);
+    assert.match(diags[0].message, /nope_code/);
+  });
+  it('정의 이동: 한 인자 get_string은 core(moodle.php), 한 인자 print_error는 error.php', async () => {
+    const syn = await TreeSitterPhpSyntax.create();
+    const a = "<?php\necho get_string('ok');\n";
+    const la = new ResolveStringDefinition(syn, store).run(a, a.indexOf('ok') + 1);
+    assert.equal(la.length, 1); assert.ok(la[0].location.uri.endsWith(join('lang', 'en', 'moodle.php')));
+    const b = "<?php\nprint_error('invalidcoursemodule');\n";
+    const lb = new ResolveStringDefinition(syn, store).run(b, b.indexOf('invalid') + 1);
+    assert.equal(lb.length, 1); assert.ok(lb[0].location.uri.endsWith(join('lang', 'en', 'error.php')));
+  });
   it('hover/정의: 커서가 key 밖(component 위)이면 null/[]', async () => {
     const syn = await TreeSitterPhpSyntax.create();
     const at = CODE.indexOf("'local_ubattend'") + 3;
