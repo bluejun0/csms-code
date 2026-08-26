@@ -51,6 +51,30 @@ describe('parseSettingDeclarations — settings.php 관용구', () => {
     assert.equal(line.slice(d.location.column, d.location.column + 5), '$name');
     assert.equal(d.location.uri, '/m/local/csmsmedia/settings.php');
   });
+  it('연결식에 변수 키가 섞이면($p . "/" . $key) 침묵 — 변수만 잡아 core 선언을 만들지 않는다', () => {
+    const d = parseSettingDeclarations('/f', "<?php\n$p = 'local_x';\nnew admin_setting_configtext($p . '/' . $key, '', '', '');\nnew admin_setting_configtext($p . '_x', '', '', '');\n");
+    assert.deepEqual(d, []);
+  });
+  it('관용구 밖 대입($name = f();)은 이전 값을 지운다 — 다음 선언이 옛 키가 되지 않는다', () => {
+    const d = parseSettingDeclarations('/f', "<?php\n$name = 'a/b';\n$name = some_function();\nnew admin_setting_configtext($name, '', '', '');\n$name = 'a/c';\nnew admin_setting_configtext($name, '', '', '');\n");
+    assert.deepEqual(d.map(x => x.key), ['c']);
+  });
+  it('첫 인자의 "{$p}/k" 보간도 선언', () => {
+    const d = parseSettingDeclarations('/f', "<?php\n$p = 'local_x';\nnew admin_setting_configtext(\"{$p}/k1\", '', '', '');\n");
+    assert.equal(d[0]?.key, 'k1');
+  });
+  it('첫 인자가 다음 줄에 있으면 그 줄·컬럼', () => {
+    const src = "<?php\n$settings->add(new admin_setting_configtext(\n    'local_x/k2', '', '', ''));\n";
+    const [d] = parseSettingDeclarations('/f', src);
+    assert.equal(d.location.line, 2);
+    assert.equal(src.split('\n')[2].slice(d.location.column, d.location.column + 4), "'loc");
+  });
+  it('주석 처리된 선언은 무시(// 줄 주석·/* */ 블록)', () => {
+    const src = "<?php\n// $settings->add(new admin_setting_configtext('local_x/old', '', '', ''));\n/* new admin_setting_configtext('local_x/older', '', '', ''); */\nnew admin_setting_configtext('local_x/live', '', '', '');\n";
+    const d = parseSettingDeclarations('/f', src);
+    assert.deepEqual(d.map(x => x.key), ['live']);
+    assert.equal(d[0].location.line, 3, '주석을 지워도 줄 번호는 유지');
+  });
   it('같은 (plugin, key)가 두 번이면 먼저 것', () => {
     const two = parseSettingDeclarations('/f', "<?php\nnew admin_setting_configtext('a/k', '', '', '');\nnew admin_setting_configselect('a/k', '', '', 0, []);\n");
     assert.equal(two.length, 1);

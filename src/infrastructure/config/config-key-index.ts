@@ -3,7 +3,7 @@ import * as path from 'path';
 import { ConfigDeclaration, ConfigKey, ConfigKeyRepository } from '../../domain/moodle-model/ports/config-key-repository';
 import { configKeyId, configPlugin } from '../../domain/moodle-model/services/config-plugin';
 import { pluginTypeDirsAsync } from '../workspace/plugin-type-map';
-import { yieldNow, INDEX_YIELD_EVERY } from '../workspace/moodle-root-resolver';
+import { yieldNow, INDEX_YIELD_EVERY, pluginTypeOfRel } from '../workspace/moodle-root-resolver';
 import { parseSettingDeclarations } from './settings-declaration-parser';
 
 // config-dist.php는 코어 $CFG 옵션을 대입문 형태로 문서화한다.
@@ -21,7 +21,8 @@ const emptyMaps = (): Maps => ({ byName: new Map(), byId: new Map(), byFile: new
 
 /** 설정 키 색인 — `$CFG->` 완성 후보(config-dist.php + 선언)와 플러그인 설정 선언((plugin, key) → settings.php 위치).
  *  런타임에 `set_config`로만 만들어지는 키는 어디에도 선언되지 않아 담기지 않는다.
- *  네 맵은 조립 함수 두 개(mergeFile·removeFileFrom)로만 바뀐다 — 전체 빌드와 파일 단위 증분이 갈라질 수 없다. */
+ *  선언 맵들은 조립 함수 두 개(mergeFile·removeFileFrom)로만 바뀐다 — 전체 빌드와 파일 단위 증분이 갈라질 수 없다
+ *  (config-dist.php는 선언이 아니라 납작한 이름에만 들어가며 전체 빌드에서만 읽는다). */
 export class ConfigKeyIndex implements ConfigKeyRepository {
   private maps = emptyMaps();
 
@@ -49,6 +50,16 @@ export class ConfigKeyIndex implements ConfigKeyRepository {
   declaration(plugin: string, key: string): ConfigDeclaration | undefined { return this.maps.byId.get(configKeyId(plugin, key)); }
   declarationsIn(file: string): ConfigDeclaration[] { return this.maps.byFile.get(file) ?? []; }
   keysOfPlugin(plugin: string): ConfigDeclaration[] { return this.maps.byPlugin.get(configPlugin(plugin)) ?? []; }
+}
+
+/** 선언 색인이 열거하는 파일인가 — 워처가 색인 규칙 밖의 `settings.php`(클래스 파일 등)로 증분을 넣지 않게 한다. */
+export function isDeclarationFile(root: string, fsPath: string): boolean {
+  const rel = path.relative(root, fsPath);
+  if (rel.startsWith('..') || path.isAbsolute(rel)) return false;
+  const parts = rel.split(path.sep);
+  if (parts.length === 2 && parts[0] === 'lib' && parts[1] === 'adminlib.php') return true;
+  if (parts.length === 3 && parts[0] === 'admin' && parts[1] === 'settings' && parts[2].endsWith('.php')) return true;
+  return pluginTypeOfRel(root, rel)?.rest === 'settings.php';
 }
 
 /** `admin/settings/*.php`, 코어 특수 설정 클래스가 있는 `lib/adminlib.php`, 각 플러그인의 `settings.php` */

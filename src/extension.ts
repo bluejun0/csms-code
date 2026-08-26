@@ -69,7 +69,7 @@ import { ResolveTableDefinition } from './application/resolve-table-definition';
 import { ListResolvedTableRefs } from './application/list-resolved-table-refs';
 import { TableDefinitionProvider } from './presentation/providers/table-definition-provider';
 import { ClassMemberIndex } from './infrastructure/coreapi/class-member-index';
-import { ConfigKeyIndex } from './infrastructure/config/config-key-index';
+import { ConfigKeyIndex, isDeclarationFile } from './infrastructure/config/config-key-index';
 import { CompleteGlobalMembers } from './application/complete-global-members';
 import { DescribeGlobalMember } from './application/describe-global-member';
 import { ResolveGlobalMemberDefinition } from './application/resolve-global-member-definition';
@@ -127,18 +127,25 @@ export async function activate(ctx: vscode.ExtensionContext) {
   const locate = new LocateStringTarget(syntax, strings);
   // 버튼(CodeLens)·링크(hover)는 개수만 묻는다 — 색인을 깨우는 쪽은 명령과 참조 프로바이더다
   const refCounter = { built: () => usageIndex.isBuilt, count: (c: string, k: string) => findRefs.run(c, k).length };
-  const counters: ReferenceCounters = { string: refCounter, config: { built: () => false, count: () => 0 } };
+  const configKeys = new ConfigKeyIndex();
+  const findCfgRefs = new FindConfigReferences(usageIndex, configKeys);
+  const cfgCounter = { built: () => usageIndex.isBuilt, count: (p: string, k: string) => findCfgRefs.run(p, k).length };
+  const counters: ReferenceCounters = { string: refCounter, config: cfgCounter };
+  // 사용처 색인이 바뀌면 모든 렌즈의 개수가 달라진다 — 렌즈는 여기 등록하고 한 번에 다시 그린다
+  const lenses: UsageCodeLensProvider[] = [];
+  const refreshLenses = () => { for (const l of lenses) l.refresh(); };
   const parseLangSafe = (text: string) => { try { return parseLangFile(text); } catch { return []; } };
   const langLens = new UsageCodeLensProvider(doc => {
     const component = componentOfLangFile(root, doc.uri.fsPath);
     return component ? langLensTargets(doc.uri.toString(), parseLangSafe(doc.getText()), component, refCounter) : [];
   }, () => vscode.workspace.getConfiguration('csmscode').get<boolean>('strings.codeLens', true));
   ctx.subscriptions.push(langLens);
-  // 사용처 색인은 첫 참조 요청(또는 버튼 클릭)에 만든다 — 활성화 비용 0. 참조 프로바이더 여섯 개와 명령이 이 핸들 하나를 공유한다.
+  lenses.push(langLens);
+  // 사용처 색인은 첫 참조 요청(또는 버튼 클릭)에 만든다 — 활성화 비용 0. 참조 프로바이더 여덟 개와 명령 둘이 이 핸들 하나를 공유한다.
   const usageHandle: UsageIndexHandle = {
     built: () => usageIndex.isBuilt,
     // 빌드가 끝나면 렌즈 라벨이 "사용 찾기"에서 개수로 바뀌어야 한다
-    build: cb => usageBuild ?? (usageBuild = usageIndex.buildFromRoot(root, cb).then(() => langLens.refresh())),
+    build: cb => usageBuild ?? (usageBuild = usageIndex.buildFromRoot(root, cb).then(refreshLenses)),
   };
   registerShowReferences(ctx, SHOW_STRING_REFERENCES_COMMAND, (c, k) => findRefs.run(c, k), usageHandle);
   const listResolved = new ListResolvedStringCalls(syntax, strings);
@@ -159,7 +166,6 @@ export async function activate(ctx: vscode.ExtensionContext) {
   // 전역 색인은 활성화가 아니라 첫 요청에서 만든다 — 코어 클래스 세 개 파싱과 설정 키 수집이
   // 각각 최대 이벤트 루프 정지 약 30ms·18ms로, 활성화의 한 자릿수 ms 목표를 넘긴다.
   const classMembers = new ClassMemberIndex();
-  const configKeys = new ConfigKeyIndex();
   let globalsBuild: Promise<void> | undefined;
   // 두 색인이 모두 끝나야 준비된 것이다 — 클래스 색인의 플래그만 보면 설정 색인이 비어 있는
   // 900ms 동안 $CFG-> 완성이 조용히 빈 목록을 준다.
@@ -171,6 +177,9 @@ export async function activate(ctx: vscode.ExtensionContext) {
   const ensureConfig = () => configBuild ??= configKeys.buildFromRootAsync(root).then(() => {
     configReady = true;
     for (const l of configReadyListeners) l();
+  }, err => {
+    // 실패해도 전역 색인까지 함께 죽이지 않는다 — 설정 기능만 침묵한다
+    console.error('CSMS Code: 설정 선언 색인에 실패했습니다.', err);
   });
   const globalsHandle = {
     built: () => globalsReady,
@@ -184,11 +193,8 @@ export async function activate(ctx: vscode.ExtensionContext) {
   const locateCfg = new LocateConfigTarget(syntax, configKeys);
   const resolveCfg = new ResolveConfigDefinition(syntax, configKeys);
   const describeCfg = new DescribeConfigKey(syntax, configKeys, uri => path.relative(root, uri));
-  const findCfgRefs = new FindConfigReferences(usageIndex, configKeys);
   const listResolvedCfg = new ListResolvedConfigRefs(syntax, configKeys);
   const completeCfg = new CompleteConfigKeys(configKeys);
-  const cfgCounter = { built: () => usageIndex.isBuilt, count: (p: string, k: string) => findCfgRefs.run(p, k).length };
-  counters.config = cfgCounter;
   registerShowReferences(ctx, SHOW_CONFIG_REFERENCES_COMMAND, (p, k) => findCfgRefs.run(p, k), usageHandle);
   const settingsSelector: vscode.DocumentSelector = [
     { language: 'php', scheme: 'file', pattern: '**/settings.php' },
@@ -199,6 +205,7 @@ export async function activate(ctx: vscode.ExtensionContext) {
     return settingsLensTargets(doc.uri.toString(), configKeys.declarationsIn(doc.uri.fsPath), cfgCounter);
   }, () => vscode.workspace.getConfiguration('csmscode').get<boolean>('config.codeLens', true));
   ctx.subscriptions.push(settingsLens);
+  lenses.push(settingsLens);
   configReadyListeners.push(() => settingsLens.refresh());
   const completeGlobal = new CompleteGlobalMembers(syntax, classMembers, configKeys, store);
   const describeGlobal = new DescribeGlobalMember(syntax, classMembers, configKeys, store);
@@ -252,10 +259,11 @@ export async function activate(ctx: vscode.ExtensionContext) {
     vscode.languages.registerDefinitionProvider(php, new ConfigDefinitionProvider(locateCfg, resolveCfg, ensureConfig)),
     vscode.languages.registerHoverProvider(php, new ConfigHoverProvider(locateCfg, describeCfg, counters, ensureConfig)),
     vscode.languages.registerCompletionItemProvider(php, new ConfigKeyCompletionProvider(completeCfg, ensureConfig), "'", '"'),
+    // 코드 쪽은 팩트만으로 대상을 판정하므로 대상이 있을 때만 선언 색인을 깨운다(선언 포함용). settings.php 쪽은 판정 자체에 색인이 필요하다.
     vscode.languages.registerReferenceProvider(php, new TargetReferenceProvider(
-      (doc, pos) => locateCfg.php(doc.getText(), doc.offsetAt(pos)), (t, incl) => findCfgRefs.run(t.plugin, t.key, incl), usageHandle, ensureConfig)),
+      (doc, pos) => locateCfg.php(doc.getText(), doc.offsetAt(pos)), (t, incl) => findCfgRefs.run(t.plugin, t.key, incl), usageHandle, { beforeFind: ensureConfig })),
     vscode.languages.registerReferenceProvider(settingsSelector, new TargetReferenceProvider(
-      (doc, pos) => locateCfg.settings(doc.uri.fsPath, pos.line), (t, incl) => findCfgRefs.run(t.plugin, t.key, incl), usageHandle, ensureConfig)),
+      (doc, pos) => locateCfg.settings(doc.uri.fsPath, pos.line), (t, incl) => findCfgRefs.run(t.plugin, t.key, incl), usageHandle, { beforeLocate: ensureConfig })),
     vscode.languages.registerCodeLensProvider(settingsSelector, settingsLens),
     vscode.workspace.onDidChangeConfiguration(e => { if (e.affectsConfiguration('csmscode.config.codeLens')) settingsLens.refresh(); }),
   );
@@ -413,9 +421,12 @@ export async function activate(ctx: vscode.ExtensionContext) {
   const settingsWatcher = vscode.workspace.createFileSystemWatcher('**/settings.php');
   const adminSettingsWatcher = vscode.workspace.createFileSystemWatcher('**/admin/settings/*.php');
   const onSettings = (uri: vscode.Uri, removed: boolean) => {
-    if (!configReady) return;
-    const done = removed ? Promise.resolve(configKeys.removeFile(uri.fsPath)) : configKeys.updateFile(uri.fsPath);
-    void done.then(() => { settingsLens.refresh(); highlight.refreshAll(); });
+    // 색인 규칙 밖의 파일(클래스 파일 등)은 전체 빌드도 담지 않으므로 증분도 넣지 않는다.
+    if (!configBuild || !isDeclarationFile(root, uri.fsPath)) return;
+    // 빌드가 진행 중이면 그 뒤에 적용한다 — 빌드가 이미 읽은 옛 내용이 남지 않게
+    void configBuild
+      .then(() => removed ? configKeys.removeFile(uri.fsPath) : configKeys.updateFile(uri.fsPath))
+      .then(() => { settingsLens.refresh(); highlight.refreshAll(); });
   };
   for (const w of [settingsWatcher, adminSettingsWatcher]) {
     ctx.subscriptions.push(w,
@@ -426,7 +437,7 @@ export async function activate(ctx: vscode.ExtensionContext) {
   ctx.subscriptions.push(vscode.workspace.onDidSaveTextDocument(d => {
     if (d.uri.scheme === 'file' && usageIndex.isBuilt && isIndexableSourcePath(root, d.uri.fsPath)) {
       usageIndex.updateFileText(d.uri.fsPath, d.getText());
-      langLens.refresh(); // 개수가 달라졌을 수 있다
+      refreshLenses(); // 개수가 달라졌을 수 있다
     }
   }));
 
@@ -434,7 +445,7 @@ export async function activate(ctx: vscode.ExtensionContext) {
   ctx.subscriptions.push(vscode.workspace.onDidDeleteFiles(e => {
     if (!usageIndex.isBuilt) return;
     for (const f of e.files) usageIndex.updateFileText(f.fsPath, '');
-    langLens.refresh();
+    refreshLenses();
   }));
 }
 export function deactivate() { /* noop */ }

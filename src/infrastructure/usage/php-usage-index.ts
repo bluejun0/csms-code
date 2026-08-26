@@ -19,8 +19,9 @@ const TEMPLATE_USAGE_RE = /render_from_template\(\s*['"]([\w:./-]+)['"]/g;
 // AMD 모듈 사용처 — 같은 스캔에서 함께 수집한다
 const AMD_USAGE_RE = /js_call_amd\(\s*['"]([\w:./-]+)['"]/g;
 // 설정 사용처 — get_config(plugin, key) / set_config(key, value, plugin). 값에 괄호가 있으면 어디서 끝나는지 정규식으로 알 수 없어 비매칭.
-const CONFIG_GET_RE = /\bget_config\(\s*['"](\w+)['"]\s*,\s*['"](\w+)['"]\s*\)/g;
-const CONFIG_SET_RE = /\bset_config\(\s*['"](\w+)['"]\s*,\s*[^;()]*?,\s*['"](\w+)['"]\s*\)/g;
+// `->get_config(…)`·`::get_config(…)`는 다른 의미의 메서드라 제외한다(팩트도 함수 호출만 본다).
+const CONFIG_GET_RE = /(?<![>\w$:])get_config\(\s*['"](\w+)['"]\s*,\s*['"](\w+)['"]\s*\)/g;
+const CONFIG_SET_RE = /(?<![>\w$:])set_config\(\s*['"](\w+)['"]\s*,\s*[^;()]*?,\s*['"](\w+)['"]\s*\)/g;
 // 'lang'은 lang 팩 자체 — 사용처가 아니고, 값 텍스트 속 "get_string(" 유령 매치 방지를 겸한다
 const SKIP_DIRS = new Set(['node_modules', 'vendor', '.git', '.superpowers', 'dist', 'lang']);
 const YIELD_EVERY = 200;

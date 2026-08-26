@@ -94,6 +94,13 @@ describe('PhpUsageIndex', () => {
     idx2.updateFileText('/c.php', '<?php\n');
     assert.equal(idx2.configRefsOf('local_ubattend', 'apikey').length, 0);
   });
+  it('설정 참조: 동적 플러그인·메서드 호출(->get_config)은 침묵', () => {
+    const idx2 = new PhpUsageIndex(() => false);
+    idx2.updateFileText('/d.php', "<?php\nset_config('k1', $v, $this->pluginname);\n$this->get_config('local_x', 'k2');\n$x = get_config('local_x', 'k3');\n");
+    assert.equal(idx2.configRefsOf('core', 'k1').length, 0, '플러그인이 변수면 어디에도 귀속하지 않는다');
+    assert.equal(idx2.configRefsOf('local_x', 'k2').length, 0, '메서드 호출은 플러그인 설정 함수가 아니다');
+    assert.equal(idx2.configRefsOf('local_x', 'k3').length, 1);
+  });
   it("lang 디렉터리는 스캔에서 제외 — 값/노트 속 get_string 유령 매치 방지", () => {
     assert.equal(idx.referencesOf('local_ubattend', 'ghost_key').length, 0);
   });

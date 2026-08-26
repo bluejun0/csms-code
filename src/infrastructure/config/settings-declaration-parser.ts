@@ -2,9 +2,10 @@ import { ConfigDeclaration } from '../../domain/moodle-model/ports/config-key-re
 import { configPlugin } from '../../domain/moodle-model/services/config-plugin';
 
 // 대입 한 문장: $v = 'lit'; | $v = "lit"; | $v = $u . '/k'; | $v = "$u/k"; | $v = "{$u}/k";
-const ASSIGN = String.raw`\$(?<av>\w+)\s*=\s*(?:'(?<al>[\w/]+)'|"(?<al2>[\w/]+)"|\$(?<ab>\w+)\s*\.\s*'(?<as>/[\w/]+)'|"\$(?<ab2>\w+)(?<as2>/[\w/]+)"|"\{\$(?<ab3>\w+)\}(?<as3>/[\w/]+)")\s*;`;
-// 선언의 첫 인자: 리터럴 | $u . '/k' | "$u/k" | $v   (new admin_setting[s]_*( 또는 parent::__construct( 뒤)
-const DECL = String.raw`(?:new\s+(?<cls>admin_settings?_\w+)\s*\(|(?<ctor>parent::__construct)\s*\()\s*(?:'(?<dl>[\w/]+)'|"(?<dl2>[\w/]+)"|\$(?<db>\w+)\s*\.\s*'(?<ds>/[\w/]+)'|"\$(?<db2>\w+)(?<ds2>/[\w/]+)"|\$(?<dv>\w+)\b)`;
+// 그 밖의 모든 대입(`$v = f();`·`$v = 'p/' . $key;` …)은 마지막 대안이 잡아 값을 지운다 — 이전 값이 남으면 다음 선언이 옛 키가 된다.
+const ASSIGN = String.raw`\$(?<av>\w+)\s*=\s*(?:'(?<al>[\w/]+)'|"(?<al2>[\w/]+)"|\$(?<ab>\w+)\s*\.\s*'(?<as>/[\w/]+)'|"\$(?<ab2>\w+)(?<as2>/[\w/]+)"|"\{\$(?<ab3>\w+)\}(?<as3>/[\w/]+)")\s*;|\$(?<au>\w+)\s*=(?!=)`;
+// 선언의 첫 인자: 리터럴 | $u . '/k' | "$u/k" | "{$u}/k" | $v(인자 전체가 변수일 때만 — 실패한 연결식의 앞머리를 잡지 않게)
+const DECL = String.raw`(?:new\s+(?<cls>admin_settings?_\w+)\s*\(|(?<ctor>parent::__construct)\s*\()\s*(?:'(?<dl>[\w/]+)'|"(?<dl2>[\w/]+)"|\$(?<db>\w+)\s*\.\s*'(?<ds>/[\w/]+)'|"\$(?<db2>\w+)(?<ds2>/[\w/]+)"|"\{\$(?<db3>\w+)\}(?<ds3>/[\w/]+)"|\$(?<dv>\w+)\s*(?=[,)]))`;
 const TOKEN_RE = new RegExp(`${ASSIGN}|${DECL}`, 'g');
 
 type Groups = Record<string, string | undefined>;
@@ -17,13 +18,15 @@ export function parseSettingDeclarations(file: string, text: string): ConfigDecl
   const out: ConfigDeclaration[] = [];
   const seen = new Set<string>();
   const vars = new Map<string, string>();
+  const source = blankComments(text);
   let lastIdx = 0, line = 0, lineStart = 0; // 증분 라인 계산 — 매치마다 앞을 되짚지 않는다
   TOKEN_RE.lastIndex = 0;
   let m: RegExpExecArray | null;
-  while ((m = TOKEN_RE.exec(text))) {
+  while ((m = TOKEN_RE.exec(source))) {
     const g = m.groups as Groups;
+    if (g.au !== undefined) { vars.delete(g.au); continue; }
     if (g.av !== undefined) { assign(vars, g); continue; }
-    for (let i = lastIdx; i < m.index; i++) if (text.charCodeAt(i) === 10) { line++; lineStart = i + 1; }
+    for (let i = lastIdx; i < m.index; i++) if (source.charCodeAt(i) === 10) { line++; lineStart = i + 1; }
     lastIdx = m.index;
     const raw = declaredName(g, vars);
     if (raw === undefined) continue;
@@ -38,7 +41,10 @@ export function parseSettingDeclarations(file: string, text: string): ConfigDecl
     seen.add(id);
     const open = m[0].indexOf('(');
     const argOffset = open + 1 + m[0].slice(open + 1).search(/\S/);
-    out.push({ plugin, key, settingClass, location: { uri: file, line, column: m.index - lineStart + argOffset } });
+    // 첫 인자가 다음 줄에 있으면 그 줄·컬럼을 가리킨다
+    let argLine = line, argLineStart = lineStart;
+    for (let i = 0; i < argOffset; i++) if (m[0].charCodeAt(i) === 10) { argLine++; argLineStart = m.index + i + 1; }
+    out.push({ plugin, key, settingClass, location: { uri: file, line: argLine, column: m.index + argOffset - argLineStart } });
   }
   return out;
 }
@@ -55,9 +61,17 @@ function assign(vars: Map<string, string>, g: Groups): void {
 
 function declaredName(g: Groups, vars: Map<string, string>): string | undefined {
   if (g.dl !== undefined || g.dl2 !== undefined) return g.dl ?? g.dl2;
-  if (g.db !== undefined || g.db2 !== undefined) {
-    const base = vars.get((g.db ?? g.db2) as string);
-    return base !== undefined ? base + (g.ds ?? g.ds2) : undefined;
+  const base = g.db ?? g.db2 ?? g.db3;
+  if (base !== undefined) {
+    const value = vars.get(base);
+    return value !== undefined ? value + (g.ds ?? g.ds2 ?? g.ds3) : undefined;
   }
   return g.dv !== undefined ? vars.get(g.dv) : undefined;
+}
+
+/** 주석을 같은 길이의 공백으로 바꾼다(줄·오프셋 유지) — 주석 처리된 선언이 살아 있는 선언으로 보이지 않게. */
+function blankComments(text: string): string {
+  return text
+    .replace(/\/\*[\s\S]*?\*\//g, m => m.replace(/[^\n]/g, ' '))
+    .replace(/^[ \t]*(?:\/\/|#).*$/gm, m => m.replace(/[^\n]/g, ' '));
 }

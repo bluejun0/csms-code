@@ -591,6 +591,10 @@ class y {
     assert.deepEqual(f.dynamicConfigCalls.map((c: any) => `${c.kind}:${c.key}:${c.comp.kind}:${c.comp.name}`).sort(),
       ['get:dyn:prop:pluginname', 'set:dyn2:prop:pluginname']);
   });
+  it("set_config('k', 'v') 두 인자(코어)는 configCalls에 없다", async () => {
+    const g = (await TreeSitterPhpSyntax.create()).facts("<?php\nset_config('sitename', 'x');\n");
+    assert.deepEqual(g.configCalls, []);
+  });
   it('한 인자·동적 키는 팩트 없음, get_string은 설정 호출이 아니다', () => {
     assert.ok(!f.configCalls.some((c: any) => c.key === 'local_ubattend'));
     assert.equal(f.stringCalls.filter((c: any) => c.key === 'apikey').length, 1, 'get_string만');
