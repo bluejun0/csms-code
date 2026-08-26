@@ -44,6 +44,12 @@ Moodle 코드는 DB 레코드를 대부분 `stdClass`로 다루기 때문에, �
   단일 인용·이중 인용·heredoc·nowdoc을 모두 지원하며, `install.xml`에 없는 이름
   (정규식 수량자 `{4}`, 다른 템플릿 문법 `{Bucket}` 등)에는 아무 반응도 하지 않습니다.
 - **JS/AMD 인텔리전스**: `amd/src`의 `get_string`(`M.util.`·`core/str` 모두)·`Templates.render` 리터럴에 정의 이동·hover·하이라이팅, lang/템플릿 참조 목록에 JS 호출처 포함 (`amd/build`·`.min.js`는 생성물이라 제외)
+- **설정 키 인텔리전스**: `get_config('local_x', 'key')`·`set_config('key', $v, 'local_x')`의 키에서 F12로 `settings.php`의
+  `admin_setting_*` 선언으로 이동하고(`$name = $pluginname . '/key';` 관용구를 따라감), hover로 설정 클래스·위치를 봅니다.
+  해석되는 키는 링크 색상, 코드↔선언 양방향 Shift+F12, `settings.php` 선언 줄 위 **"사용 N건" 버튼**, hover 아래
+  **"사용 N건 보기"** 링크, `get_config('local_x', '|')` 키 완성. 플러그인 이름은 저장 키 그대로 비교합니다
+  (`ubboard`와 `mod_ubboard`는 다른 설정). `$this->pluginname` 같은 동적 플러그인도 문자열과 같은 전파로 해석합니다.
+  `settings.php`를 저장하면 선언 색인이 그 파일만 즉시 갱신됩니다.
 
 ## 이 확장이 준 결과인지 확인하기
 
@@ -66,6 +72,8 @@ Moodle 코드는 DB 레코드를 대부분 `stdClass`로 다루기 때문에, �
 | `csmscode.templates.highlightResolved` | `boolean` | `true` | 해석되는 render_from_template 참조를 링크 색상으로 하이라이팅 |
 | `csmscode.amd.highlightResolved` | `boolean` | `true` | 해석되는 AMD 모듈 참조(`js_call_amd`의 첫 인자)를 링크 색상으로 하이라이팅 |
 | `csmscode.tables.highlightResolved` | `boolean` | `true` | SQL 문자열에서 install.xml로 해석되는 테이블 참조(`{table}`)를 링크 색상으로 하이라이팅 |
+| `csmscode.config.highlightResolved` | `boolean` | `true` | settings.php 선언으로 해석되는 `get_config`·`set_config` 키를 링크 색상으로 하이라이팅 |
+| `csmscode.config.codeLens` | `boolean` | `true` | settings.php의 `admin_setting` 선언 줄 위에 "사용 N건" 버튼(CodeLens)을 표시 |
 
 ## 개발
 
@@ -90,7 +98,12 @@ npm run package         # esbuild(production) + vsce package → csms-code-<vers
 해당합니다.
 
 컴포넌트가 동적인 `get_string` 호출은 정의 이동·hover·하이라이트·진단이 되지만, **사용처 목록(Shift+F12)과
-"사용 N건" 개수에는 나타나지 않습니다**(사용처 색인이 정규식 기반이라 리터럴 컴포넌트만 봅니다).
+"사용 N건" 개수에는 나타나지 않습니다**(사용처 색인이 정규식 기반이라 리터럴 컴포넌트만 봅니다). 플러그인이
+동적인 `get_config` 호출도 같습니다.
+
+설정 키는 **플러그인 설정만** 다룹니다. 코어 키(`get_config('core', …)`·`set_config('k', $v)`·`$CFG->k`)의 참조,
+`$c = get_config('local_x'); $c->key` 통째 접근, 누락 키 진단(런타임에 `set_config`로만 만들어지는 키가 있어 오탐이
+필연)은 범위 밖입니다. 선언을 정규식으로 읽으므로 `settings.php`의 관용구를 벗어난 선언(함수 반환값·배열)은 침묵합니다.
 
 전체 목록은 [docs/PHASE2-BACKLOG.md](docs/PHASE2-BACKLOG.md)의 "알려진 제한"을 참고하세요.
 버전별 변경 이력은 [CHANGELOG.md](CHANGELOG.md)에 있습니다.
