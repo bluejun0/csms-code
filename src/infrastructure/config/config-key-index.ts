@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { ConfigKey, ConfigKeyRepository } from '../../domain/moodle-model/ports/config-key-repository';
+import { ConfigDeclaration, ConfigKey, ConfigKeyRepository } from '../../domain/moodle-model/ports/config-key-repository';
 import { pluginTypeDirsAsync } from '../workspace/plugin-type-map';
 import { yieldNow, INDEX_YIELD_EVERY } from '../workspace/moodle-root-resolver';
 
@@ -27,6 +27,9 @@ export class ConfigKeyIndex implements ConfigKeyRepository {
 
   keys(): ConfigKey[] { return [...this.byName.values()]; }
   find(name: string): ConfigKey | undefined { return this.byName.get(name); }
+  declaration(): ConfigDeclaration | undefined { return undefined; }
+  declarationsIn(): ConfigDeclaration[] { return []; }
+  keysOfPlugin(): ConfigDeclaration[] { return []; }
 }
 
 /** `admin/settings/*.php`와 각 플러그인의 `settings.php` */

@@ -445,7 +445,7 @@ export class TreeSitterPhpSyntax implements PhpSyntax {
     tree.delete();
 
     return { assignments, foreachBindings, dataArgBindings, phpdocVars, propertyAccesses, plainAssignments, stringCalls, templateCalls, amdCalls, methodCalls, tableRefs,
-      dynamicStringCalls, literalAssignments, propertyLiterals, constLiterals };
+      dynamicStringCalls, literalAssignments, propertyLiterals, constLiterals, configCalls: [], dynamicConfigCalls: [] };
   }
 }
 

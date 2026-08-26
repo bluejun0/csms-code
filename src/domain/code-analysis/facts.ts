@@ -51,6 +51,21 @@ export interface TableRef {
   name: string;
   nameLine: number; nameColumn: number; nameIndex: number;
 }
+/** `get_config('plugin', 'key')`·`set_config('key', v, 'plugin')` — 플러그인이 리터럴. plugin은 저장 키 그대로(정규화 없음). */
+export interface ConfigCall {
+  plugin: string; key: string; kind: 'get' | 'set';
+  keyLine: number; keyColumn: number; keyIndex: number;
+  index: number;
+}
+/** 플러그인 인자가 리터럴이 아닌 설정 호출 — DynamicStringCall과 같은 세 형태, 같은 전파로 해석한다. */
+export interface DynamicConfigCall {
+  key: string; comp: ComponentRef; kind: 'get' | 'set';
+  keyLine: number; keyColumn: number; keyIndex: number;
+  index: number; scope: Scope;
+}
+/** 컴포넌트 참조가 놓인 자리 — 전파는 참조 형태·위치·스코프만 본다. */
+export interface ComponentRefSite { comp: ComponentRef; index: number; scope: Scope; }
+
 export interface DocumentFacts {
   assignments: RecordAssignment[];
   foreachBindings: ForeachBinding[];
@@ -67,6 +82,8 @@ export interface DocumentFacts {
   propertyLiterals: PropertyLiteral[];
   constLiterals: ConstLiteral[];
   tableRefs: TableRef[];
+  configCalls: ConfigCall[];
+  dynamicConfigCalls: DynamicConfigCall[];
 }
 
 /** 팩트 없음 — 파싱이 불가능한 문서를 침묵으로 처리할 때 쓴다. 새 팩트 종류가 늘어도 여기만 고치면 된다. */
@@ -75,5 +92,6 @@ export function emptyFacts(): DocumentFacts {
     assignments: [], foreachBindings: [], dataArgBindings: [], phpdocVars: [],
     propertyAccesses: [], plainAssignments: [], stringCalls: [], templateCalls: [], amdCalls: [], methodCalls: [], tableRefs: [],
     dynamicStringCalls: [], literalAssignments: [], propertyLiterals: [], constLiterals: [],
+    configCalls: [], dynamicConfigCalls: [],
   };
 }

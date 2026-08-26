@@ -1,8 +1,8 @@
-import { ComponentRef, DocumentFacts, DynamicStringCall, Scope } from '../../code-analysis/facts';
+import { ComponentRef, ComponentRefSite, DocumentFacts, Scope } from '../../code-analysis/facts';
 
 /** 컴포넌트 인자를 같은 파일의 문자열 리터럴로 한 단계 거슬러 올라가 해석한다.
  *  서로 다른 리터럴이 둘 이상이면 null — 틀린 컴포넌트로 해석하면 누락 키 진단이 곧 오탐이 된다. */
-export function resolveComponentRef(facts: DocumentFacts, call: DynamicStringCall): string | null {
+export function resolveComponentRef(facts: DocumentFacts, call: ComponentRefSite): string | null {
   switch (call.comp.kind) {
     case 'var': return single(facts.literalAssignments
       .filter(a => a.varName === call.comp.name && sameScope(a.scope, call.scope))
