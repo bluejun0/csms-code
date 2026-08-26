@@ -1,38 +1,57 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { ConfigDeclaration, ConfigKey, ConfigKeyRepository } from '../../domain/moodle-model/ports/config-key-repository';
+import { configKeyId, configPlugin } from '../../domain/moodle-model/services/config-plugin';
 import { pluginTypeDirsAsync } from '../workspace/plugin-type-map';
 import { yieldNow, INDEX_YIELD_EVERY } from '../workspace/moodle-root-resolver';
+import { parseSettingDeclarations } from './settings-declaration-parser';
 
 // config-dist.php는 코어 $CFG 옵션을 대입문 형태로 문서화한다.
 const CFG_ASSIGN_RE = /\$CFG->(\w+)\s*=/g;
-// 관리 설정 선언. 이름이 `plugin/key`면 $CFG에 올라가는 것은 마지막 조각이다.
-const ADMIN_SETTING_RE = /new\s+admin_setting_\w+\s*\(\s*'([\w/]+)'/g;
 
-/** `$CFG->` 완성 후보 — config-dist.php와 설정 선언에서 모은다.
- *  런타임에 `set_config`로 만들어지는 키는 어디에도 선언되지 않아 담기지 않는다. */
+interface Maps {
+  /** `$CFG->` 완성용 납작한 이름 — 먼저 찾은 선언을 유지한다 */
+  byName: Map<string, ConfigKey>;
+  /** 'plugin/key' → 선언 */
+  byId: Map<string, ConfigDeclaration>;
+  byFile: Map<string, ConfigDeclaration[]>;
+  byPlugin: Map<string, ConfigDeclaration[]>;
+}
+const emptyMaps = (): Maps => ({ byName: new Map(), byId: new Map(), byFile: new Map(), byPlugin: new Map() });
+
+/** 설정 키 색인 — `$CFG->` 완성 후보(config-dist.php + 선언)와 플러그인 설정 선언((plugin, key) → settings.php 위치).
+ *  런타임에 `set_config`로만 만들어지는 키는 어디에도 선언되지 않아 담기지 않는다.
+ *  네 맵은 조립 함수 두 개(mergeFile·removeFileFrom)로만 바뀐다 — 전체 빌드와 파일 단위 증분이 갈라질 수 없다. */
 export class ConfigKeyIndex implements ConfigKeyRepository {
-  private byName = new Map<string, ConfigKey>();
+  private maps = emptyMaps();
 
   async buildFromRootAsync(root: string): Promise<void> {
-    const map = new Map<string, ConfigKey>();
-    await addFromDist(map, path.join(root, 'config-dist.php'));
+    const next = emptyMaps();
+    await addFromDist(next.byName, path.join(root, 'config-dist.php'));
     let n = 0;
     for (const file of await settingsFiles(root)) {
-      await addFromSettings(map, file);
+      mergeFile(next, file, await readText(file));
       if (++n % INDEX_YIELD_EVERY === 0) await yieldNow();
     }
-    this.byName = map;
+    this.maps = next; // 한 번에 교체 — 빌드 중 조회가 반쪽 색인을 보지 않는다
   }
 
-  keys(): ConfigKey[] { return [...this.byName.values()]; }
-  find(name: string): ConfigKey | undefined { return this.byName.get(name); }
-  declaration(): ConfigDeclaration | undefined { return undefined; }
-  declarationsIn(): ConfigDeclaration[] { return []; }
-  keysOfPlugin(): ConfigDeclaration[] { return []; }
+  /** 그 파일의 항목만 교체. 납작 맵에서 다른 파일이 먼저 선언한 같은 이름은 그대로 남는다. */
+  async updateFile(file: string): Promise<void> {
+    removeFileFrom(this.maps, file);
+    mergeFile(this.maps, file, await readText(file));
+  }
+
+  removeFile(file: string): void { removeFileFrom(this.maps, file); }
+
+  keys(): ConfigKey[] { return [...this.maps.byName.values()]; }
+  find(name: string): ConfigKey | undefined { return this.maps.byName.get(name); }
+  declaration(plugin: string, key: string): ConfigDeclaration | undefined { return this.maps.byId.get(configKeyId(plugin, key)); }
+  declarationsIn(file: string): ConfigDeclaration[] { return this.maps.byFile.get(file) ?? []; }
+  keysOfPlugin(plugin: string): ConfigDeclaration[] { return this.maps.byPlugin.get(configPlugin(plugin)) ?? []; }
 }
 
-/** `admin/settings/*.php`와 각 플러그인의 `settings.php` */
+/** `admin/settings/*.php`, 코어 특수 설정 클래스가 있는 `lib/adminlib.php`, 각 플러그인의 `settings.php` */
 async function settingsFiles(root: string): Promise<string[]> {
   const out: string[] = [];
   const adminDir = path.join(root, 'admin', 'settings');
@@ -41,6 +60,7 @@ async function settingsFiles(root: string): Promise<string[]> {
       if (f.endsWith('.php')) out.push(path.join(adminDir, f));
     }
   } catch { /* 없는 버전 */ }
+  out.push(path.join(root, 'lib', 'adminlib.php'));
   for (const relDir of new Set((await pluginTypeDirsAsync(root)).values())) {
     const typeDir = path.join(root, relDir);
     let names: fs.Dirent[];
@@ -53,37 +73,52 @@ async function settingsFiles(root: string): Promise<string[]> {
   return out;
 }
 
+function mergeFile(maps: Maps, file: string, text: string | null): void {
+  if (text === null) return;
+  const decls = parseSettingDeclarations(file, text);
+  if (!decls.length) return;
+  maps.byFile.set(file, decls);
+  for (const d of decls) {
+    const id = `${d.plugin}/${d.key}`;
+    if (!maps.byId.has(id)) maps.byId.set(id, d);
+    let list = maps.byPlugin.get(d.plugin);
+    if (!list) { list = []; maps.byPlugin.set(d.plugin, list); }
+    list.push(d);
+    if (!maps.byName.has(d.key)) maps.byName.set(d.key, { name: d.key, doc: '', location: d.location });
+  }
+}
+
+function removeFileFrom(maps: Maps, file: string): void {
+  const decls = maps.byFile.get(file);
+  if (!decls) return;
+  maps.byFile.delete(file);
+  for (const d of decls) {
+    const id = `${d.plugin}/${d.key}`;
+    if (maps.byId.get(id) === d) maps.byId.delete(id);
+    const list = maps.byPlugin.get(d.plugin);
+    if (list) {
+      const rest = list.filter(x => x !== d);
+      if (rest.length) maps.byPlugin.set(d.plugin, rest); else maps.byPlugin.delete(d.plugin);
+    }
+    if (maps.byName.get(d.key)?.location.uri === file) maps.byName.delete(d.key);
+  }
+}
+
 async function addFromDist(map: Map<string, ConfigKey>, file: string): Promise<void> {
   const text = await readText(file);
   if (text === null) return;
-  collect(map, file, text, CFG_ASSIGN_RE, true);
-}
-
-async function addFromSettings(map: Map<string, ConfigKey>, file: string): Promise<void> {
-  const text = await readText(file);
-  if (text === null) return;
-  collect(map, file, text, ADMIN_SETTING_RE, false);
-}
-
-/** 줄 번호는 매치마다 앞을 되짚지 않고 누적해서 센다. 먼저 찾은 선언을 유지한다. */
-function collect(map: Map<string, ConfigKey>, file: string, text: string,
-                 re: RegExp, withDoc: boolean): void {
   const lines = text.split(/\r?\n/);
-  re.lastIndex = 0;
+  CFG_ASSIGN_RE.lastIndex = 0;
   let m: RegExpExecArray | null;
-  let lastIdx = 0, line = 0, lineStart = 0;
-  while ((m = re.exec(text))) {
+  let lastIdx = 0, line = 0, lineStart = 0; // 줄 번호는 매치마다 앞을 되짚지 않고 누적해서 센다
+  while ((m = CFG_ASSIGN_RE.exec(text))) {
     for (let i = lastIdx; i < m.index; i++) {
       if (text.charCodeAt(i) === 10) { line++; lineStart = i + 1; }
     }
     lastIdx = m.index;
-    const raw = m[1];
-    const name = raw.includes('/') ? raw.slice(raw.lastIndexOf('/') + 1) : raw;
+    const name = m[1];
     if (map.has(name)) continue;
-    map.set(name, {
-      name, doc: withDoc ? commentAbove(lines, line) : '',
-      location: { uri: file, line, column: m.index - lineStart },
-    });
+    map.set(name, { name, doc: commentAbove(lines, line), location: { uri: file, line, column: m.index - lineStart } });
   }
 }
 
