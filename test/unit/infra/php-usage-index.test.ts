@@ -79,6 +79,21 @@ describe('PhpUsageIndex', () => {
     assert.equal(x[0].column, 29); // "throw new \\moodle_exception('" 다음
     assert.equal(idx2.referencesOf('core', 'dyn').length, 0, '컴포넌트가 리터럴이 아니면 침묵');
   });
+  it('설정 참조: get_config·set_config 키 위치, 값에 괄호가 든 set_config는 침묵, 증분 제거', () => {
+    const idx2 = new PhpUsageIndex(() => false);
+    const src = "<?php\n$a = get_config('local_ubattend', 'apikey');\nset_config('mode', 1, 'local_ubattend');\nset_config('nest', get_config('a', 'b'), 'local_ubattend');\nset_config('core_only', 1);\n";
+    idx2.updateFileText('/c.php', src);
+    const lines = src.split('\n');
+    const get = idx2.configRefsOf('local_ubattend', 'apikey');
+    assert.equal(get.length, 1); assert.equal(get[0].line, 1); assert.equal(get[0].column, lines[1].indexOf('apikey'));
+    const set = idx2.configRefsOf('local_ubattend', 'mode');
+    assert.equal(set.length, 1); assert.equal(set[0].column, lines[2].indexOf('mode'));
+    assert.equal(idx2.configRefsOf('local_ubattend', 'nest').length, 0, '값에 괄호 → 정규식으로 안전하게 자를 수 없어 침묵');
+    assert.equal(idx2.configRefsOf('a', 'b').length, 1, '안쪽 get_config는 그 자체로 사용처');
+    assert.equal(idx2.configRefsOf('core', 'core_only').length, 0, '두 인자 set_config(core)는 범위 밖');
+    idx2.updateFileText('/c.php', '<?php\n');
+    assert.equal(idx2.configRefsOf('local_ubattend', 'apikey').length, 0);
+  });
   it("lang 디렉터리는 스캔에서 제외 — 값/노트 속 get_string 유령 매치 방지", () => {
     assert.equal(idx.referencesOf('local_ubattend', 'ghost_key').length, 0);
   });
