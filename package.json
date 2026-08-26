@@ -50,6 +50,14 @@
           "type": "boolean", "default": true,
           "description": "해석되는 AMD 모듈 참조(js_call_amd의 첫 인자)를 링크 색상(textLink.foreground)으로 하이라이팅합니다."
         },
+        "csmscode.config.highlightResolved": {
+          "type": "boolean", "default": true,
+          "description": "settings.php 선언으로 해석되는 get_config·set_config 키를 링크 색상(textLink.foreground)으로 하이라이팅합니다."
+        },
+        "csmscode.config.codeLens": {
+          "type": "boolean", "default": true,
+          "description": "settings.php의 admin_setting 선언 줄 위에 \"사용 N건\" 버튼(CodeLens)을 표시합니다. 클릭하면 그 자리에서 get_config·set_config 사용처 목록이 열립니다."
+        },
         "csmscode.tables.highlightResolved": {
           "type": "boolean", "default": true,
           "description": "SQL 문자열에서 install.xml로 해석되는 테이블 참조({table})를 링크 색상(textLink.foreground)으로 하이라이팅합니다."

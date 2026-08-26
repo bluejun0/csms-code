@@ -32,8 +32,17 @@ import { UsageIndexHandle } from './presentation/providers/usage-index-handle';
 import { TargetReferenceProvider } from './presentation/providers/target-reference-provider';
 import { UsageCodeLensProvider } from './presentation/providers/usage-code-lens-provider';
 import { registerShowReferences } from './presentation/show-references';
-import { SHOW_STRING_REFERENCES_COMMAND, ReferenceCounters } from './presentation/references-link';
-import { langLensTargets } from './presentation/lens-targets';
+import { SHOW_STRING_REFERENCES_COMMAND, SHOW_CONFIG_REFERENCES_COMMAND, ReferenceCounters } from './presentation/references-link';
+import { langLensTargets, settingsLensTargets } from './presentation/lens-targets';
+import { LocateConfigTarget } from './application/locate-config-target';
+import { ResolveConfigDefinition } from './application/resolve-config-definition';
+import { DescribeConfigKey } from './application/describe-config-key';
+import { FindConfigReferences } from './application/find-config-references';
+import { ListResolvedConfigRefs } from './application/list-resolved-config-refs';
+import { CompleteConfigKeys } from './application/complete-config-keys';
+import { ConfigDefinitionProvider } from './presentation/providers/config-definition-provider';
+import { ConfigHoverProvider } from './presentation/providers/config-hover-provider';
+import { ConfigKeyCompletionProvider } from './presentation/providers/config-key-completion-provider';
 import { LocateStringTarget } from './application/locate-string-target';
 import { parseLangFile } from './infrastructure/lang/lang-file-parser';
 import { registerResolvedHighlight } from './presentation/resolved-highlight';
@@ -155,14 +164,42 @@ export async function activate(ctx: vscode.ExtensionContext) {
   // 두 색인이 모두 끝나야 준비된 것이다 — 클래스 색인의 플래그만 보면 설정 색인이 비어 있는
   // 900ms 동안 $CFG-> 완성이 조용히 빈 목록을 준다.
   let globalsReady = false;
+  // 선언 색인은 첫 요청에서 만든다(활성화 비용 0). 전역 핸들과 같은 Promise를 공유해 두 번 만들지 않는다.
+  let configBuild: Promise<void> | undefined;
+  let configReady = false;
+  const configReadyListeners: Array<() => void> = [];
+  const ensureConfig = () => configBuild ??= configKeys.buildFromRootAsync(root).then(() => {
+    configReady = true;
+    for (const l of configReadyListeners) l();
+  });
   const globalsHandle = {
     built: () => globalsReady,
     build: () => globalsBuild ?? (globalsBuild = (async () => {
       await classMembers.buildFromRoot(root, syntax);
-      await configKeys.buildFromRootAsync(root);
+      await ensureConfig();
       globalsReady = true;
     })()),
   };
+
+  const locateCfg = new LocateConfigTarget(syntax, configKeys);
+  const resolveCfg = new ResolveConfigDefinition(syntax, configKeys);
+  const describeCfg = new DescribeConfigKey(syntax, configKeys, uri => path.relative(root, uri));
+  const findCfgRefs = new FindConfigReferences(usageIndex, configKeys);
+  const listResolvedCfg = new ListResolvedConfigRefs(syntax, configKeys);
+  const completeCfg = new CompleteConfigKeys(configKeys);
+  const cfgCounter = { built: () => usageIndex.isBuilt, count: (p: string, k: string) => findCfgRefs.run(p, k).length };
+  counters.config = cfgCounter;
+  registerShowReferences(ctx, SHOW_CONFIG_REFERENCES_COMMAND, (p, k) => findCfgRefs.run(p, k), usageHandle);
+  const settingsSelector: vscode.DocumentSelector = [
+    { language: 'php', scheme: 'file', pattern: '**/settings.php' },
+    { language: 'php', scheme: 'file', pattern: '**/admin/settings/*.php' },
+  ];
+  const settingsLens = new UsageCodeLensProvider(doc => {
+    if (!configReady) { void ensureConfig(); return []; } // settings.php를 열었다는 것 자체가 요청이다
+    return settingsLensTargets(doc.uri.toString(), configKeys.declarationsIn(doc.uri.fsPath), cfgCounter);
+  }, () => vscode.workspace.getConfiguration('csmscode').get<boolean>('config.codeLens', true));
+  ctx.subscriptions.push(settingsLens);
+  configReadyListeners.push(() => settingsLens.refresh());
   const completeGlobal = new CompleteGlobalMembers(syntax, classMembers, configKeys, store);
   const describeGlobal = new DescribeGlobalMember(syntax, classMembers, configKeys, store);
   const resolveGlobal = new ResolveGlobalMemberDefinition(syntax, classMembers, configKeys, store);
@@ -212,6 +249,15 @@ export async function activate(ctx: vscode.ExtensionContext) {
       new AmdReferenceProvider(findAmdRefs, usageHandle, file => componentOfAmdFile(root, file))),
     vscode.languages.registerDefinitionProvider(js, new JsDefinitionProvider(resolveJs)),
     vscode.languages.registerHoverProvider(js, new JsHoverProvider(describeJs, counters)),
+    vscode.languages.registerDefinitionProvider(php, new ConfigDefinitionProvider(locateCfg, resolveCfg, ensureConfig)),
+    vscode.languages.registerHoverProvider(php, new ConfigHoverProvider(locateCfg, describeCfg, counters, ensureConfig)),
+    vscode.languages.registerCompletionItemProvider(php, new ConfigKeyCompletionProvider(completeCfg, ensureConfig), "'", '"'),
+    vscode.languages.registerReferenceProvider(php, new TargetReferenceProvider(
+      (doc, pos) => locateCfg.php(doc.getText(), doc.offsetAt(pos)), (t, incl) => findCfgRefs.run(t.plugin, t.key, incl), usageHandle, ensureConfig)),
+    vscode.languages.registerReferenceProvider(settingsSelector, new TargetReferenceProvider(
+      (doc, pos) => locateCfg.settings(doc.uri.fsPath, pos.line), (t, incl) => findCfgRefs.run(t.plugin, t.key, incl), usageHandle, ensureConfig)),
+    vscode.languages.registerCodeLensProvider(settingsSelector, settingsLens),
+    vscode.workspace.onDidChangeConfiguration(e => { if (e.affectsConfiguration('csmscode.config.codeLens')) settingsLens.refresh(); }),
   );
   const diagnostics = registerDiagnostics(ctx, validate, validateStr);
   const highlight = registerResolvedHighlight(ctx, [
@@ -223,7 +269,14 @@ export async function activate(ctx: vscode.ExtensionContext) {
     { setting: 'strings.highlightResolved', languages: [], pathSuffix: '.mustache', run: t => listResolvedMustache.runStrings(t) },
     { setting: 'strings.highlightResolved', languages: ['javascript'], run: t => listResolvedJs.runStrings(t) },
     { setting: 'templates.highlightResolved', languages: ['javascript'], run: t => listResolvedJs.runTemplates(t) },
+    // 선언 색인이 없으면 설정 호출이 있는 문서에서만 빌드를 시작하고, 끝나면 다시 그린다
+    { setting: 'config.highlightResolved', languages: ['php'], run: t => {
+      if (configReady) return listResolvedCfg.run(t);
+      if (listResolvedCfg.hasCalls(t)) void ensureConfig();
+      return [];
+    } },
   ]);
+  configReadyListeners.push(() => highlight.refreshAll());
   const showIndexCounts = () => status.setReady({
     tables: store.allTableNames().length, strings: strings.size(),
     templates: templates.size(), amd: amd.size(),
@@ -355,6 +408,19 @@ export async function activate(ctx: vscode.ExtensionContext) {
   ctx.subscriptions.push(typeDeclWatcher, componentsWatcher,
     typeDeclWatcher.onDidChange(onTypeDecl), typeDeclWatcher.onDidCreate(onTypeDecl), typeDeclWatcher.onDidDelete(onTypeDecl),
     componentsWatcher.onDidChange(onTypeDecl), componentsWatcher.onDidCreate(onTypeDecl), componentsWatcher.onDidDelete(onTypeDecl));
+
+  // settings.php 변경 → 선언 색인 그 파일만 갱신(색인이 아직 없으면 다음 빌드가 담는다)
+  const settingsWatcher = vscode.workspace.createFileSystemWatcher('**/settings.php');
+  const adminSettingsWatcher = vscode.workspace.createFileSystemWatcher('**/admin/settings/*.php');
+  const onSettings = (uri: vscode.Uri, removed: boolean) => {
+    if (!configReady) return;
+    const done = removed ? Promise.resolve(configKeys.removeFile(uri.fsPath)) : configKeys.updateFile(uri.fsPath);
+    void done.then(() => { settingsLens.refresh(); highlight.refreshAll(); });
+  };
+  for (const w of [settingsWatcher, adminSettingsWatcher]) {
+    ctx.subscriptions.push(w,
+      w.onDidChange(u => onSettings(u, false)), w.onDidCreate(u => onSettings(u, false)), w.onDidDelete(u => onSettings(u, true)));
+  }
 
   // 사용처 색인 증분: lazy 빌드 이후에만, 저장된 파일 단위로 재추출
   ctx.subscriptions.push(vscode.workspace.onDidSaveTextDocument(d => {
