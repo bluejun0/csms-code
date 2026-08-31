@@ -39,6 +39,12 @@ describe('UsageIndexCache', () => {
     await c.write(snap('/m/root', '1.0.0'));
     assert.ok(await c.read());
   });
+  it('같은 프로세스에서 쓰기가 겹쳐도 캐시가 깨지지 않는다', async () => {
+    const c = new UsageIndexCache(dir, '/m/root', '1.0.0');
+    await Promise.all([c.write(snap('/m/root', '1.0.0')), c.write(snap('/m/root', '1.0.0'))]);
+    assert.ok(await c.read(), '겹친 쓰기 뒤에도 읽힌다');
+    assert.equal(fs.readdirSync(dir).filter(f => f.endsWith('.tmp')).length, 0, '임시 파일이 남지 않는다');
+  });
   it('쓰기 실패는 예외를 던지지 않는다', async () => {
     fs.writeFileSync(join(dir, 'x.php'), 'x');
     const c = new UsageIndexCache(join(dir, 'x.php', 'nope'), '/m/root', '1.0.0');

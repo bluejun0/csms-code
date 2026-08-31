@@ -44,3 +44,28 @@ describe('packRows·unpackRows 왕복', () => {
   it('빈 목록은 아무것도 남기지 않는다', () =>
     assert.deepEqual(packRows<[string]>([[1, []]], e => [e[0]]), []));
 });
+
+describe('unpackRows — 못 믿을 입력 방어', () => {
+  it('셀이 모자라면 그 묶음을 통째로 버린다', () => {
+    const seen: unknown[] = [];
+    unpackRows([0, 2, 'k1', 1, 'k2'], 2, (fi, row) => seen.push([fi, ...row]));
+    assert.deepEqual(seen, [], '반쪽 묶음은 믿지 않는다');
+  });
+  it('온전한 묶음은 그대로 적용한다', () => {
+    const seen: unknown[] = [];
+    unpackRows([0, 2, 'k1', 1, 'k2', 2], 2, (fi, row) => seen.push([fi, ...row]));
+    assert.deepEqual(seen, [[0, 'k1', 1], [0, 'k2', 2]]);
+  });
+  it('개수가 배열 길이를 넘으면 그 묶음을 버린다(거대한 n으로 도지 않는다)', () => {
+    let calls = 0;
+    unpackRows([0, 5_000_000, 'k', 1], 2, () => { calls++; });
+    assert.equal(calls, 0);
+  });
+  it('개수·파일 인덱스가 정수가 아니거나 음수면 버린다', () => {
+    let calls = 0;
+    unpackRows([0, -1, 'k', 1], 2, () => { calls++; });
+    unpackRows([0, '2' as unknown as number, 'k', 1], 2, () => { calls++; });
+    unpackRows(['x' as unknown as number, 1, 'k', 1], 2, () => { calls++; });
+    assert.equal(calls, 0);
+  });
+});

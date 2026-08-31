@@ -32,6 +32,9 @@ const STAT_CHUNK = 64;   // stat은 읽기보다 싸다
 /** 캐시 검증용 파일 도장 — 내용을 다시 읽지 않고 mtime·size로 판정한다. */
 export interface FileStamp { mtimeMs: number; size: number; }
 
+/** 열거 결과. `failures`는 읽지 못한 디렉터리 수 — 0이 아니면 "파일이 사라졌다"고 단정할 수 없다. */
+interface Scan { files: string[]; failures: number }
+
 interface UsageEntry { component: string; key: string; loc: SourceLocation; }
 interface TemplateEntry { ref: string; loc: SourceLocation; }
 interface AmdEntry { ref: string; loc: SourceLocation; }
@@ -57,7 +60,8 @@ export class PhpUsageIndex implements StringUsageRepository, TemplateUsageReposi
   get isBuilt(): boolean { return this.builtFlag; }
 
   async buildFromRoot(root: string, onProgress?: (done: number, total: number) => void): Promise<void> {
-    const files = await listSourceFiles(root);
+    const { files } = await listSourceFiles(root);
+    this.reset(); // 전체 빌드는 빈 상태에서 시작한다 — 앞선 색인의 잔재가 남지 않게
     let done = 0, lastYield = 0;
     // 읽기는 청크 안에서 병렬로, 적용은 파일 순서대로 — 항목 배열의 순서가 순차 빌드와 같아야 한다.
     for (let i = 0; i < files.length; i += READ_CHUNK) {
@@ -196,13 +200,18 @@ export class PhpUsageIndex implements StringUsageRepository, TemplateUsageReposi
     };
   }
 
-  /** 스냅샷으로 색인을 채운다 — 컴포넌트 정규화는 저장 시점에 끝나 있으므로 다시 하지 않는다. */
-  loadSnapshot(snap: UsageSnapshot, root: string): void {
+  /** 색인을 빈 상태로 — 전체 빌드·복원이 앞선 내용을 물려받지 않게 한다. */
+  private reset(): void {
     this.byComponent = new Map(); this.byFile = new Map();
     this.byTemplateRef = new Map(); this.templatesByFile = new Map();
     this.byAmdRef = new Map(); this.amdByFile = new Map();
     this.byConfigId = new Map(); this.configByFile = new Map();
     this.stamps = new Map();
+  }
+
+  /** 스냅샷으로 색인을 채운다 — 컴포넌트 정규화는 저장 시점에 끝나 있으므로 다시 하지 않는다. */
+  loadSnapshot(snap: UsageSnapshot, root: string): void {
+    this.reset();
 
     const files = snap.files.map(([rel]) => path.join(root, rel));
     snap.files.forEach(([, mtimeMs, size], i) => { if (size >= 0) this.stamps.set(files[i], { mtimeMs, size }); });
@@ -213,31 +222,38 @@ export class PhpUsageIndex implements StringUsageRepository, TemplateUsageReposi
       if (!e) { e = { entries: [], tEntries: [], aEntries: [], cEntries: [] }; per.set(i, e); }
       return e;
     };
+    const known = (i: number): boolean => files[i] !== undefined; // 손상된 스냅샷의 범위 밖 인덱스는 버린다
     const at = (i: number, line: number, column: number): SourceLocation => ({ uri: files[i], line, column });
-    unpackRows(snap.s, 4, (i, r) => slot(i).entries.push({
-      component: r[0] as string, key: r[1] as string, loc: at(i, r[2] as number, r[3] as number) }));
-    unpackRows(snap.t, 3, (i, r) => slot(i).tEntries.push({ ref: r[0] as string, loc: at(i, r[1] as number, r[2] as number) }));
-    unpackRows(snap.a, 3, (i, r) => slot(i).aEntries.push({ ref: r[0] as string, loc: at(i, r[1] as number, r[2] as number) }));
-    unpackRows(snap.c, 3, (i, r) => slot(i).cEntries.push({ id: r[0] as string, loc: at(i, r[1] as number, r[2] as number) }));
+    unpackRows(snap.s, 4, (i, r) => { if (known(i)) slot(i).entries.push({
+      component: r[0] as string, key: r[1] as string, loc: at(i, r[2] as number, r[3] as number) }); });
+    unpackRows(snap.t, 3, (i, r) => { if (known(i)) slot(i).tEntries.push({ ref: r[0] as string, loc: at(i, r[1] as number, r[2] as number) }); });
+    unpackRows(snap.a, 3, (i, r) => { if (known(i)) slot(i).aEntries.push({ ref: r[0] as string, loc: at(i, r[1] as number, r[2] as number) }); });
+    unpackRows(snap.c, 3, (i, r) => { if (known(i)) slot(i).cEntries.push({ id: r[0] as string, loc: at(i, r[1] as number, r[2] as number) }); });
 
-    for (const [i, extracted] of per) this.applyExtracted(files[i], extracted, this.stamps.get(files[i]));
+    // 파일 인덱스 순서로 적용한다 — 종류별로 채운 순서를 그대로 쓰면 위치 배열 순서가 스캔과 달라진다.
+    for (const i of [...per.keys()].sort((x, y) => x - y)) {
+      this.applyExtracted(files[i], per.get(i)!, this.stamps.get(files[i]));
+    }
     this.builtFlag = true;
   }
 
   /** 캐시로 채운 색인을 디스크와 맞춘다 — 빠른 순회 + 병렬 stat로 도장을 비교하고 바뀐 파일만 다시 읽는다.
    *  바뀐 것이 있으면 true(호출자가 화면을 다시 그린다). */
   async revalidateFromRoot(root: string): Promise<boolean> {
-    const files = await listSourceFiles(root);
-    const current = await statAll(files, root);
-    const { changed, removed } = diffStamps(this.stampRows(root), current);
-    for (const rel of removed) this.updateFileText(path.join(root, rel), '');
+    const scan = await listSourceFiles(root);
+    const { rows, failures } = await statAll(scan.files, root);
+    const { changed, removed } = diffStamps(this.stampRows(root), rows);
+    // 순회·stat 실패는 침묵으로 삼켜지므로 "사라졌다"와 구별되지 않는다. 하나라도 실패했으면
+    // 삭제는 적용하지 않는다 — 잘못된 대량 삭제를 색인과 캐시에 굽는 쪽이 훨씬 비싸다.
+    const applyRemoved = scan.failures === 0 && failures === 0;
+    if (applyRemoved) for (const rel of removed) this.updateFileText(path.join(root, rel), '');
     for (let i = 0; i < changed.length; i += READ_CHUNK) {
       const chunk = changed.slice(i, i + READ_CHUNK).map(rel => path.join(root, rel));
       const read = await Promise.all(chunk.map(readWithStamp));
       for (const r of read) if (r) this.updateFileText(r.file, r.text, r.stamp);
       await new Promise<void>(r => setImmediate(r)); // 이벤트 루프 양보 — 백그라운드에서 돈다
     }
-    return changed.length > 0 || removed.length > 0;
+    return changed.length > 0 || (applyRemoved && removed.length > 0);
   }
 
   referencesOf(component: string, key: string): SourceLocation[] {
@@ -315,41 +331,45 @@ function forEachMatch(text: string, re: RegExp, fn: (m: RegExpExecArray, line: n
 
 /** 루트 재귀 소스 파일(.php/.js) 열거 — realpath 순환 가드, 채택 여부는 isIndexableSourcePath로 통일해
  *  콜드 스캔과 저장 증분의 제외 규칙이 갈라지지 않게 한다. */
-async function listSourceFiles(root: string): Promise<string[]> {
+async function listSourceFiles(root: string): Promise<Scan> {
   const out: string[] = [];
-  const seenLinks = new Set<string>();
-  async function walk(dir: string, viaLink: boolean): Promise<void> {
-    // realpath는 링크로 진입할 때만 부른다 — 일반 디렉터리 계층으로는 순환이 생길 수 없고,
-    // 디렉터리마다 부르면 열거 비용이 몇 배가 된다.
-    if (viaLink) {
-      let real: string;
-      try { real = await fs.promises.realpath(dir); } catch { return; }
-      if (seenLinks.has(real)) return;
-      seenLinks.add(real);
-    }
+  const seen = new Set<string>();
+  let failures = 0;
+  /** `real`은 dir의 실경로. 링크로 들어갈 때만 realpath를 부르고, 일반 하위 디렉터리는 부모 실경로에 이름을 붙여 만든다 —
+   *  디렉터리마다 realpath를 부르면 열거 비용이 몇 배가 되지만, dedupe 집합에는 모든 디렉터리가 들어가야
+   *  실경로와 링크로 두 번 도달하는 디렉터리를 두 번 훑지 않는다. */
+  async function walk(dir: string, real: string): Promise<void> {
+    if (seen.has(real)) return;
+    seen.add(real);
     let entries: fs.Dirent[];
-    try { entries = await fs.promises.readdir(dir, { withFileTypes: true }); } catch { return; }
+    try { entries = await fs.promises.readdir(dir, { withFileTypes: true }); } catch { failures++; return; }
     const subs: Promise<void>[] = [];
     for (const d of entries) {
       if (SKIP_DIRS.has(d.name)) continue;
       const p = path.join(dir, d.name);
-      if (d.isDirectory()) subs.push(walk(p, false));
+      if (d.isDirectory()) subs.push(walk(p, path.join(real, d.name)));
       else if (d.isSymbolicLink()) {
         subs.push((async () => {
-          try { if ((await fs.promises.stat(p)).isDirectory()) await walk(p, true); } catch { /* 깨진 링크 무시 */ }
+          try {
+            if (!(await fs.promises.stat(p)).isDirectory()) return;
+            await walk(p, await fs.promises.realpath(p));
+          } catch { /* 깨진 링크 무시 */ }
         })());
       } else if (d.isFile() && isIndexableSourcePath(root, p)) out.push(p);
     }
     await Promise.all(subs);
   }
-  await walk(root, true);
+  let rootReal = root;
+  try { rootReal = await fs.promises.realpath(root); } catch { failures++; }
+  await walk(root, rootReal);
   // 병렬 열거는 완료 순서가 갈리므로 정렬해 스캔 순서를 고정한다 — 항목 배열의 순서가 실행마다 달라지지 않게.
-  return out.sort();
+  return { files: out.sort(), failures };
 }
 
 /** 파일 도장을 병렬로 모은다 — 읽지 않으므로 검증은 스캔보다 훨씬 싸다. */
-async function statAll(files: readonly string[], root: string): Promise<StampRow[]> {
+async function statAll(files: readonly string[], root: string): Promise<{ rows: StampRow[]; failures: number }> {
   const out: StampRow[] = [];
+  let failures = 0;
   for (let i = 0; i < files.length; i += STAT_CHUNK) {
     const chunk = files.slice(i, i + STAT_CHUNK);
     const rows = await Promise.all(chunk.map(async f => {
@@ -358,10 +378,10 @@ async function statAll(files: readonly string[], root: string): Promise<StampRow
         return [path.relative(root, f), st.mtimeMs, st.size] as StampRow;
       } catch { return null; }
     }));
-    for (const r of rows) if (r) out.push(r);
+    for (const r of rows) { if (r) out.push(r); else failures++; }
     await new Promise<void>(r => setImmediate(r));
   }
-  return out;
+  return { rows: out, failures };
 }
 
 /** 루트 밖 경로는 상대 경로로 담을 수 없고 검증도 못 한다 — 스냅샷에서 제외한다. */

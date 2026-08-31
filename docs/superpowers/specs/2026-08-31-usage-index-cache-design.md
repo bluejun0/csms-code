@@ -126,7 +126,7 @@ loadSnapshot(snap: UsageSnapshot, root: string): void;
 /** 빠른 순회 + 병렬 stat로 diff → 바뀐 파일만 다시 읽고 지워진 파일은 제거. 바뀐 것이 있으면 true. */
 revalidateFromRoot(root: string): Promise<boolean>;
 ```
-`loadSnapshot`은 `hasCanonical`을 다시 적용하지 않는다 — 컴포넌트 정규화는 **쓰는 시점에** 끝나 스냅샷에 canonical 이름이 들어 있다. lang 색인이 그 사이 달라져 정규화 결과가 바뀔 수 있는데, 그건 검증이 파일을 다시 읽을 때 함께 고쳐진다(lang 파일이 바뀌었다면 그 파일도 changed로 잡힌다).
+`loadSnapshot`은 `hasCanonical`을 다시 적용하지 않는다 — 컴포넌트 정규화는 **쓰는 시점에** 끝나 스냅샷에 canonical 이름이 들어 있다. 사이에 lang 색인이 달라져 bare 컴포넌트(`get_string('k','quiz')` → `core_quiz`/`mod_quiz`)의 정규화 결과가 바뀌면 스냅샷의 이름이 낡을 수 있다. `lang` 디렉터리는 사용처 스캔에서 제외되므로(`SKIP_DIRS`) lang 파일 변경 자체는 검증에 걸리지 않고, **그 컴포넌트를 참조하는 코드 파일이 바뀔 때** 함께 고쳐진다. 실무에서 플러그인이 사라져 bare 이름의 귀속이 뒤집히는 경우는 드물고, 어긋나면 사용처 목록에서 그 키가 빠지는 정도다(오탐이 아니라 누락).
 
 ### 3.6 결선 (`extension.ts`)
 

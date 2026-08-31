@@ -372,3 +372,75 @@ describe('PhpUsageIndex — 백그라운드 검증', () => {
     assert.equal(idx.referencesOf('local_x', 'k1').length, 1);
   });
 });
+
+describe('PhpUsageIndex — 순회 중복 방지(심볼릭 링크)', () => {
+  let tmp: string;
+  const build = async (r: string) => { const i = new PhpUsageIndex(() => true); await i.buildFromRoot(r); return i; };
+  beforeEach(() => { tmp = fs.mkdtempSync(join(os.tmpdir(), 'csms-usage-dedupe-')); });
+  afterEach(() => fs.rmSync(tmp, { recursive: true, force: true }));
+
+  it('링크가 조상을 가리켜도 같은 파일을 두 번 담지 않는다', async () => {
+    fs.mkdirSync(join(tmp, 'root', 'local', 'real'), { recursive: true });
+    fs.writeFileSync(join(tmp, 'root', 'local', 'real', 'a.php'), "<?php\nget_string('k1', 'local_x');\n");
+    fs.symlinkSync(join(tmp, 'root', 'local'), join(tmp, 'root', 'local', 'up'), 'dir');
+    const idx = await build(join(tmp, 'root'));
+    assert.equal(idx.referencesOf('local_x', 'k1').length, 1);
+  });
+  it('루트 안 실디렉터리를 가리키는 링크도 한 번만 담는다', async () => {
+    fs.mkdirSync(join(tmp, 'root', 'plugins', 'foo'), { recursive: true });
+    fs.mkdirSync(join(tmp, 'root', 'local'), { recursive: true });
+    fs.writeFileSync(join(tmp, 'root', 'plugins', 'foo', 'a.php'), "<?php\nget_string('k2', 'local_x');\n");
+    fs.symlinkSync(join(tmp, 'root', 'plugins', 'foo'), join(tmp, 'root', 'local', 'foo'), 'dir');
+    const idx = await build(join(tmp, 'root'));
+    assert.equal(idx.referencesOf('local_x', 'k2').length, 1);
+  });
+});
+
+describe('PhpUsageIndex — 검증 온전성', () => {
+  it('순회가 실패하면(루트 소실) 색인을 비우지 않고 false', async () => {
+    const tmp = fs.mkdtempSync(join(os.tmpdir(), 'csms-usage-gone-'));
+    const idx = new PhpUsageIndex(() => true);
+    try {
+      fs.writeFileSync(join(tmp, 'a.php'), "<?php\nget_string('k', 'local_x');\n");
+      await idx.buildFromRoot(tmp);
+      assert.equal(idx.referencesOf('local_x', 'k').length, 1);
+      fs.rmSync(tmp, { recursive: true, force: true });
+      assert.equal(await idx.revalidateFromRoot(tmp), false, '사라진 것으로 단정하지 않는다');
+      assert.equal(idx.referencesOf('local_x', 'k').length, 1, '항목이 남아 있어야 한다');
+      assert.ok(idx.toSnapshot(tmp, '1').files.length >= 1, '빈 스냅샷을 굽지 않는다');
+    } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
+  });
+});
+
+describe('PhpUsageIndex — 복원 순서·재복원', () => {
+  it('문자열 항목이 없는 파일이 섞여도 복원 순서가 스캔과 같다', async () => {
+    const tmp = fs.mkdtempSync(join(os.tmpdir(), 'csms-usage-order-'));
+    try {
+      // a.mustache는 템플릿 참조만, b.php는 문자열 + 템플릿 참조 — 정렬 순서상 a가 먼저다
+      fs.writeFileSync(join(tmp, 'a.mustache'), '{{> local_x/card}}\n');
+      fs.writeFileSync(join(tmp, 'b.php'), "<?php\nget_string('k', 'local_x');\n$OUTPUT->render_from_template('local_x/card', []);\n");
+      const scanned = new PhpUsageIndex(() => true);
+      await scanned.buildFromRoot(tmp);
+      const restored = new PhpUsageIndex(() => true);
+      restored.loadSnapshot(scanned.toSnapshot(tmp, '1'), tmp);
+      assert.deepEqual(restored.templateRefsOf('local_x', 'card').map(r => r.uri),
+        scanned.templateRefsOf('local_x', 'card').map(r => r.uri));
+    } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
+  });
+  it('두 번 복원해도 항목이 겹치지 않는다', async () => {
+    const src = new PhpUsageIndex(hasCanonical);
+    await src.buildFromRoot(root);
+    const snap = src.toSnapshot(root, '1');
+    const idx = new PhpUsageIndex(() => true);
+    idx.loadSnapshot(snap, root);
+    const once = idx.referencesOf('local_ubattend', 'attendance_book').length;
+    idx.loadSnapshot(snap, root);
+    assert.equal(idx.referencesOf('local_ubattend', 'attendance_book').length, once);
+  });
+  it('범위 밖 파일 인덱스는 uri 없는 항목을 만들지 않는다', () => {
+    const idx = new PhpUsageIndex(() => true);
+    idx.loadSnapshot({ v: 1, ext: '1', root: '/m', files: [['a.php', 1, 2]],
+      s: [7, 1, 'local_x', 'k', 0, 0], t: [], a: [], c: [] }, '/m');
+    assert.deepEqual(idx.referencesOf('local_x', 'k'), []);
+  });
+});

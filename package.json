@@ -5,8 +5,12 @@
   "version": "0.20.0",
   "publisher": "bluesoft",
   "license": "MIT",
-  "engines": { "vscode": "^1.85.0" },
-  "categories": ["Programming Languages"],
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
   "activationEvents": [
     "onLanguage:php",
     "onLanguage:javascript",
@@ -19,63 +23,88 @@
       "title": "CSMS Code",
       "properties": {
         "csmscode.detectInSubfolders": {
-          "type": "array", "items": { "type": "string" }, "default": ["moodle"],
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "moodle"
+          ],
           "description": "Moodle 루트가 하위 폴더에 있을 때 탐색할 폴더명 목록. Moodle을 moodle/ 하위에 두는 배치가 흔해 기본으로 포함합니다. version.php와 lib/db/install.xml이 함께 있을 때만 루트로 인정합니다."
         },
         "csmscode.diagnostics.enable": {
-          "type": "boolean", "default": true,
+          "type": "boolean",
+          "default": true,
           "description": "DB 레코드 컬럼 오타 진단을 켭니다."
         },
         "csmscode.strings.highlightResolved": {
-          "type": "boolean", "default": true,
+          "type": "boolean",
+          "default": true,
           "description": "해석되는 get_string 키를 링크 색상(textLink.foreground)으로 하이라이팅합니다."
         },
         "csmscode.strings.codeLens": {
-          "type": "boolean", "default": true,
+          "type": "boolean",
+          "default": true,
           "description": "lang 파일의 $string['key'] 줄 위에 \"사용 N건\" 버튼(CodeLens)을 표시합니다. 클릭하면 그 자리에서 사용처 목록이 열립니다. 사용처 색인이 아직 없으면 \"사용 찾기\"로 표시되고 클릭 시 색인을 만듭니다."
         },
         "csmscode.templates.highlightResolved": {
-          "type": "boolean", "default": true,
+          "type": "boolean",
+          "default": true,
           "description": "해석되는 render_from_template 참조를 링크 색상(textLink.foreground)으로 하이라이팅합니다."
         },
         "csmscode.php.selectDollarInWord": {
-          "type": "boolean", "default": true,
+          "type": "boolean",
+          "default": true,
           "description": "PHP에서 `$`를 단어의 일부로 봅니다. 더블클릭·Ctrl+D가 `$config`를 통째로 선택합니다(기본 동작은 `config`만 선택). 다른 PHP 확장이 같은 설정을 덮어쓰면 그쪽이 이길 수 있습니다."
         },
         "csmscode.showSourceLabel": {
-          "type": "boolean", "default": true,
+          "type": "boolean",
+          "default": true,
           "description": "자동완성 항목과 hover에 이 확장이 준 결과라는 표시(csms-intelli)를 덧붙입니다. 상태 표시줄에는 설정과 무관하게 색인 현황이 표시됩니다."
         },
         "csmscode.amd.highlightResolved": {
-          "type": "boolean", "default": true,
+          "type": "boolean",
+          "default": true,
           "description": "해석되는 AMD 모듈 참조(js_call_amd의 첫 인자)를 링크 색상(textLink.foreground)으로 하이라이팅합니다."
         },
         "csmscode.usageIndex.cache": {
-          "type": "boolean", "default": true,
+          "type": "boolean",
+          "default": true,
           "description": "사용처 색인을 디스크에 저장해 다음에 즉시 불러옵니다(워크스페이스당 약 1MB). 불러온 뒤 백그라운드에서 바뀐 파일만 다시 읽습니다. 끄면 매번 전체 스캔합니다."
         },
         "csmscode.amd.codeLens": {
-          "type": "boolean", "default": true,
+          "type": "boolean",
+          "default": true,
           "description": "amd/src 모듈 파일 맨 위에 \"사용 N건\" 버튼(CodeLens)을 표시합니다. 클릭하면 그 자리에서 js_call_amd 사용처 목록이 열립니다."
         },
         "csmscode.templates.codeLens": {
-          "type": "boolean", "default": true,
+          "type": "boolean",
+          "default": true,
           "description": "mustache 템플릿 파일 맨 위에 \"사용 N건\" 버튼(CodeLens)을 표시합니다. 클릭하면 그 자리에서 render_from_template·partial·JS Templates.render 사용처 목록이 열립니다."
         },
         "csmscode.config.highlightResolved": {
-          "type": "boolean", "default": true,
+          "type": "boolean",
+          "default": true,
           "description": "settings.php 선언으로 해석되는 get_config·set_config 키를 링크 색상(textLink.foreground)으로 하이라이팅합니다."
         },
         "csmscode.config.codeLens": {
-          "type": "boolean", "default": true,
+          "type": "boolean",
+          "default": true,
           "description": "settings.php의 admin_setting 선언 줄 위에 \"사용 N건\" 버튼(CodeLens)을 표시합니다. 클릭하면 그 자리에서 get_config·set_config 사용처 목록이 열립니다."
         },
         "csmscode.tables.highlightResolved": {
-          "type": "boolean", "default": true,
+          "type": "boolean",
+          "default": true,
           "description": "SQL 문자열에서 install.xml로 해석되는 테이블 참조({table})를 링크 색상(textLink.foreground)으로 하이라이팅합니다."
         }
       }
-    }
+    },
+    "commands": [
+      {
+        "command": "csmscode.rebuildUsageIndex",
+        "title": "CSMS Code: 사용처 색인 다시 만들기"
+      }
+    ]
   },
   "scripts": {
     "compile": "tsc -noEmit && node esbuild.mjs",

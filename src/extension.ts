@@ -148,14 +148,11 @@ export async function activate(ctx: vscode.ExtensionContext) {
   const usageCache = new UsageIndexCache(ctx.globalStorageUri.fsPath, root, extensionVersion);
   const usageCacheEnabled = () => vscode.workspace.getConfiguration('csmscode').get<boolean>('usageIndex.cache', true);
   const writeUsageCache = () => { if (usageCacheEnabled()) void usageCache.write(usageIndex.toSnapshot(root, extensionVersion)); };
-  const usageHandle: UsageIndexHandle = {
-    built: () => usageIndex.isBuilt,
-    // 빌드가 끝나면 렌즈 라벨이 "사용 찾기"에서 개수로 바뀌어야 한다
-    build: cb => usageBuild ??= (async () => {
+  const buildUsageIndex = async (cb: (done: number, total: number) => void): Promise<void> => {
+    try {
       const snap = usageCacheEnabled() ? await usageCache.read() : null;
       if (snap) {
-        // 캐시 히트는 조용히 즉시 — 진행률 알림은 전체 스캔에만 뜬다.
-        // 로드 직후는 마지막 세션 기준이므로 백그라운드에서 디스크와 맞춘다.
+        // 캐시 히트는 조용히 즉시(알림 없음). 로드 직후는 마지막 세션 기준이므로 백그라운드에서 디스크와 맞춘다.
         usageIndex.loadSnapshot(snap, root);
         refreshLenses();
         void (async () => {
@@ -164,11 +161,33 @@ export async function activate(ctx: vscode.ExtensionContext) {
         })();
         return;
       }
-      await usageIndex.buildFromRoot(root, cb);
-      refreshLenses();
-      writeUsageCache();
-    })(),
+    } catch (err) {
+      // 못 믿을 캐시로 기능을 죽이지 않는다 — 버리고 전체 스캔으로 내려간다
+      console.error('CSMS Code: 사용처 색인 캐시를 쓸 수 없어 전체 스캔합니다.', err);
+    }
+    await usageIndex.buildFromRoot(root, cb);
+    refreshLenses();
+    writeUsageCache();
   };
+  const usageHandle: UsageIndexHandle = {
+    built: () => usageIndex.isBuilt,
+    // 빌드가 끝나면 렌즈 라벨이 "사용 찾기"에서 개수로 바뀌어야 한다
+    build: cb => usageBuild ??= buildUsageIndex(cb),
+  };
+  // 도장(mtime·크기)이 그대로면 변경을 놓칠 수 있다 — 사용자가 직접 다시 만들 손잡이를 둔다
+  ctx.subscriptions.push(vscode.commands.registerCommand('csmscode.rebuildUsageIndex', async () => {
+    usageBuild = Promise.resolve(vscode.window.withProgress(
+      { location: vscode.ProgressLocation.Notification, title: 'CSMS Code: 사용처 색인 다시 만드는 중…' },
+      async progress => {
+        let shown = 0;
+        await usageIndex.buildFromRoot(root, (done, total) => {
+          const pct = total ? Math.floor((done / total) * 100) : 100;
+          progress.report({ increment: pct - shown, message: `${done}/${total} 파일` });
+          shown = pct;
+        });
+      })).then(() => { refreshLenses(); highlight.refreshAll(); writeUsageCache(); });
+    await usageBuild;
+  }));
   registerShowReferences(ctx, SHOW_STRING_REFERENCES_COMMAND, (c, k) => findRefs.run(c, k), usageHandle);
   const listResolved = new ListResolvedStringCalls(syntax, strings);
 
@@ -340,7 +359,9 @@ export async function activate(ctx: vscode.ExtensionContext) {
   // 워처 폭주(예: git checkout으로 lang 수백 개 변경) 시 이벤트마다 전체 갱신하면 낭비가 N배로 쌓인다 —
   // 마지막 한 번만 의미가 있으므로 합친다. 초기 빌드 완료 후 갱신은 단발이라 즉시 호출한다.
   const refreshDebouncer = new KeyedDebouncer(200);
-  ctx.subscriptions.push(refreshDebouncer);
+  // 캐시 쓰기는 직렬화·gzip이 붙으므로 화면 갱신보다 훨씬 느슨하게 모은다
+  const cacheDebouncer = new KeyedDebouncer(10_000);
+  ctx.subscriptions.push(refreshDebouncer, cacheDebouncer);
   const scheduleRefresh = () => refreshDebouncer.schedule('all', refreshAllWithCounts);
 
   // 색인은 비동기로 — 활성화가 확장 호스트를 막지 않는다(실측 콜드 ~1.7초).
@@ -482,7 +503,7 @@ export async function activate(ctx: vscode.ExtensionContext) {
     if (d.uri.scheme === 'file' && usageIndex.isBuilt && isIndexableSourcePath(root, d.uri.fsPath)) {
       usageIndex.updateFileText(d.uri.fsPath, d.getText());
       refreshLenses(); // 개수가 달라졌을 수 있다
-      refreshDebouncer.schedule('usagecache', writeUsageCache);
+      cacheDebouncer.schedule('usagecache', writeUsageCache);
     }
   }));
 
@@ -491,7 +512,7 @@ export async function activate(ctx: vscode.ExtensionContext) {
     if (!usageIndex.isBuilt) return;
     for (const f of e.files) usageIndex.updateFileText(f.fsPath, '');
     refreshLenses();
-    refreshDebouncer.schedule('usagecache', writeUsageCache);
+    cacheDebouncer.schedule('usagecache', writeUsageCache);
   }));
 }
 export function deactivate() { /* noop */ }

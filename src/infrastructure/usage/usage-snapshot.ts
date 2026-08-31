@@ -48,12 +48,18 @@ export function packRows<T>(byFile: Iterable<[number, readonly T[]]>, row: (e: T
   return out;
 }
 
+/** 손상되거나 조작된 배열도 안전하게 읽는다 — 개수·인덱스를 믿지 않고, 셀이 모자라면 그 묶음을 버린다. */
 export function unpackRows(flat: readonly (string | number)[], width: number,
                           apply: (fileIdx: number, row: readonly (string | number)[]) => void): void {
   let i = 0;
   while (i + 1 < flat.length) {
-    const fileIdx = flat[i++] as number;
-    const n = flat[i++] as number;
+    const fileIdx = flat[i++];
+    const n = flat[i++];
+    if (!isIndex(fileIdx) || !isIndex(n) || i + width * n > flat.length) return;
     for (let k = 0; k < n; k++) { apply(fileIdx, flat.slice(i, i + width)); i += width; }
   }
+}
+
+function isIndex(value: string | number): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0;
 }

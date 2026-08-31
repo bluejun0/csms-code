@@ -110,7 +110,9 @@ npm run package         # esbuild(production) + vsce package → csms-code-<vers
 
 사용처 색인(Shift+F12·"사용 N건")은 첫 요청에 만들고 **디스크에 저장해 다음부터 즉시 불러옵니다**.
 불러온 직후 잠깐은 마지막 세션 기준이고, 백그라운드에서 파일 mtime·크기를 비교해 바뀐 파일만 다시 읽은
-뒤 맞춰집니다. `csmscode.usageIndex.cache=false`로 끄면 매번 전체 스캔합니다.
+뒤 맞춰집니다. 파일을 읽지 않고 mtime·크기만 보므로 **둘이 그대로인 변경(`rsync -t`·`tar` 복원, mtime
+해상도가 1초인 파일시스템의 같은 초 편집)은 놓칩니다** — 명령 팔레트의 "CSMS Code: 사용처 색인 다시 만들기"로
+다시 만들 수 있습니다. `csmscode.usageIndex.cache=false`로 끄면 매번 전체 스캔합니다.
 
 전체 목록은 [docs/PHASE2-BACKLOG.md](docs/PHASE2-BACKLOG.md)의 "알려진 제한"을 참고하세요.
 버전별 변경 이력은 [CHANGELOG.md](CHANGELOG.md)에 있습니다.
