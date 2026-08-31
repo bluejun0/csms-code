@@ -1,4 +1,6 @@
 import { strict as assert } from 'assert';
+import * as fs from 'fs';
+import * as os from 'os';
 import { join } from 'path';
 import { PhpUsageIndex, isIndexableSourcePath } from '../../../src/infrastructure/usage/php-usage-index';
 
@@ -259,5 +261,44 @@ describe('PhpUsageIndex — mustache 사용처', () => {
 
   it('.mustache가 색인 대상 경로다', () => {
     assert.equal(isIndexableSourcePath('/w', '/w/theme/x/templates/a.mustache'), true);
+  });
+});
+
+describe('PhpUsageIndex — 순회(심볼릭 링크·순환)', () => {
+  let tmp: string;
+  before(() => {
+    tmp = fs.mkdtempSync(join(os.tmpdir(), 'csms-usage-walk-'));
+    fs.mkdirSync(join(tmp, 'root', 'local', 'real'), { recursive: true });
+    fs.mkdirSync(join(tmp, 'target'), { recursive: true });
+    fs.writeFileSync(join(tmp, 'root', 'local', 'real', 'a.php'), "<?php\nget_string('k1', 'local_x');\n");
+    fs.writeFileSync(join(tmp, 'target', 'b.php'), "<?php\nget_string('k2', 'local_x');\n");
+    fs.symlinkSync(join(tmp, 'target'), join(tmp, 'root', 'local', 'linked'), 'dir');
+    fs.symlinkSync(join(tmp, 'root'), join(tmp, 'root', 'local', 'loop'), 'dir');
+    fs.symlinkSync(join(tmp, 'nowhere'), join(tmp, 'root', 'local', 'broken'), 'dir');
+  });
+  after(() => fs.rmSync(tmp, { recursive: true, force: true }));
+
+  it('링크된 디렉터리는 색인하고, 순환·깨진 링크에서 멈추지 않는다', async () => {
+    const idx = new PhpUsageIndex(() => true);
+    await idx.buildFromRoot(join(tmp, 'root'));
+    assert.equal(idx.referencesOf('local_x', 'k1').length, 1, '실디렉터리');
+    assert.equal(idx.referencesOf('local_x', 'k2').length, 1, '링크된 디렉터리');
+  });
+});
+
+describe('PhpUsageIndex — 파일 스탬프', () => {
+  it('빌드는 스탬프를 기록하고, 스탬프 없는 갱신은 그 파일 스탬프를 지운다', async () => {
+    const tmp = fs.mkdtempSync(join(os.tmpdir(), 'csms-usage-stamp-'));
+    try {
+      const f = join(tmp, 'x.php');
+      fs.writeFileSync(f, "<?php\nget_string('k', 'local_x');\n");
+      const idx = new PhpUsageIndex(() => true);
+      await idx.buildFromRoot(tmp);
+      const stamps = (idx as unknown as { stamps: Map<string, { size: number }> }).stamps;
+      assert.equal(stamps.size, 1);
+      assert.ok(stamps.get(f)!.size > 0);
+      idx.updateFileText(f, "<?php\n");
+      assert.equal(stamps.has(f), false, '다음 검증에서 다시 읽도록 표시');
+    } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
   });
 });

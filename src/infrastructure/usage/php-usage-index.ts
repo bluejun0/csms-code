@@ -25,6 +25,10 @@ const CONFIG_SET_RE = /(?<![>\w$:])set_config\(\s*['"](\w+)['"]\s*,\s*[^;()]*?,\
 // 'lang'은 lang 팩 자체 — 사용처가 아니고, 값 텍스트 속 "get_string(" 유령 매치 방지를 겸한다
 const SKIP_DIRS = new Set(['node_modules', 'vendor', '.git', '.superpowers', 'dist', 'lang']);
 const YIELD_EVERY = 200;
+const READ_CHUNK = 16;   // 읽기 동시 수 — 순차 대비 4배가량, 8~32 구간에서 평탄하다
+
+/** 캐시 검증용 파일 도장 — 내용을 다시 읽지 않고 mtime·size로 판정한다. */
+export interface FileStamp { mtimeMs: number; size: number; }
 
 interface UsageEntry { component: string; key: string; loc: SourceLocation; }
 interface TemplateEntry { ref: string; loc: SourceLocation; }
@@ -43,6 +47,7 @@ export class PhpUsageIndex implements StringUsageRepository, TemplateUsageReposi
   private amdByFile = new Map<string, AmdEntry[]>();
   private byConfigId = new Map<string, SourceLocation[]>();
   private configByFile = new Map<string, ConfigEntry[]>();
+  private stamps = new Map<string, FileStamp>();
   private builtFlag = false;
 
   constructor(private hasCanonical: (c: string) => boolean) {}
@@ -51,13 +56,15 @@ export class PhpUsageIndex implements StringUsageRepository, TemplateUsageReposi
 
   async buildFromRoot(root: string, onProgress?: (done: number, total: number) => void): Promise<void> {
     const files = await listSourceFiles(root);
-    let done = 0;
-    for (const f of files) {
-      let text: string;
-      try { text = await fs.promises.readFile(f, 'utf8'); } catch { done++; continue; }
-      this.updateFileText(f, text);
-      done++;
-      if (done % YIELD_EVERY === 0) {
+    let done = 0, lastYield = 0;
+    // 읽기는 청크 안에서 병렬로, 적용은 파일 순서대로 — 항목 배열의 순서가 순차 빌드와 같아야 한다.
+    for (let i = 0; i < files.length; i += READ_CHUNK) {
+      const chunk = files.slice(i, i + READ_CHUNK);
+      const read = await Promise.all(chunk.map(readWithStamp));
+      for (const r of read) if (r) this.updateFileText(r.file, r.text, r.stamp);
+      done += chunk.length;
+      if (done - lastYield >= YIELD_EVERY) {
+        lastYield = done;
         onProgress?.(done, files.length);
         await new Promise<void>(r => setImmediate(r)); // 이벤트 루프 양보 — 확장 호스트 블록 방지
       }
@@ -66,8 +73,11 @@ export class PhpUsageIndex implements StringUsageRepository, TemplateUsageReposi
     this.builtFlag = true;
   }
 
-  /** 파일 단위 증분: 기존 항목 제거 후 재추출 (저장 시 호출). 확장자로 PHP/JS 추출기를 고른다. */
-  updateFileText(uri: string, text: string): void {
+  /** 파일 단위 증분: 기존 항목 제거 후 재추출 (저장 시 호출). 확장자로 PHP/JS 추출기를 고른다.
+   *  `stamp`를 주면 기록하고, 주지 않으면 그 파일 도장을 지운다 — 저장 시점에는 mtime을 모르므로
+   *  다음 검증에서 디스크와 한 번 맞춰 본다. */
+  updateFileText(uri: string, text: string, stamp?: FileStamp): void {
+    if (stamp) this.stamps.set(uri, stamp); else this.stamps.delete(uri);
     const prev = this.byFile.get(uri);
     if (prev) { for (const e of prev) this.removeEntry(e); this.byFile.delete(uri); }
     const prevT = this.templatesByFile.get(uri);
@@ -226,25 +236,42 @@ function forEachMatch(text: string, re: RegExp, fn: (m: RegExpExecArray, line: n
  *  콜드 스캔과 저장 증분의 제외 규칙이 갈라지지 않게 한다. */
 async function listSourceFiles(root: string): Promise<string[]> {
   const out: string[] = [];
-  const seen = new Set<string>();
-  async function walk(dir: string): Promise<void> {
-    let real: string;
-    try { real = await fs.promises.realpath(dir); } catch { return; }
-    if (seen.has(real)) return;
-    seen.add(real);
+  const seenLinks = new Set<string>();
+  async function walk(dir: string, viaLink: boolean): Promise<void> {
+    // realpath는 링크로 진입할 때만 부른다 — 일반 디렉터리 계층으로는 순환이 생길 수 없고,
+    // 디렉터리마다 부르면 열거 비용이 몇 배가 된다.
+    if (viaLink) {
+      let real: string;
+      try { real = await fs.promises.realpath(dir); } catch { return; }
+      if (seenLinks.has(real)) return;
+      seenLinks.add(real);
+    }
     let entries: fs.Dirent[];
     try { entries = await fs.promises.readdir(dir, { withFileTypes: true }); } catch { return; }
+    const subs: Promise<void>[] = [];
     for (const d of entries) {
       if (SKIP_DIRS.has(d.name)) continue;
       const p = path.join(dir, d.name);
-      if (d.isDirectory()) await walk(p);
+      if (d.isDirectory()) subs.push(walk(p, false));
       else if (d.isSymbolicLink()) {
-        try { if ((await fs.promises.stat(p)).isDirectory()) await walk(p); } catch { /* 깨진 링크 무시 */ }
+        subs.push((async () => {
+          try { if ((await fs.promises.stat(p)).isDirectory()) await walk(p, true); } catch { /* 깨진 링크 무시 */ }
+        })());
       } else if (d.isFile() && isIndexableSourcePath(root, p)) out.push(p);
     }
+    await Promise.all(subs);
   }
-  await walk(root);
-  return out;
+  await walk(root, true);
+  // 병렬 열거는 완료 순서가 갈리므로 정렬해 스캔 순서를 고정한다 — 항목 배열의 순서가 실행마다 달라지지 않게.
+  return out.sort();
+}
+
+/** 읽기와 도장을 함께 — 도장은 캐시 검증에 쓰고, 실패한 파일은 건너뛴다(침묵). */
+async function readWithStamp(file: string): Promise<{ file: string; text: string; stamp: FileStamp } | null> {
+  try {
+    const [st, text] = await Promise.all([fs.promises.stat(file), fs.promises.readFile(file, 'utf8')]);
+    return { file, text, stamp: { mtimeMs: st.mtimeMs, size: st.size } };
+  } catch { return null; }
 }
 
 /** 콜드 스캔과 저장 증분이 같은 제외 규칙을 쓰게 하는 단일 술어.
