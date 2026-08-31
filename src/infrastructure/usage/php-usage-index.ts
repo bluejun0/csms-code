@@ -6,7 +6,7 @@ import { TemplateUsageRepository } from '../../domain/template-model/ports/templ
 import { AmdUsageRepository } from '../../domain/amd-model/ports/amd-usage-repository';
 import { ConfigUsageRepository } from '../../domain/moodle-model/ports/config-usage-repository';
 import { configKeyId } from '../../domain/moodle-model/services/config-plugin';
-import { SNAPSHOT_VERSION, StampRow, UsageSnapshot, packRows, unpackRows } from './usage-snapshot';
+import { SNAPSHOT_VERSION, StampRow, UsageSnapshot, diffStamps, packRows, unpackRows } from './usage-snapshot';
 import { normalizeComponent } from '../../domain/lang-model/services/component-normalizer';
 import { STRING_FUNCTION_ALTERNATION, STRING_CLASS_ALTERNATION, stringFunctionForm, stringClassForm, effectiveComponent } from '../../domain/code-analysis/string-functions';
 import { scanJsCalls } from '../../domain/code-analysis/js-call-scanner';
@@ -27,6 +27,7 @@ const CONFIG_SET_RE = /(?<![>\w$:])set_config\(\s*['"](\w+)['"]\s*,\s*[^;()]*?,\
 const SKIP_DIRS = new Set(['node_modules', 'vendor', '.git', '.superpowers', 'dist', 'lang']);
 const YIELD_EVERY = 200;
 const READ_CHUNK = 16;   // 읽기 동시 수 — 순차 대비 4배가량, 8~32 구간에서 평탄하다
+const STAT_CHUNK = 64;   // stat은 읽기보다 싸다
 
 /** 캐시 검증용 파일 도장 — 내용을 다시 읽지 않고 mtime·size로 판정한다. */
 export interface FileStamp { mtimeMs: number; size: number; }
@@ -223,6 +224,22 @@ export class PhpUsageIndex implements StringUsageRepository, TemplateUsageReposi
     this.builtFlag = true;
   }
 
+  /** 캐시로 채운 색인을 디스크와 맞춘다 — 빠른 순회 + 병렬 stat로 도장을 비교하고 바뀐 파일만 다시 읽는다.
+   *  바뀐 것이 있으면 true(호출자가 화면을 다시 그린다). */
+  async revalidateFromRoot(root: string): Promise<boolean> {
+    const files = await listSourceFiles(root);
+    const current = await statAll(files, root);
+    const { changed, removed } = diffStamps(this.stampRows(root), current);
+    for (const rel of removed) this.updateFileText(path.join(root, rel), '');
+    for (let i = 0; i < changed.length; i += READ_CHUNK) {
+      const chunk = changed.slice(i, i + READ_CHUNK).map(rel => path.join(root, rel));
+      const read = await Promise.all(chunk.map(readWithStamp));
+      for (const r of read) if (r) this.updateFileText(r.file, r.text, r.stamp);
+      await new Promise<void>(r => setImmediate(r)); // 이벤트 루프 양보 — 백그라운드에서 돈다
+    }
+    return changed.length > 0 || removed.length > 0;
+  }
+
   referencesOf(component: string, key: string): SourceLocation[] {
     return this.byComponent.get(component)?.get(key) ?? [];
   }
@@ -328,6 +345,23 @@ async function listSourceFiles(root: string): Promise<string[]> {
   await walk(root, true);
   // 병렬 열거는 완료 순서가 갈리므로 정렬해 스캔 순서를 고정한다 — 항목 배열의 순서가 실행마다 달라지지 않게.
   return out.sort();
+}
+
+/** 파일 도장을 병렬로 모은다 — 읽지 않으므로 검증은 스캔보다 훨씬 싸다. */
+async function statAll(files: readonly string[], root: string): Promise<StampRow[]> {
+  const out: StampRow[] = [];
+  for (let i = 0; i < files.length; i += STAT_CHUNK) {
+    const chunk = files.slice(i, i + STAT_CHUNK);
+    const rows = await Promise.all(chunk.map(async f => {
+      try {
+        const st = await fs.promises.stat(f);
+        return [path.relative(root, f), st.mtimeMs, st.size] as StampRow;
+      } catch { return null; }
+    }));
+    for (const r of rows) if (r) out.push(r);
+    await new Promise<void>(r => setImmediate(r));
+  }
+  return out;
 }
 
 /** 루트 밖 경로는 상대 경로로 담을 수 없고 검증도 못 한다 — 스냅샷에서 제외한다. */

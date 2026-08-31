@@ -335,3 +335,40 @@ describe('PhpUsageIndex — 스냅샷 왕복', () => {
     assert.equal(loaded.referencesOf('local_ubattend', 'attendance_book').filter(r => r.uri === uri).length, 0);
   });
 });
+
+describe('PhpUsageIndex — 백그라운드 검증', () => {
+  let tmp: string;
+  const write = (name: string, body: string) => fs.writeFileSync(join(tmp, name), body);
+  beforeEach(() => {
+    tmp = fs.mkdtempSync(join(os.tmpdir(), 'csms-usage-reval-'));
+    write('a.php', "<?php\nget_string('k1', 'local_x');\n");
+    write('b.php', "<?php\nget_string('k2', 'local_x');\n");
+  });
+  afterEach(() => fs.rmSync(tmp, { recursive: true, force: true }));
+
+  it('바뀐 것이 없으면 false', async () => {
+    const idx = new PhpUsageIndex(() => true);
+    await idx.buildFromRoot(tmp);
+    assert.equal(await idx.revalidateFromRoot(tmp), false);
+  });
+  it('수정·추가·삭제를 반영한다', async () => {
+    const idx = new PhpUsageIndex(() => true);
+    await idx.buildFromRoot(tmp);
+    write('a.php', "<?php\nget_string('k1b', 'local_x');\n");
+    write('c.php', "<?php\nget_string('k3', 'local_x');\n");
+    fs.unlinkSync(join(tmp, 'b.php'));
+    assert.equal(await idx.revalidateFromRoot(tmp), true);
+    assert.equal(idx.referencesOf('local_x', 'k1').length, 0, '옛 키는 사라진다');
+    assert.equal(idx.referencesOf('local_x', 'k1b').length, 1, '수정 반영');
+    assert.equal(idx.referencesOf('local_x', 'k3').length, 1, '새 파일 반영');
+    assert.equal(idx.referencesOf('local_x', 'k2').length, 0, '삭제된 파일의 항목은 사라진다');
+  });
+  it('도장 없이 갱신된 파일은 다시 읽어 디스크 내용으로 복구한다', async () => {
+    const idx = new PhpUsageIndex(() => true);
+    await idx.buildFromRoot(tmp);
+    idx.updateFileText(join(tmp, 'a.php'), '<?php\n');
+    assert.equal(idx.referencesOf('local_x', 'k1').length, 0);
+    assert.equal(await idx.revalidateFromRoot(tmp), true);
+    assert.equal(idx.referencesOf('local_x', 'k1').length, 1);
+  });
+});
