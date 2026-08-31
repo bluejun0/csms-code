@@ -25,6 +25,7 @@ import { StringKeyCompletionProvider } from './presentation/providers/string-key
 import { StringDefinitionProvider } from './presentation/providers/string-definition-provider';
 import { StringHoverProvider } from './presentation/providers/string-hover-provider';
 import { PhpUsageIndex, isIndexableSourcePath } from './infrastructure/usage/php-usage-index';
+import { UsageIndexCache } from './infrastructure/usage/usage-index-cache';
 import { FindStringReferences } from './application/find-string-references';
 import { ListResolvedStringCalls } from './application/list-resolved-string-calls';
 import { LangReferenceProvider } from './presentation/providers/lang-reference-provider';
@@ -142,10 +143,31 @@ export async function activate(ctx: vscode.ExtensionContext) {
   ctx.subscriptions.push(langLens);
   lenses.push(langLens);
   // 사용처 색인은 첫 참조 요청(또는 버튼 클릭)에 만든다 — 활성화 비용 0. 참조 프로바이더 여덟 개와 명령 둘이 이 핸들 하나를 공유한다.
+  // 색인을 디스크에 저장해 다음 세션에는 스캔 없이 불러온다 — 스캔은 실측 웜 4.5초, 로드는 0.5초.
+  const extensionVersion = String((ctx.extension.packageJSON as { version?: string }).version ?? '0');
+  const usageCache = new UsageIndexCache(ctx.globalStorageUri.fsPath, root, extensionVersion);
+  const usageCacheEnabled = () => vscode.workspace.getConfiguration('csmscode').get<boolean>('usageIndex.cache', true);
+  const writeUsageCache = () => { if (usageCacheEnabled()) void usageCache.write(usageIndex.toSnapshot(root, extensionVersion)); };
   const usageHandle: UsageIndexHandle = {
     built: () => usageIndex.isBuilt,
     // 빌드가 끝나면 렌즈 라벨이 "사용 찾기"에서 개수로 바뀌어야 한다
-    build: cb => usageBuild ?? (usageBuild = usageIndex.buildFromRoot(root, cb).then(refreshLenses)),
+    build: cb => usageBuild ??= (async () => {
+      const snap = usageCacheEnabled() ? await usageCache.read() : null;
+      if (snap) {
+        // 캐시 히트는 조용히 즉시 — 진행률 알림은 전체 스캔에만 뜬다.
+        // 로드 직후는 마지막 세션 기준이므로 백그라운드에서 디스크와 맞춘다.
+        usageIndex.loadSnapshot(snap, root);
+        refreshLenses();
+        void (async () => {
+          if (await usageIndex.revalidateFromRoot(root)) { refreshLenses(); highlight.refreshAll(); }
+          writeUsageCache();
+        })();
+        return;
+      }
+      await usageIndex.buildFromRoot(root, cb);
+      refreshLenses();
+      writeUsageCache();
+    })(),
   };
   registerShowReferences(ctx, SHOW_STRING_REFERENCES_COMMAND, (c, k) => findRefs.run(c, k), usageHandle);
   const listResolved = new ListResolvedStringCalls(syntax, strings);
@@ -460,6 +482,7 @@ export async function activate(ctx: vscode.ExtensionContext) {
     if (d.uri.scheme === 'file' && usageIndex.isBuilt && isIndexableSourcePath(root, d.uri.fsPath)) {
       usageIndex.updateFileText(d.uri.fsPath, d.getText());
       refreshLenses(); // 개수가 달라졌을 수 있다
+      refreshDebouncer.schedule('usagecache', writeUsageCache);
     }
   }));
 
@@ -468,6 +491,7 @@ export async function activate(ctx: vscode.ExtensionContext) {
     if (!usageIndex.isBuilt) return;
     for (const f of e.files) usageIndex.updateFileText(f.fsPath, '');
     refreshLenses();
+    refreshDebouncer.schedule('usagecache', writeUsageCache);
   }));
 }
 export function deactivate() { /* noop */ }

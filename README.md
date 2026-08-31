@@ -72,6 +72,7 @@ Moodle 코드는 DB 레코드를 대부분 `stdClass`로 다루기 때문에, �
 | `csmscode.templates.highlightResolved` | `boolean` | `true` | 해석되는 render_from_template 참조를 링크 색상으로 하이라이팅 |
 | `csmscode.amd.highlightResolved` | `boolean` | `true` | 해석되는 AMD 모듈 참조(`js_call_amd`의 첫 인자)를 링크 색상으로 하이라이팅 |
 | `csmscode.tables.highlightResolved` | `boolean` | `true` | SQL 문자열에서 install.xml로 해석되는 테이블 참조(`{table}`)를 링크 색상으로 하이라이팅 |
+| `csmscode.usageIndex.cache` | `boolean` | `true` | 사용처 색인을 디스크에 저장해 다음에 즉시 불러옵니다(워크스페이스당 약 1MB) |
 | `csmscode.amd.codeLens` | `boolean` | `true` | amd/src 모듈 파일 맨 위에 "사용 N건" 버튼(CodeLens)을 표시 |
 | `csmscode.templates.codeLens` | `boolean` | `true` | mustache 템플릿 파일 맨 위에 "사용 N건" 버튼(CodeLens)을 표시 |
 | `csmscode.config.highlightResolved` | `boolean` | `true` | settings.php 선언으로 해석되는 `get_config`·`set_config` 키를 링크 색상으로 하이라이팅 |
@@ -106,6 +107,10 @@ npm run package         # esbuild(production) + vsce package → csms-code-<vers
 설정 키는 **플러그인 설정만** 다룹니다. 코어 키(`get_config('core', …)`·`set_config('k', $v)`·`$CFG->k`)의 참조,
 `$c = get_config('local_x'); $c->key` 통째 접근, 누락 키 진단(런타임에 `set_config`로만 만들어지는 키가 있어 오탐이
 필연)은 범위 밖입니다. 선언을 정규식으로 읽으므로 `settings.php`의 관용구를 벗어난 선언(함수 반환값·배열)은 침묵합니다.
+
+사용처 색인(Shift+F12·"사용 N건")은 첫 요청에 만들고 **디스크에 저장해 다음부터 즉시 불러옵니다**.
+불러온 직후 잠깐은 마지막 세션 기준이고, 백그라운드에서 파일 mtime·크기를 비교해 바뀐 파일만 다시 읽은
+뒤 맞춰집니다. `csmscode.usageIndex.cache=false`로 끄면 매번 전체 스캔합니다.
 
 전체 목록은 [docs/PHASE2-BACKLOG.md](docs/PHASE2-BACKLOG.md)의 "알려진 제한"을 참고하세요.
 버전별 변경 이력은 [CHANGELOG.md](CHANGELOG.md)에 있습니다.
