@@ -25,7 +25,7 @@ Moodle 코드는 DB 레코드를 대부분 `stdClass`로 다루기 때문에, �
   (`lib/components.json`, 각 플러그인의 `db/subplugins.json`·`.php`)에서 읽으므로 서브플러그인
   (`quizaccess`·`assignsubmission`·`qbank`·`tiny` 등)도 함께 색인됩니다.
 - **언어 문자열 인텔리전스**: `get_string`·`print_string`·`print_error`·`new moodle_exception`·`new lang_string`·`new help_icon`의 `('key', 'component')`뿐 아니라 **컴포넌트가 변수·`$this->프로퍼티`·클래스 상수인 호출도** 같은 파일의 문자열 리터럴까지 거슬러 올라가 해석하고, 컴포넌트를 생략한 호출도 Moodle 규칙대로 갑니다(`get_string('ok')` → core, `moodle_exception('code')` → `error`). 키 자동완성(한국어 값 미리보기)·정의로 이동(ko/en)·hover·누락 키 진단·해석 키 하이라이팅. 사용처 참조(Shift+F12)는 **코드의 키 위에서도, lang 파일의 `$string` 줄에서도** 동작하고, 단축키를 몰라도 찾아갈 수 있게 lang 파일에는 줄마다 **"사용 N건" 버튼**(CodeLens)이, 코드 쪽 hover 아래에는 **"사용 N건 보기" 링크**가 붙습니다.
-- **Mustache 템플릿 인텔리전스**: `render_from_template('component/name', …)`에서 `.mustache` 파일로 이동(테마 오버라이드가 있으면 함께 표시)·템플릿 파일에서 사용처 참조 이동(Shift+F12)·해석되는 참조 하이라이팅
+- **Mustache 템플릿 인텔리전스**: `render_from_template('component/name', …)`에서 `.mustache` 파일로 이동(테마 오버라이드가 있으면 함께 표시)·템플릿 파일에서 사용처 참조 이동(Shift+F12)·해석되는 참조 하이라이팅. 템플릿 파일 **맨 위에 "사용 N건" 버튼**(CodeLens)이 붙어 단축키 없이도 사용처를 엽니다
 - **전역 인텔리전스**: `global $DB, $CFG, $USER;`로 가져온 전역에 완성·hover·정의 이동을 제공합니다.
   `$DB->`·`$PAGE->`·`$OUTPUT->`은 코어 클래스의 메서드·프로퍼티(매직 프로퍼티 포함),
   `$CFG->`는 `config-dist.php`·`settings.php`에서 모은 설정 키, `$USER->`·`$COURSE->`·`$SITE->`는
@@ -72,6 +72,7 @@ Moodle 코드는 DB 레코드를 대부분 `stdClass`로 다루기 때문에, �
 | `csmscode.templates.highlightResolved` | `boolean` | `true` | 해석되는 render_from_template 참조를 링크 색상으로 하이라이팅 |
 | `csmscode.amd.highlightResolved` | `boolean` | `true` | 해석되는 AMD 모듈 참조(`js_call_amd`의 첫 인자)를 링크 색상으로 하이라이팅 |
 | `csmscode.tables.highlightResolved` | `boolean` | `true` | SQL 문자열에서 install.xml로 해석되는 테이블 참조(`{table}`)를 링크 색상으로 하이라이팅 |
+| `csmscode.templates.codeLens` | `boolean` | `true` | mustache 템플릿 파일 맨 위에 "사용 N건" 버튼(CodeLens)을 표시 |
 | `csmscode.config.highlightResolved` | `boolean` | `true` | settings.php 선언으로 해석되는 `get_config`·`set_config` 키를 링크 색상으로 하이라이팅 |
 | `csmscode.config.codeLens` | `boolean` | `true` | settings.php의 `admin_setting` 선언 줄 위에 "사용 N건" 버튼(CodeLens)을 표시 |
 

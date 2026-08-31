@@ -32,8 +32,8 @@ import { UsageIndexHandle } from './presentation/providers/usage-index-handle';
 import { TargetReferenceProvider } from './presentation/providers/target-reference-provider';
 import { UsageCodeLensProvider } from './presentation/providers/usage-code-lens-provider';
 import { registerShowReferences } from './presentation/show-references';
-import { SHOW_STRING_REFERENCES_COMMAND, SHOW_CONFIG_REFERENCES_COMMAND, ReferenceCounters } from './presentation/references-link';
-import { langLensTargets, settingsLensTargets } from './presentation/lens-targets';
+import { SHOW_STRING_REFERENCES_COMMAND, SHOW_CONFIG_REFERENCES_COMMAND, SHOW_TEMPLATE_REFERENCES_COMMAND, ReferenceCounters } from './presentation/references-link';
+import { langLensTargets, settingsLensTargets, templateLensTargets } from './presentation/lens-targets';
 import { LocateConfigTarget } from './application/locate-config-target';
 import { ResolveConfigDefinition } from './application/resolve-config-definition';
 import { DescribeConfigKey } from './application/describe-config-key';
@@ -155,6 +155,15 @@ export async function activate(ctx: vscode.ExtensionContext) {
   const listResolvedTpl = new ListResolvedTemplateCalls(syntax, templates);
 
   const mustacheSelector: vscode.DocumentSelector = { scheme: 'file', pattern: '**/templates/**/*.mustache' };
+  // 템플릿은 파일 전체가 하나의 대상이라 버튼도 맨 위에 하나다
+  const tplCounter = { built: () => usageIndex.isBuilt, count: (c: string, n: string) => findTplRefs.run(c, n).length };
+  const tplLens = new UsageCodeLensProvider(doc => {
+    const ref = componentOfTemplateFile(root, doc.uri.fsPath);
+    return ref ? templateLensTargets(doc.uri.toString(), ref, tplCounter) : [];
+  }, () => vscode.workspace.getConfiguration('csmscode').get<boolean>('templates.codeLens', true));
+  ctx.subscriptions.push(tplLens);
+  lenses.push(tplLens);
+  registerShowReferences(ctx, SHOW_TEMPLATE_REFERENCES_COMMAND, (c, n) => findTplRefs.run(c, n), usageHandle);
   const resolveMustache = new ResolveMustacheDefinition(templates, strings);
   const describeMustache = new DescribeMustacheSymbol(templates, strings);
   const listResolvedMustache = new ListResolvedMustacheRefs(templates, strings);
@@ -238,6 +247,8 @@ export async function activate(ctx: vscode.ExtensionContext) {
       (doc, pos) => locate.js(doc.getText(), doc.offsetAt(pos)), (t, incl) => findRefs.run(t.component, t.key, incl), usageHandle)),
     vscode.languages.registerReferenceProvider(mustacheSelector, new TargetReferenceProvider(
       (doc, pos) => locate.mustache(doc.getText(), doc.offsetAt(pos)), (t, incl) => findRefs.run(t.component, t.key, incl), usageHandle)),
+    vscode.languages.registerCodeLensProvider(mustacheSelector, tplLens),
+    vscode.workspace.onDidChangeConfiguration(e => { if (e.affectsConfiguration('csmscode.templates.codeLens')) tplLens.refresh(); }),
     vscode.languages.registerCodeLensProvider({ language: 'php', scheme: 'file', pattern: '**/lang/*/*.php' }, langLens),
     vscode.workspace.onDidChangeConfiguration(e => { if (e.affectsConfiguration('csmscode.strings.codeLens')) langLens.refresh(); }),
     vscode.languages.registerDefinitionProvider(php, new TemplateDefinitionProvider(resolveTpl)),

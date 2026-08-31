@@ -1,6 +1,7 @@
 /** 사용처 버튼(CodeLens)·링크(hover)가 부르는 내부 명령과 그 라벨 — vscode 없이 테스트할 수 있게 분리한다. */
 export const SHOW_STRING_REFERENCES_COMMAND = 'csmscode.showStringReferences';
 export const SHOW_CONFIG_REFERENCES_COMMAND = 'csmscode.showConfigReferences';
+export const SHOW_TEMPLATE_REFERENCES_COMMAND = 'csmscode.showTemplateReferences';
 
 export type ReferenceKind = 'string' | 'config';
 
