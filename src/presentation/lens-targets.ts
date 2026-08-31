@@ -1,4 +1,4 @@
-import { ReferenceCounter, SHOW_CONFIG_REFERENCES_COMMAND, SHOW_STRING_REFERENCES_COMMAND, SHOW_TEMPLATE_REFERENCES_COMMAND, UsageLensTarget } from './references-link';
+import { ReferenceCounter, SHOW_AMD_REFERENCES_COMMAND, SHOW_CONFIG_REFERENCES_COMMAND, SHOW_STRING_REFERENCES_COMMAND, SHOW_TEMPLATE_REFERENCES_COMMAND, UsageLensTarget } from './references-link';
 
 const countOf = (counter: ReferenceCounter, component: string, key: string) =>
   () => counter.built() ? counter.count(component, key) : null;
@@ -13,14 +13,24 @@ export function langLensTargets(uri: string, entries: { key: string; line: numbe
   }));
 }
 
-/** mustache 템플릿: 파일 전체가 하나의 템플릿 — 맨 위에 사용처 버튼 하나 */
-export function templateLensTargets(uri: string, ref: { component: string; name: string },
-                                    counter: ReferenceCounter): UsageLensTarget[] {
+/** 파일 전체가 하나의 대상(템플릿·AMD 모듈)인 파일 — 맨 위에 사용처 버튼 하나 */
+function wholeFileTargets(command: string, uri: string, ref: { component: string; name: string },
+                          counter: ReferenceCounter): UsageLensTarget[] {
   return [{
-    line: 0, command: SHOW_TEMPLATE_REFERENCES_COMMAND,
+    line: 0, command,
     args: { uri, line: 0, character: 0, component: ref.component, key: ref.name },
     count: countOf(counter, ref.component, ref.name),
   }];
+}
+
+export function templateLensTargets(uri: string, ref: { component: string; name: string },
+                                    counter: ReferenceCounter): UsageLensTarget[] {
+  return wholeFileTargets(SHOW_TEMPLATE_REFERENCES_COMMAND, uri, ref, counter);
+}
+
+export function amdLensTargets(uri: string, ref: { component: string; name: string },
+                               counter: ReferenceCounter): UsageLensTarget[] {
+  return wholeFileTargets(SHOW_AMD_REFERENCES_COMMAND, uri, ref, counter);
 }
 
 /** settings.php: `new admin_setting_*(…)` 선언 줄마다 설정 사용처 버튼 — peek은 첫 인자 위치에 연다 */

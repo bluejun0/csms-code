@@ -76,6 +76,7 @@
 65. `settings.php`에 `$name = $pluginname . '/newkey'; $settings->add(new admin_setting_configtext($name, …));`를 추가해 저장 → 코드의 `get_config('local_csmsmedia', 'newkey')`가 바로 링크 색상이 되고 F12가 됨(창 재시작 없이). `csmscode.config.highlightResolved=false`로 색이 사라짐
 66. `get_config('local_csmsmedia', '` 입력 → 그 플러그인의 선언된 키 목록(설정 클래스가 detail). `get_config('mod_ubboard', 'k')`처럼 선언이 `ubboard/k`인 키에는 이동·색·완성이 없어야 함(플러그인 이름은 그대로 비교)
 67. `.mustache` 파일을 열면 맨 위에 "사용 N건"(사용처 색인 전이면 "사용 찾기") 버튼 하나. 클릭 → 그 자리에서 Shift+F12와 같은 목록(PHP 호출·partial·JS). 테마 오버라이드 파일(`theme/coursemos/templates/local_x/…`)에서도 같은 목록. `csmscode.templates.codeLens=false`로 사라짐
+68. `amd/src`의 .js 파일을 열면 맨 위에 "사용 N건"(색인 전 "사용 찾기") 버튼 하나. 클릭 → js_call_amd 호출처 peek. `amd/build`의 미니파이 사본에는 버튼이 없어야 함. `csmscode.amd.codeLens=false`로 사라짐
 
 ## 알려진 제한 (Known limitations)
 

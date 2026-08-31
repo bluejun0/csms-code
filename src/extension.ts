@@ -32,8 +32,8 @@ import { UsageIndexHandle } from './presentation/providers/usage-index-handle';
 import { TargetReferenceProvider } from './presentation/providers/target-reference-provider';
 import { UsageCodeLensProvider } from './presentation/providers/usage-code-lens-provider';
 import { registerShowReferences } from './presentation/show-references';
-import { SHOW_STRING_REFERENCES_COMMAND, SHOW_CONFIG_REFERENCES_COMMAND, SHOW_TEMPLATE_REFERENCES_COMMAND, ReferenceCounters } from './presentation/references-link';
-import { langLensTargets, settingsLensTargets, templateLensTargets } from './presentation/lens-targets';
+import { SHOW_STRING_REFERENCES_COMMAND, SHOW_CONFIG_REFERENCES_COMMAND, SHOW_TEMPLATE_REFERENCES_COMMAND, SHOW_AMD_REFERENCES_COMMAND, ReferenceCounters } from './presentation/references-link';
+import { amdLensTargets, langLensTargets, settingsLensTargets, templateLensTargets } from './presentation/lens-targets';
 import { LocateConfigTarget } from './application/locate-config-target';
 import { ResolveConfigDefinition } from './application/resolve-config-definition';
 import { DescribeConfigKey } from './application/describe-config-key';
@@ -171,6 +171,15 @@ export async function activate(ctx: vscode.ExtensionContext) {
   const resolveAmd = new ResolveAmdDefinition(syntax, amd);
   const listResolvedAmd = new ListResolvedAmdCalls(syntax, amd);
   const findAmdRefs = new FindAmdReferences(usageIndex);
+  // AMD 모듈도 파일 전체가 하나의 대상 — 맨 위에 버튼 하나
+  const amdCounter = { built: () => usageIndex.isBuilt, count: (c: string, n: string) => findAmdRefs.run(c, n).length };
+  const amdLens = new UsageCodeLensProvider(doc => {
+    const ref = componentOfAmdFile(root, doc.uri.fsPath);
+    return ref ? amdLensTargets(doc.uri.toString(), ref, amdCounter) : [];
+  }, () => vscode.workspace.getConfiguration('csmscode').get<boolean>('amd.codeLens', true));
+  ctx.subscriptions.push(amdLens);
+  lenses.push(amdLens);
+  registerShowReferences(ctx, SHOW_AMD_REFERENCES_COMMAND, (c, n) => findAmdRefs.run(c, n), usageHandle);
 
   // 전역 색인은 활성화가 아니라 첫 요청에서 만든다 — 코어 클래스 세 개 파싱과 설정 키 수집이
   // 각각 최대 이벤트 루프 정지 약 30ms·18ms로, 활성화의 한 자릿수 ms 목표를 넘긴다.
@@ -249,6 +258,8 @@ export async function activate(ctx: vscode.ExtensionContext) {
       (doc, pos) => locate.mustache(doc.getText(), doc.offsetAt(pos)), (t, incl) => findRefs.run(t.component, t.key, incl), usageHandle)),
     vscode.languages.registerCodeLensProvider(mustacheSelector, tplLens),
     vscode.workspace.onDidChangeConfiguration(e => { if (e.affectsConfiguration('csmscode.templates.codeLens')) tplLens.refresh(); }),
+    vscode.languages.registerCodeLensProvider({ scheme: 'file', pattern: '**/amd/src/**/*.js' }, amdLens),
+    vscode.workspace.onDidChangeConfiguration(e => { if (e.affectsConfiguration('csmscode.amd.codeLens')) amdLens.refresh(); }),
     vscode.languages.registerCodeLensProvider({ language: 'php', scheme: 'file', pattern: '**/lang/*/*.php' }, langLens),
     vscode.workspace.onDidChangeConfiguration(e => { if (e.affectsConfiguration('csmscode.strings.codeLens')) langLens.refresh(); }),
     vscode.languages.registerDefinitionProvider(php, new TemplateDefinitionProvider(resolveTpl)),

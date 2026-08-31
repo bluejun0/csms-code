@@ -36,7 +36,7 @@ Moodle 코드는 DB 레코드를 대부분 `stdClass`로 다루기 때문에, �
   partial 참조도 포함**됩니다. 실측 partial 98.8%·문자열 99.2% 해석.
 - **AMD 모듈 참조 이동**: `$PAGE->requires->js_call_amd('local_ubion/user', 'index')`의 첫 인자에서 F12를
   누르면 `local/ubion/amd/src/user.js`로 이동하고, 모듈 파일에서 Shift+F12로 그 모듈을 부르는 호출처를
-  찾습니다. 해석되는 참조는 링크 색상으로 표시됩니다. 중첩 경로(`local_x/foo/bar`)와 코어 서브시스템
+  찾습니다. 모듈 파일 **맨 위에 "사용 N건" 버튼**(CodeLens)이 붙어 단축키 없이도 사용처를 엽니다. 해석되는 참조는 링크 색상으로 표시됩니다. 중첩 경로(`local_x/foo/bar`)와 코어 서브시스템
   (`core_form/submit` → `lib/form/amd/src/submit.js`)도 해석합니다.
 - **테이블 참조 이동**: SQL 문자열의 `{tablename}`과 `$DB->update_record('local_x', …)` 같은 DML 메서드의
   테이블 인자에서 F12를 누르면 그 테이블을 선언한
@@ -72,6 +72,7 @@ Moodle 코드는 DB 레코드를 대부분 `stdClass`로 다루기 때문에, �
 | `csmscode.templates.highlightResolved` | `boolean` | `true` | 해석되는 render_from_template 참조를 링크 색상으로 하이라이팅 |
 | `csmscode.amd.highlightResolved` | `boolean` | `true` | 해석되는 AMD 모듈 참조(`js_call_amd`의 첫 인자)를 링크 색상으로 하이라이팅 |
 | `csmscode.tables.highlightResolved` | `boolean` | `true` | SQL 문자열에서 install.xml로 해석되는 테이블 참조(`{table}`)를 링크 색상으로 하이라이팅 |
+| `csmscode.amd.codeLens` | `boolean` | `true` | amd/src 모듈 파일 맨 위에 "사용 N건" 버튼(CodeLens)을 표시 |
 | `csmscode.templates.codeLens` | `boolean` | `true` | mustache 템플릿 파일 맨 위에 "사용 N건" 버튼(CodeLens)을 표시 |
 | `csmscode.config.highlightResolved` | `boolean` | `true` | settings.php 선언으로 해석되는 `get_config`·`set_config` 키를 링크 색상으로 하이라이팅 |
 | `csmscode.config.codeLens` | `boolean` | `true` | settings.php의 `admin_setting` 선언 줄 위에 "사용 N건" 버튼(CodeLens)을 표시 |
