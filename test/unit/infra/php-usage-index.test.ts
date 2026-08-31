@@ -302,3 +302,36 @@ describe('PhpUsageIndex — 파일 스탬프', () => {
     } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
   });
 });
+
+describe('PhpUsageIndex — 스냅샷 왕복', () => {
+  it('빌드한 색인을 스냅샷으로 저장하고 되돌리면 네 조회가 모두 같다', async () => {
+    const src = new PhpUsageIndex(hasCanonical);
+    await src.buildFromRoot(root);
+    const snap = src.toSnapshot(root, '9.9.9');
+    assert.equal(snap.ext, '9.9.9');
+    assert.equal(snap.root, root);
+    assert.ok(snap.files.length >= 1);
+
+    // hasCanonical을 안 써도 같아야 한다 — canonical 이름이 스냅샷에 들어 있다
+    const loaded = new PhpUsageIndex(() => false);
+    assert.equal(loaded.isBuilt, false);
+    loaded.loadSnapshot(snap, root);
+    assert.equal(loaded.isBuilt, true);
+    for (const [c, k] of [['local_ubattend', 'attendance_book'], ['mod_testmod', 'pluginname'], ['core', 'ok']] as const) {
+      assert.deepEqual(loaded.referencesOf(c, k), src.referencesOf(c, k), `${c}/${k}`);
+    }
+    assert.deepEqual(loaded.templateRefsOf('local_ubattend', 'setting'), src.templateRefsOf('local_ubattend', 'setting'));
+    assert.deepEqual(loaded.amdRefsOf('local_ubattend', 'setting'), src.amdRefsOf('local_ubattend', 'setting'));
+    assert.deepEqual(loaded.configRefsOf('local_ubattend', 'attendlimit'), src.configRefsOf('local_ubattend', 'attendlimit'));
+  });
+  it('되돌린 색인도 증분 갱신이 된다(파일별 역인덱스가 복원됨)', async () => {
+    const src = new PhpUsageIndex(hasCanonical);
+    await src.buildFromRoot(root);
+    const loaded = new PhpUsageIndex(() => false);
+    loaded.loadSnapshot(src.toSnapshot(root, '1'), root);
+    const uri = join(root, 'local/ubattend/view.php');
+    assert.ok(loaded.referencesOf('local_ubattend', 'attendance_book').some(r => r.uri === uri));
+    loaded.updateFileText(uri, '<?php\n');
+    assert.equal(loaded.referencesOf('local_ubattend', 'attendance_book').filter(r => r.uri === uri).length, 0);
+  });
+});

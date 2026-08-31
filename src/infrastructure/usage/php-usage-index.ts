@@ -6,6 +6,7 @@ import { TemplateUsageRepository } from '../../domain/template-model/ports/templ
 import { AmdUsageRepository } from '../../domain/amd-model/ports/amd-usage-repository';
 import { ConfigUsageRepository } from '../../domain/moodle-model/ports/config-usage-repository';
 import { configKeyId } from '../../domain/moodle-model/services/config-plugin';
+import { SNAPSHOT_VERSION, StampRow, UsageSnapshot, packRows, unpackRows } from './usage-snapshot';
 import { normalizeComponent } from '../../domain/lang-model/services/component-normalizer';
 import { STRING_FUNCTION_ALTERNATION, STRING_CLASS_ALTERNATION, stringFunctionForm, stringClassForm, effectiveComponent } from '../../domain/code-analysis/string-functions';
 import { scanJsCalls } from '../../domain/code-analysis/js-call-scanner';
@@ -77,6 +78,13 @@ export class PhpUsageIndex implements StringUsageRepository, TemplateUsageReposi
    *  `stamp`를 주면 기록하고, 주지 않으면 그 파일 도장을 지운다 — 저장 시점에는 mtime을 모르므로
    *  다음 검증에서 디스크와 한 번 맞춰 본다. */
   updateFileText(uri: string, text: string, stamp?: FileStamp): void {
+    this.applyExtracted(uri, uri.endsWith('.js') ? this.extractJs(uri, text)
+      : uri.endsWith('.mustache') ? this.extractMustache(uri, text)
+        : this.extractPhp(uri, text), stamp);
+  }
+
+  /** 추출 결과를 색인에 반영하는 단일 지점 — 스캔·증분·스냅샷 복원이 모두 이 경로를 지난다. */
+  private applyExtracted(uri: string, { entries, tEntries, aEntries, cEntries }: Extracted, stamp?: FileStamp): void {
     if (stamp) this.stamps.set(uri, stamp); else this.stamps.delete(uri);
     const prev = this.byFile.get(uri);
     if (prev) { for (const e of prev) this.removeEntry(e); this.byFile.delete(uri); }
@@ -86,10 +94,6 @@ export class PhpUsageIndex implements StringUsageRepository, TemplateUsageReposi
     if (prevA) { for (const e of prevA) this.removeAmdEntry(e); this.amdByFile.delete(uri); }
     const prevC = this.configByFile.get(uri);
     if (prevC) { for (const e of prevC) this.removeConfigEntry(e); this.configByFile.delete(uri); }
-
-    const { entries, tEntries, aEntries, cEntries } = uri.endsWith('.js') ? this.extractJs(uri, text)
-      : uri.endsWith('.mustache') ? this.extractMustache(uri, text)
-        : this.extractPhp(uri, text);
 
     for (const e of entries) this.addEntry(e);
     for (const e of tEntries) this.addTemplateEntry(e);
@@ -157,6 +161,66 @@ export class PhpUsageIndex implements StringUsageRepository, TemplateUsageReposi
       })),
       tEntries: calls.templateCalls.map(c => ({ ref: c.ref, loc: { uri, line: c.refLine, column: c.refColumn } })),
     };
+  }
+
+  /** 색인이 아는 모든 파일 — 도장이 있는 파일과 항목이 있는 파일의 합집합. */
+  private trackedFiles(): string[] {
+    return [...new Set([...this.stamps.keys(), ...this.byFile.keys(), ...this.templatesByFile.keys(),
+      ...this.amdByFile.keys(), ...this.configByFile.keys()])];
+  }
+
+  /** 도장 행 — 도장이 없는 파일(저장 증분으로 갱신된 파일)은 size 음수로 담아 다음 검증에서 다시 읽는다. */
+  private stampRows(root: string): StampRow[] {
+    return this.trackedFiles().filter(f => insideRoot(root, f)).map(f => {
+      const s = this.stamps.get(f);
+      return [path.relative(root, f), s?.mtimeMs ?? 0, s?.size ?? -1] as StampRow;
+    });
+  }
+
+  toSnapshot(root: string, extVersion: string): UsageSnapshot {
+    const files = this.trackedFiles().filter(f => insideRoot(root, f));
+    const idxOf = new Map(files.map((f, i) => [f, i] as const));
+    const rows = <T>(m: Map<string, T[]>): Iterable<[number, readonly T[]]> =>
+      [...m].flatMap(([f, list]) => {
+        const i = idxOf.get(f);
+        return i === undefined ? [] : [[i, list] as [number, readonly T[]]];
+      });
+    return {
+      v: SNAPSHOT_VERSION, ext: extVersion, root,
+      files: this.stampRows(root),
+      s: packRows(rows(this.byFile), e => [e.component, e.key, e.loc.line, e.loc.column]),
+      t: packRows(rows(this.templatesByFile), e => [e.ref, e.loc.line, e.loc.column]),
+      a: packRows(rows(this.amdByFile), e => [e.ref, e.loc.line, e.loc.column]),
+      c: packRows(rows(this.configByFile), e => [e.id, e.loc.line, e.loc.column]),
+    };
+  }
+
+  /** 스냅샷으로 색인을 채운다 — 컴포넌트 정규화는 저장 시점에 끝나 있으므로 다시 하지 않는다. */
+  loadSnapshot(snap: UsageSnapshot, root: string): void {
+    this.byComponent = new Map(); this.byFile = new Map();
+    this.byTemplateRef = new Map(); this.templatesByFile = new Map();
+    this.byAmdRef = new Map(); this.amdByFile = new Map();
+    this.byConfigId = new Map(); this.configByFile = new Map();
+    this.stamps = new Map();
+
+    const files = snap.files.map(([rel]) => path.join(root, rel));
+    snap.files.forEach(([, mtimeMs, size], i) => { if (size >= 0) this.stamps.set(files[i], { mtimeMs, size }); });
+
+    const per = new Map<number, Extracted>();
+    const slot = (i: number): Extracted => {
+      let e = per.get(i);
+      if (!e) { e = { entries: [], tEntries: [], aEntries: [], cEntries: [] }; per.set(i, e); }
+      return e;
+    };
+    const at = (i: number, line: number, column: number): SourceLocation => ({ uri: files[i], line, column });
+    unpackRows(snap.s, 4, (i, r) => slot(i).entries.push({
+      component: r[0] as string, key: r[1] as string, loc: at(i, r[2] as number, r[3] as number) }));
+    unpackRows(snap.t, 3, (i, r) => slot(i).tEntries.push({ ref: r[0] as string, loc: at(i, r[1] as number, r[2] as number) }));
+    unpackRows(snap.a, 3, (i, r) => slot(i).aEntries.push({ ref: r[0] as string, loc: at(i, r[1] as number, r[2] as number) }));
+    unpackRows(snap.c, 3, (i, r) => slot(i).cEntries.push({ id: r[0] as string, loc: at(i, r[1] as number, r[2] as number) }));
+
+    for (const [i, extracted] of per) this.applyExtracted(files[i], extracted, this.stamps.get(files[i]));
+    this.builtFlag = true;
   }
 
   referencesOf(component: string, key: string): SourceLocation[] {
@@ -264,6 +328,12 @@ async function listSourceFiles(root: string): Promise<string[]> {
   await walk(root, true);
   // 병렬 열거는 완료 순서가 갈리므로 정렬해 스캔 순서를 고정한다 — 항목 배열의 순서가 실행마다 달라지지 않게.
   return out.sort();
+}
+
+/** 루트 밖 경로는 상대 경로로 담을 수 없고 검증도 못 한다 — 스냅샷에서 제외한다. */
+function insideRoot(root: string, file: string): boolean {
+  const rel = path.relative(root, file);
+  return rel !== '' && !rel.startsWith('..') && !path.isAbsolute(rel);
 }
 
 /** 읽기와 도장을 함께 — 도장은 캐시 검증에 쓰고, 실패한 파일은 건너뛴다(침묵). */
