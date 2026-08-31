@@ -77,6 +77,11 @@
 66. `get_config('local_csmsmedia', '` 입력 → 그 플러그인의 선언된 키 목록(설정 클래스가 detail). `get_config('mod_ubboard', 'k')`처럼 선언이 `ubboard/k`인 키에는 이동·색·완성이 없어야 함(플러그인 이름은 그대로 비교)
 67. `.mustache` 파일을 열면 맨 위에 "사용 N건"(사용처 색인 전이면 "사용 찾기") 버튼 하나. 클릭 → 그 자리에서 Shift+F12와 같은 목록(PHP 호출·partial·JS). 테마 오버라이드 파일(`theme/coursemos/templates/local_x/…`)에서도 같은 목록. `csmscode.templates.codeLens=false`로 사라짐
 68. `amd/src`의 .js 파일을 열면 맨 위에 "사용 N건"(색인 전 "사용 찾기") 버튼 하나. 클릭 → js_call_amd 호출처 peek. `amd/build`의 미니파이 사본에는 버튼이 없어야 함. `csmscode.amd.codeLens=false`로 사라짐
+69. 사용처 색인 캐시: 처음 Shift+F12(또는 "사용 찾기" 클릭)는 진행률 알림과 함께 몇 초 걸린다. 창을 닫고 다시 열어 같은 워크스페이스에서 같은 동작 → **알림 없이 즉시** 결과가 나온다
+70. 캐시 검증: 창을 닫은 상태에서 외부에서 파일을 고치거나 `git checkout`을 한 뒤 창을 열고 Shift+F12 → 즉시 결과가 뜨고, 몇 초 안에 바뀐 내용이 반영된다(버튼 개수·하이라이트가 갱신됨)
+71. `csmscode.usageIndex.cache=false` → 창을 다시 열면 다시 전체 스캔(진행률 알림)한다. 확장을 새 버전으로 올린 직후에도 한 번은 전체 스캔한다(옛 캐시를 버림)
+72. 명령 팔레트에서 "CSMS Code: 사용처 색인 다시 만들기" → 진행률 알림과 함께 전량 재스캔하고, 끝나면 버튼 개수·하이라이트가 갱신되며 캐시도 다시 쓰인다(mtime이 보존된 변경을 놓쳤을 때의 회복 수단)
+73. 심볼릭 링크로 플러그인을 트리 **안**에 붙인 경우(`local/foo -> plugins/foo`) 같은 호출이 목록에 두 번 나오지 않는다
 
 ## 알려진 제한 (Known limitations)
 
