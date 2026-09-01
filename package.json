@@ -5,6 +5,10 @@
   "version": "0.20.0",
   "publisher": "bluesoft",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bluejun0/csms-code.git"
+  },
   "engines": {
     "vscode": "^1.85.0"
   },
@@ -113,7 +117,7 @@
     "test:unit": "mocha",
     "pretest:integration": "npm run compile && tsc -p tsconfig.test.json",
     "test:integration": "node ./dist-test/integration/runTest.js",
-    "package": "npm run bundle && vsce package --no-dependencies --allow-missing-repository --no-rewrite-relative-links"
+    "package": "npm run bundle && vsce package --no-dependencies --no-rewrite-relative-links"
   },
   "dependencies": {
     "web-tree-sitter": "0.20.8",

@@ -4,7 +4,7 @@ Phase 1 (DB stdClass 인텔리전스)은 완료되었습니다. 아래는 종합
 
 ## 배포 전 필수 (하드 게이트)
 - **통합 테스트를 CI/xvfb에서 통과시킬 것.** `@vscode/test-electron` 통합 테스트는 이 개발 샌드박스(headless WSL2)에서 Electron이 크래시(SIGTRAP)해 실행되지 않았다. 정적 컴파일(`tsc -p tsconfig.test.json`)은 통과. 이 테스트는 WASM 번들(`dist/`) + `activate()` 결선을 검증하는 **유일한** 커버리지이므로, 실배포 전 반드시 CI(예: `xvfb-run`)에서 녹색 확인 필요.
-- **`package.json`에 실제 사내 git repository URL 지정.** 현재 `repository` 필드는 제거된 상태(지어낸 URL 방지). `package` 스크립트는 `--allow-missing-repository`로 동작.
+- ~~**`package.json`에 실제 git repository URL 지정**~~ — ✅ 완료 (2026-09-01). `https://github.com/bluejun0/csms-code.git`(비공개). `package` 스크립트에서 `--allow-missing-repository`를 뺐다. 사내 저장소로 옮기게 되면 이 필드와 원격을 함께 바꿀 것.
 
 ## 알려진 제한 (Phase 1)
 - **구조 분해·복합·참조 대입 미추적**: kill-on-reassign(2026-07-31)은 단순 변수 LHS 대입만 캡처한다. `[$a, $b] = …`, `+=`, `??=`, `=&` 등은 캡처되지 않아 이전 바인딩이 유지된다(낙관 동작, 실코드에서 레코드 변수에 드묾). `$rec = enrich($rec);` 같은 자기참조 재대입은 RHS 안의 `$rec` 사용에도 kill이 적용되어 인텔리전스가 침묵한다(오탐은 아님).
