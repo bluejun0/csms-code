@@ -3,7 +3,8 @@
 Phase 1 (DB stdClass 인텔리전스)은 완료되었습니다. 아래는 종합 리뷰에서 도출된 후속 작업과 배포 전 필수 게이트입니다.
 
 ## 배포 전 필수 (하드 게이트)
-- **통합 테스트를 CI/xvfb에서 통과시킬 것.** `@vscode/test-electron` 통합 테스트는 이 개발 샌드박스(headless WSL2)에서 Electron이 크래시(SIGTRAP)해 실행되지 않았다. 정적 컴파일(`tsc -p tsconfig.test.json`)은 통과. 이 테스트는 WASM 번들(`dist/`) + `activate()` 결선을 검증하는 **유일한** 커버리지이므로, 실배포 전 반드시 CI(예: `xvfb-run`)에서 녹색 확인 필요.
+- ~~**통합 테스트를 CI/xvfb에서 통과시킬 것**~~ — ✅ 완료 (2026-09-02). `.github/workflows/ci.yml`이 `main` push·PR마다 컴파일·린트·단위 테스트와 `xvfb-run` 통합 테스트를 돌리고 `.vsix`를 아티팩트로 올린다. 첫 실행에서 VS Code 1.135.0을 내려받아 확장을 띄우고 통과(1분 19초). 개발 샌드박스(headless WSL2)에서는 여전히 Electron이 크래시하므로 로컬에서는 정적 컴파일까지만 확인한다.
+- **통합 테스트 커버리지가 1건**: 지금은 컬럼 오타 진단 하나로 WASM 번들 + `activate()` 결선만 확인한다. 0.15.0 이후 붙은 표면(참조·CodeLens·명령·설정 키·테이블 사용처)은 vscode 결선이 단위 테스트에 닿지 않으므로, CI가 녹색이 된 지금 통합 테스트를 늘릴 값어치가 있다.
 - ~~**`package.json`에 실제 git repository URL 지정**~~ — ✅ 완료 (2026-09-01). `https://github.com/bluejun0/csms-code.git`(비공개). `package` 스크립트에서 `--allow-missing-repository`를 뺐다. 사내 저장소로 옮기게 되면 이 필드와 원격을 함께 바꿀 것.
 
 ## 알려진 제한 (Phase 1)

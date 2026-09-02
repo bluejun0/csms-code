@@ -14,9 +14,9 @@ jobs:
     # 패키지 이름(libasound2t64 등)이 이미지 버전에 따라 갈리므로 고정한다.
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 20
           cache: npm
@@ -46,7 +46,7 @@ jobs:
       - name: 패키징
         run: npm run package
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: vsix
           path: '*.vsix'
