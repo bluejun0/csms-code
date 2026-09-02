@@ -368,7 +368,9 @@ export async function activate(ctx: vscode.ExtensionContext) {
     tables: store.allTableNames().length, strings: strings.size(),
     templates: templates.size(), amd: amd.size(),
   });
-  const refreshAll = () => { diagnostics.refreshAll(); highlight.refreshAll(); };
+  // 렌즈도 함께 — install.xml 버튼은 대상 자체가 비동기로 만들어지는 선언 색인에서 나오므로
+  // 빌드가 끝난 뒤 다시 그려주지 않으면 버튼이 아예 뜨지 않는다.
+  const refreshAll = () => { diagnostics.refreshAll(); highlight.refreshAll(); refreshLenses(); };
   // 증분 갱신도 숫자에 반영한다 — 멈춰 있는 숫자는 확장이 죽은 것처럼 보인다.
   // 실패 상태를 덮지 않도록 재빌드 경로에서는 성공했을 때만 부른다.
   const refreshAllWithCounts = () => { showIndexCounts(); refreshAll(); };
@@ -443,8 +445,7 @@ export async function activate(ctx: vscode.ExtensionContext) {
     // 재빌드는 이득 없이 증분을 덮어쓸 위험만 있으므로 침묵한다.
     if (!component) return false;
     if (removed) store.removeFile(uri.fsPath); else store.updateFile(uri.fsPath, component);
-    tableLens.refresh(); // TABLE 선언이 달라졌을 수 있다
-    return true;
+    return true; // 렌즈·진단·하이라이트는 applyIncremental이 합쳐서 갱신한다
   });
   ctx.subscriptions.push(watcher,
     watcher.onDidChange(u => onXml(u, false)),

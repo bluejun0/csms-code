@@ -11,9 +11,13 @@ describe('isSnapshotUsable', () => {
   it('확장 버전이 다르면 버린다 — 추출 규칙이 바뀌었을 수 있다', () =>
     assert.equal(isSnapshotUsable({ ...snap, ext: '1.2.2' }, '/m', '1.2.3'), false));
   it('루트가 다르면 버린다', () => assert.equal(isSnapshotUsable(snap, '/other', '1.2.3'), false));
-  it('테이블 종류(x)가 없는 옛 스냅샷은 버린다', () => {
-    const old = { v: SNAPSHOT_VERSION, ext: '1.2.3', root: '/m', files: [], s: [], t: [], a: [], c: [] };
-    assert.equal(isSnapshotUsable(old, '/m', '1.2.3'), false);
+  it('테이블 종류(x)가 빠진 형태는 버린다', () => {
+    const shapeless = { v: SNAPSHOT_VERSION, ext: '1.2.3', root: '/m', files: [], s: [], t: [], a: [], c: [] };
+    assert.equal(isSnapshotUsable(shapeless, '/m', '1.2.3'), false);
+  });
+  it('형식 v1 캐시는 버린다(테이블 종류가 없던 형식)', () => {
+    const v1 = { v: 1, ext: '1.2.3', root: '/m', files: [], s: [], t: [], a: [], c: [] };
+    assert.equal(isSnapshotUsable(v1, '/m', '1.2.3'), false);
   });
   it('형태가 아니면 버린다(널·필드 누락·배열 아님)', () => {
     assert.equal(isSnapshotUsable(null, '/m', '1.2.3'), false);

@@ -82,7 +82,7 @@
 71. `csmscode.usageIndex.cache=false` → 창을 다시 열면 다시 전체 스캔(진행률 알림)한다. 확장을 새 버전으로 올린 직후에도 한 번은 전체 스캔한다(옛 캐시를 버림)
 72. 명령 팔레트에서 "CSMS Code: 사용처 색인 다시 만들기" → 진행률 알림과 함께 전량 재스캔하고, 끝나면 버튼 개수·하이라이트가 갱신되며 캐시도 다시 쓰인다(mtime이 보존된 변경을 놓쳤을 때의 회복 수단)
 73. 심볼릭 링크로 플러그인을 트리 **안**에 붙인 경우(`local/foo -> plugins/foo`) 같은 호출이 목록에 두 번 나오지 않는다
-74. `local/ubattend/db/install.xml`의 `<TABLE NAME="local_ubattend_config">` 줄에서 Shift+F12 → 그 테이블을 쓰는 SQL `{local_ubattend_config}`과 `$DB->` 호출이 모두 나온다. 그 줄 위 "사용 N건" 버튼도 같은 목록을 연다. `<FIELD>` 줄에서는 아무 일도 없어야 함(테이블 이름만)
+74. **`install.xml`을 열어 둔 채로 창을 새로 열어** 확인한다(선언 색인이 비동기라 이 순서가 중요하다). `local/ubattend/db/install.xml`의 `<TABLE NAME="local_ubattend_config">` 줄에서 Shift+F12 → 그 테이블을 쓰는 SQL `{local_ubattend_config}`과 `$DB->` 호출이 모두 나온다. 그 줄 위 "사용 N건" 버튼도 같은 목록을 연다. `<FIELD>` 줄에서는 아무 일도 없어야 함(테이블 이름만)
 75. `install.xml`에 `<TABLE>`을 새로 추가해 저장 → 그 줄에 버튼이 바로 붙고, 이미 그 이름을 쓰는 SQL이 있으면 개수가 잡힌다. `csmscode.tables.codeLens=false`로 버튼이 사라진다
 
 ## 알려진 제한 (Known limitations)
