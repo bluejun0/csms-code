@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    # 패키지 이름(libasound2t64 등)이 이미지 버전에 따라 갈리므로 고정한다.
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      # 통합 테스트는 Electron을 띄운다 — 헤드리스 러너에 가상 디스플레이와 런타임 의존성이 필요하다.
+      - name: Electron 실행 의존성
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb libnss3 libatk-bridge2.0-0 libgtk-3-0 libgbm1
+          sudo apt-get install -y libasound2t64 || sudo apt-get install -y libasound2
+
+      - name: 컴파일(tsc -noEmit + 번들)
+        run: npm run compile
+
+      - name: 린트
+        run: npm run lint
+
+      - name: 단위 테스트
+        run: npm run test:unit
+
+      # WASM 번들(dist/)과 activate() 결선을 검증하는 유일한 커버리지 — 개발 샌드박스에서는 못 돌린다.
+      - name: 통합 테스트(xvfb)
+        run: xvfb-run -a npm run test:integration
+
+      - name: 패키징
+        run: npm run package
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vsix
+          path: '*.vsix'
+          if-no-files-found: error

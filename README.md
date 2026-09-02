@@ -90,6 +90,10 @@ npm run lint            # eslint
 npm run package         # esbuild(production) + vsce package → csms-code-<version>.vsix
 ```
 
+`main`에 push하거나 PR을 열면 GitHub Actions가 컴파일·린트·단위 테스트와 **통합 테스트(xvfb)**를 돌리고
+`.vsix`를 아티팩트로 올립니다(`.github/workflows/ci.yml`). 통합 테스트는 WASM 번들과 `activate()` 결선을
+검증하는 유일한 커버리지이고, 헤드리스 개발 환경에서는 Electron이 크래시해 CI에서만 돌아갑니다.
+
 수동 검증 절차는 [docs/manual-verification.md](docs/manual-verification.md)를 참고하세요.
 
 ## 알려진 제한 (Known limitations)
