@@ -8,6 +8,8 @@ Moodle 코드는 DB 레코드를 대부분 `stdClass`로 다루기 때문에, �
 
 ## 주요 기능
 
+기능별 상세 명세(동작 조건·인식하는 호출 형태·적용 범위)는 [docs/FEATURES.md](docs/FEATURES.md)에 있습니다.
+
 - **컬럼 자동완성**: `$config = $DB->get_record('local_ubattend_config', ...)` 다음 줄에서
   `$config->` 입력 시 해당 테이블의 컬럼 목록과 한국어 설명(install.xml의 `COMMENT`)을 표시합니다.
   `get_records`로 얻은 배열을 순회하는 `foreach ($rows as $r)`의 `$r->`, 그리고
