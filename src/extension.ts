@@ -33,8 +33,8 @@ import { UsageIndexHandle } from './presentation/providers/usage-index-handle';
 import { TargetReferenceProvider } from './presentation/providers/target-reference-provider';
 import { UsageCodeLensProvider } from './presentation/providers/usage-code-lens-provider';
 import { registerShowReferences } from './presentation/show-references';
-import { SHOW_STRING_REFERENCES_COMMAND, SHOW_CONFIG_REFERENCES_COMMAND, SHOW_TEMPLATE_REFERENCES_COMMAND, SHOW_AMD_REFERENCES_COMMAND, ReferenceCounters } from './presentation/references-link';
-import { amdLensTargets, langLensTargets, settingsLensTargets, templateLensTargets } from './presentation/lens-targets';
+import { SHOW_STRING_REFERENCES_COMMAND, SHOW_CONFIG_REFERENCES_COMMAND, SHOW_TEMPLATE_REFERENCES_COMMAND, SHOW_AMD_REFERENCES_COMMAND, SHOW_TABLE_REFERENCES_COMMAND, ReferenceCounters } from './presentation/references-link';
+import { amdLensTargets, langLensTargets, settingsLensTargets, tableLensTargets, templateLensTargets } from './presentation/lens-targets';
 import { LocateConfigTarget } from './application/locate-config-target';
 import { ResolveConfigDefinition } from './application/resolve-config-definition';
 import { DescribeConfigKey } from './application/describe-config-key';
@@ -67,6 +67,8 @@ import { FindAmdReferences } from './application/find-amd-references';
 import { AmdDefinitionProvider } from './presentation/providers/amd-definition-provider';
 import { AmdReferenceProvider } from './presentation/providers/amd-reference-provider';
 import { ResolveTableDefinition } from './application/resolve-table-definition';
+import { FindTableReferences } from './application/find-table-references';
+import { LocateTableTarget } from './application/locate-table-target';
 import { ListResolvedTableRefs } from './application/list-resolved-table-refs';
 import { TableDefinitionProvider } from './presentation/providers/table-definition-provider';
 import { ClassMemberIndex } from './infrastructure/coreapi/class-member-index';
@@ -271,6 +273,16 @@ export async function activate(ctx: vscode.ExtensionContext) {
   const resolveGlobal = new ResolveGlobalMemberDefinition(syntax, classMembers, configKeys, store);
 
   const resolveTbl = new ResolveTableDefinition(syntax, store);
+  // install.xml의 TABLE 선언 줄마다 사용처 버튼 — 테이블은 이름만 대상이다(컬럼은 범위 밖)
+  const findTblRefs = new FindTableReferences(usageIndex, store);
+  const locateTbl = new LocateTableTarget(store);
+  const tblCounter = { built: () => usageIndex.isBuilt, count: (_c: string, n: string) => findTblRefs.run(n).length };
+  const installXmlSelector: vscode.DocumentSelector = { scheme: 'file', pattern: '**/db/install.xml' };
+  const tableLens = new UsageCodeLensProvider(doc => tableLensTargets(doc.uri.toString(), store.tablesIn(doc.uri.fsPath), tblCounter),
+    () => vscode.workspace.getConfiguration('csmscode').get<boolean>('tables.codeLens', true));
+  ctx.subscriptions.push(tableLens);
+  lenses.push(tableLens);
+  registerShowReferences(ctx, SHOW_TABLE_REFERENCES_COMMAND, (_c, n) => findTblRefs.run(n), usageHandle);
   const listResolvedTbl = new ListResolvedTableRefs(syntax, store);
 
   const resolveJs = new ResolveJsDefinition(strings, templates);
@@ -300,6 +312,10 @@ export async function activate(ctx: vscode.ExtensionContext) {
     vscode.languages.registerCodeLensProvider(mustacheSelector, tplLens),
     vscode.workspace.onDidChangeConfiguration(e => { if (e.affectsConfiguration('csmscode.templates.codeLens')) tplLens.refresh(); }),
     vscode.languages.registerCodeLensProvider({ scheme: 'file', pattern: '**/amd/src/**/*.js' }, amdLens),
+    vscode.languages.registerCodeLensProvider(installXmlSelector, tableLens),
+    vscode.languages.registerReferenceProvider(installXmlSelector, new TargetReferenceProvider(
+      (doc, pos) => locateTbl.installXml(doc.uri.fsPath, pos.line), (t, incl) => findTblRefs.run(t.name, incl), usageHandle)),
+    vscode.workspace.onDidChangeConfiguration(e => { if (e.affectsConfiguration('csmscode.tables.codeLens')) tableLens.refresh(); }),
     vscode.workspace.onDidChangeConfiguration(e => { if (e.affectsConfiguration('csmscode.amd.codeLens')) amdLens.refresh(); }),
     vscode.languages.registerCodeLensProvider({ language: 'php', scheme: 'file', pattern: '**/lang/*/*.php' }, langLens),
     vscode.workspace.onDidChangeConfiguration(e => { if (e.affectsConfiguration('csmscode.strings.codeLens')) langLens.refresh(); }),
@@ -427,6 +443,7 @@ export async function activate(ctx: vscode.ExtensionContext) {
     // 재빌드는 이득 없이 증분을 덮어쓸 위험만 있으므로 침묵한다.
     if (!component) return false;
     if (removed) store.removeFile(uri.fsPath); else store.updateFile(uri.fsPath, component);
+    tableLens.refresh(); // TABLE 선언이 달라졌을 수 있다
     return true;
   });
   ctx.subscriptions.push(watcher,

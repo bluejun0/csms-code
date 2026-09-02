@@ -3,6 +3,7 @@ export const SHOW_STRING_REFERENCES_COMMAND = 'csmscode.showStringReferences';
 export const SHOW_CONFIG_REFERENCES_COMMAND = 'csmscode.showConfigReferences';
 export const SHOW_TEMPLATE_REFERENCES_COMMAND = 'csmscode.showTemplateReferences';
 export const SHOW_AMD_REFERENCES_COMMAND = 'csmscode.showAmdReferences';
+export const SHOW_TABLE_REFERENCES_COMMAND = 'csmscode.showTableReferences';
 
 export type ReferenceKind = 'string' | 'config';
 

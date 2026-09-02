@@ -1,6 +1,6 @@
 import { strict as assert } from 'assert';
-import { amdLensTargets, langLensTargets, settingsLensTargets, templateLensTargets } from '../../../src/presentation/lens-targets';
-import { SHOW_AMD_REFERENCES_COMMAND, SHOW_CONFIG_REFERENCES_COMMAND, SHOW_STRING_REFERENCES_COMMAND, SHOW_TEMPLATE_REFERENCES_COMMAND } from '../../../src/presentation/references-link';
+import { amdLensTargets, langLensTargets, settingsLensTargets, tableLensTargets, templateLensTargets } from '../../../src/presentation/lens-targets';
+import { SHOW_AMD_REFERENCES_COMMAND, SHOW_CONFIG_REFERENCES_COMMAND, SHOW_STRING_REFERENCES_COMMAND, SHOW_TABLE_REFERENCES_COMMAND, SHOW_TEMPLATE_REFERENCES_COMMAND } from '../../../src/presentation/references-link';
 
 const counter = { built: () => true, count: (c: string, k: string) => `${c}/${k}`.length };
 
@@ -27,6 +27,14 @@ describe('lens targets — 렌즈 대상 조립', () => {
     assert.equal(t.command, SHOW_AMD_REFERENCES_COMMAND);
     assert.deepEqual(t.args, { uri: 'file:///m.js', line: 0, character: 0, component: 'local_x', key: 'sub/nested' });
     assert.equal(t.count(), 'local_x/sub/nested'.length);
+  });
+  it('install.xml: TABLE 선언마다 테이블 명령 버튼', () => {
+    const [t] = tableLensTargets('file:///db/install.xml',
+      [{ name: 'local_x_cfg', location: { line: 2, column: 4 } }], counter);
+    assert.equal(t.line, 2);
+    assert.equal(t.command, SHOW_TABLE_REFERENCES_COMMAND);
+    assert.deepEqual(t.args, { uri: 'file:///db/install.xml', line: 2, character: 4, component: '', key: 'local_x_cfg' });
+    assert.equal(t.count(), '/local_x_cfg'.length);
   });
   it('settings: 선언마다 설정 명령, 컬럼은 첫 인자, 색인 전이면 count null', () => {
     const [t] = settingsLensTargets('file:///s.php',

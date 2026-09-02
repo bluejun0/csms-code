@@ -40,7 +40,8 @@ Moodle 코드는 DB 레코드를 대부분 `stdClass`로 다루기 때문에, �
   (`core_form/submit` → `lib/form/amd/src/submit.js`)도 해석합니다.
 - **테이블 참조 이동**: SQL 문자열의 `{tablename}`과 `$DB->update_record('local_x', …)` 같은 DML 메서드의
   테이블 인자에서 F12를 누르면 그 테이블을 선언한
-  `install.xml`의 `<TABLE>` 줄로 이동하고, 해석되는 참조를 링크 색상으로 표시합니다.
+  `install.xml`의 `<TABLE>` 줄로 이동하고, 해석되는 참조를 링크 색상으로 표시합니다. 반대 방향으로도 —
+  `install.xml`의 `<TABLE>` 줄에서 **Shift+F12**나 **"사용 N건" 버튼**으로 그 테이블을 쓰는 SQL·`$DB` 호출을 모두 찾습니다(테이블 이름만, 컬럼은 범위 밖).
   단일 인용·이중 인용·heredoc·nowdoc을 모두 지원하며, `install.xml`에 없는 이름
   (정규식 수량자 `{4}`, 다른 템플릿 문법 `{Bucket}` 등)에는 아무 반응도 하지 않습니다.
 - **JS/AMD 인텔리전스**: `amd/src`의 `get_string`(`M.util.`·`core/str` 모두)·`Templates.render` 리터럴에 정의 이동·hover·하이라이팅, lang/템플릿 참조 목록에 JS 호출처 포함 (`amd/build`·`.min.js`는 생성물이라 제외)
@@ -71,6 +72,7 @@ Moodle 코드는 DB 레코드를 대부분 `stdClass`로 다루기 때문에, �
 | `csmscode.strings.codeLens` | `boolean` | `true` | lang 파일의 `$string['key']` 줄 위에 "사용 N건" 버튼(CodeLens)을 표시. 색인 전에는 "사용 찾기"로 보이고 클릭이 색인을 만듭니다 |
 | `csmscode.templates.highlightResolved` | `boolean` | `true` | 해석되는 render_from_template 참조를 링크 색상으로 하이라이팅 |
 | `csmscode.amd.highlightResolved` | `boolean` | `true` | 해석되는 AMD 모듈 참조(`js_call_amd`의 첫 인자)를 링크 색상으로 하이라이팅 |
+| `csmscode.tables.codeLens` | `boolean` | `true` | install.xml의 `<TABLE>` 선언 줄 위에 "사용 N건" 버튼(CodeLens)을 표시 |
 | `csmscode.tables.highlightResolved` | `boolean` | `true` | SQL 문자열에서 install.xml로 해석되는 테이블 참조(`{table}`)를 링크 색상으로 하이라이팅 |
 | `csmscode.usageIndex.cache` | `boolean` | `true` | 사용처 색인을 디스크에 저장해 다음에 즉시 불러옵니다(워크스페이스당 약 1MB) |
 | `csmscode.amd.codeLens` | `boolean` | `true` | amd/src 모듈 파일 맨 위에 "사용 N건" 버튼(CodeLens)을 표시 |

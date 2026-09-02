@@ -39,6 +39,7 @@ export class IndexStore implements TableRepository {
 
   getTable(name: string) { return this.repo.getTable(name); }
   allTableNames() { return this.repo.allTableNames(); }
+  tablesIn(file: string) { return this.repo.tablesIn(file); }
 }
 
 function safeParse(file: string, component: string): Table[] {
