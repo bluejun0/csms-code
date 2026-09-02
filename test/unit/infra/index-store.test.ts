@@ -72,3 +72,14 @@ describe('IndexStore — 비동기 빌드·증분', () => {
     }
   });
 });
+
+describe('IndexStore — 파일별 테이블 조회', () => {
+  it('tablesIn: 그 install.xml이 선언한 테이블만, 다른 파일은 빈 배열', () => {
+    const s = new IndexStore();
+    s.buildFromRoot(join(__dirname, '../../fixtures/mini-moodle'));
+    const file = join(__dirname, '../../fixtures/mini-moodle/local/ubattend/db/install.xml');
+    assert.deepEqual(s.tablesIn(file).map(t => t.name), ['local_ubattend_config']);
+    assert.equal(s.tablesIn(join(__dirname, '../../fixtures/mini-moodle/nope/db/install.xml')).length, 0);
+    assert.equal(s.tablesIn(file)[0].location.line, 2, 'TABLE 줄(0-based)');
+  });
+});

@@ -9,8 +9,8 @@ export interface UsageIndexHandle {
 // 빌드 중에 두 번째 요청이 오면 같은 알림을 기다린다 — 진입점이 여럿(참조·버튼·링크)이라 알림이 겹치기 쉽다
 const inflight = new WeakMap<UsageIndexHandle, Promise<void>>();
 
-/** 이만큼 안에 끝나면 알림을 띄우지 않는다 — 디스크 캐시에서 불러오는 경로는 조용히 지나가야 한다. */
-const QUIET_MS = 400;
+/** 이만큼 안에 끝나면 알림을 띄우지 않는다 — 디스크 캐시에서 불러오는 경로(실측 0.3~0.9초)는 조용히 지나가야 한다. */
+const QUIET_MS = 1500;
 
 const delay = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
 
@@ -23,10 +23,21 @@ export function ensureUsageIndex(usage: UsageIndexHandle): Promise<void> {
 
   let last: [number, number] | undefined;
   let report: ((done: number, total: number) => void) | undefined;
-  const build = usage.build((done, total) => { last = [done, total]; report?.(done, total); });
+  // 중간 진행률이 오면 그것이 곧 "전체 스캔 중"이라는 신호다 — 기다리지 않고 알림을 연다.
+  // 캐시 로드는 진행률을 한 번도 보고하지 않으므로 조용한 경로에 남는다.
+  let scanning: (() => void) | undefined;
+  const scanStarted = new Promise<void>(resolve => { scanning = resolve; });
+  const build = usage.build((done, total) => {
+    last = [done, total];
+    if (done < total) scanning?.();
+    report?.(done, total);
+  });
 
   const p = (async () => {
-    const quick = await Promise.race([build.then(() => true), delay(QUIET_MS).then(() => false)]);
+    const quick = await Promise.race([
+      build.then(() => true),
+      Promise.race([delay(QUIET_MS), scanStarted]).then(() => false),
+    ]);
     if (quick) return;
     await vscode.window.withProgress(
       { location: vscode.ProgressLocation.Notification, title: 'CSMS Code: 사용처 색인 중…' },

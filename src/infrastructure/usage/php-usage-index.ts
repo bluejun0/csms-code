@@ -5,6 +5,7 @@ import { StringUsageRepository } from '../../domain/lang-model/ports/string-usag
 import { TemplateUsageRepository } from '../../domain/template-model/ports/template-usage-repository';
 import { AmdUsageRepository } from '../../domain/amd-model/ports/amd-usage-repository';
 import { ConfigUsageRepository } from '../../domain/moodle-model/ports/config-usage-repository';
+import { TableUsageRepository } from '../../domain/moodle-model/ports/table-usage-repository';
 import { configKeyId } from '../../domain/moodle-model/services/config-plugin';
 import { SNAPSHOT_VERSION, StampRow, UsageSnapshot, diffStamps, packRows, unpackRows } from './usage-snapshot';
 import { normalizeComponent } from '../../domain/lang-model/services/component-normalizer';
@@ -23,6 +24,11 @@ const AMD_USAGE_RE = /js_call_amd\(\s*['"]([\w:./-]+)['"]/g;
 // `->get_config(…)`·`::get_config(…)`는 다른 의미의 메서드라 제외한다(팩트도 함수 호출만 본다).
 const CONFIG_GET_RE = /(?<![>\w$:])get_config\(\s*['"](\w+)['"]\s*,\s*['"](\w+)['"]\s*\)/g;
 const CONFIG_SET_RE = /(?<![>\w$:])set_config\(\s*['"](\w+)['"]\s*,\s*[^;()]*?,\s*['"](\w+)['"]\s*\)/g;
+// 테이블 사용처 — SQL 문자열의 `{name}`과 `$DB->메서드('name', …)`. `sql_` 계열은 첫 인자가 컬럼·식이라 제외한다.
+// 실재 테이블인지는 걸러내지 않는다 — 조회는 색인된 이름으로만 하고, 걸러 두면 install.xml에
+// 테이블을 새로 추가했을 때 그 테이블이 "사용 0건"으로 보인다.
+const TABLE_BRACE_RE = /\{([a-z][a-z0-9_]*)\}/g;
+const TABLE_DML_RE = /\$DB->([a-z_]\w*)\(\s*['"]([a-z][a-z0-9_]*)['"]/g;
 // 'lang'은 lang 팩 자체 — 사용처가 아니고, 값 텍스트 속 "get_string(" 유령 매치 방지를 겸한다
 const SKIP_DIRS = new Set(['node_modules', 'vendor', '.git', '.superpowers', 'dist', 'lang']);
 const YIELD_EVERY = 200;
@@ -39,11 +45,12 @@ interface UsageEntry { component: string; key: string; loc: SourceLocation; }
 interface TemplateEntry { ref: string; loc: SourceLocation; }
 interface AmdEntry { ref: string; loc: SourceLocation; }
 interface ConfigEntry { id: string; loc: SourceLocation; }
-interface Extracted { entries: UsageEntry[]; tEntries: TemplateEntry[]; aEntries: AmdEntry[]; cEntries: ConfigEntry[]; }
+interface TableEntry { name: string; loc: SourceLocation; }
+interface Extracted { entries: UsageEntry[]; tEntries: TemplateEntry[]; aEntries: AmdEntry[]; cEntries: ConfigEntry[]; tblEntries: TableEntry[] }
 
-/** 문자열·템플릿·AMD·설정 사용처의 워크스페이스 색인 — PHP·JS·mustache를 한 번의 스캔에서 함께 훑는다.
+/** 문자열·템플릿·AMD·설정·테이블 사용처의 워크스페이스 색인 — PHP·JS·mustache를 한 번의 스캔에서 함께 훑는다.
  *  lazy 빌드 + 저장/삭제 시 파일 단위 증분. */
-export class PhpUsageIndex implements StringUsageRepository, TemplateUsageRepository, AmdUsageRepository, ConfigUsageRepository {
+export class PhpUsageIndex implements StringUsageRepository, TemplateUsageRepository, AmdUsageRepository, ConfigUsageRepository, TableUsageRepository {
   private byComponent = new Map<string, Map<string, SourceLocation[]>>();
   private byFile = new Map<string, UsageEntry[]>();
   private byTemplateRef = new Map<string, SourceLocation[]>();
@@ -52,6 +59,8 @@ export class PhpUsageIndex implements StringUsageRepository, TemplateUsageReposi
   private amdByFile = new Map<string, AmdEntry[]>();
   private byConfigId = new Map<string, SourceLocation[]>();
   private configByFile = new Map<string, ConfigEntry[]>();
+  private byTableName = new Map<string, SourceLocation[]>();
+  private tablesByFile = new Map<string, TableEntry[]>();
   private stamps = new Map<string, FileStamp>();
   private builtFlag = false;
 
@@ -89,7 +98,7 @@ export class PhpUsageIndex implements StringUsageRepository, TemplateUsageReposi
   }
 
   /** 추출 결과를 색인에 반영하는 단일 지점 — 스캔·증분·스냅샷 복원이 모두 이 경로를 지난다. */
-  private applyExtracted(uri: string, { entries, tEntries, aEntries, cEntries }: Extracted, stamp?: FileStamp): void {
+  private applyExtracted(uri: string, { entries, tEntries, aEntries, cEntries, tblEntries }: Extracted, stamp?: FileStamp): void {
     if (stamp) this.stamps.set(uri, stamp); else this.stamps.delete(uri);
     const prev = this.byFile.get(uri);
     if (prev) { for (const e of prev) this.removeEntry(e); this.byFile.delete(uri); }
@@ -99,15 +108,19 @@ export class PhpUsageIndex implements StringUsageRepository, TemplateUsageReposi
     if (prevA) { for (const e of prevA) this.removeAmdEntry(e); this.amdByFile.delete(uri); }
     const prevC = this.configByFile.get(uri);
     if (prevC) { for (const e of prevC) this.removeConfigEntry(e); this.configByFile.delete(uri); }
+    const prevTbl = this.tablesByFile.get(uri);
+    if (prevTbl) { for (const e of prevTbl) this.removeTableEntry(e); this.tablesByFile.delete(uri); }
 
     for (const e of entries) this.addEntry(e);
     for (const e of tEntries) this.addTemplateEntry(e);
     for (const e of aEntries) this.addAmdEntry(e);
     for (const e of cEntries) this.addConfigEntry(e);
+    for (const e of tblEntries) this.addTableEntry(e);
     if (entries.length) this.byFile.set(uri, entries);
     if (tEntries.length) this.templatesByFile.set(uri, tEntries);
     if (aEntries.length) this.amdByFile.set(uri, aEntries);
     if (cEntries.length) this.configByFile.set(uri, cEntries);
+    if (tblEntries.length) this.tablesByFile.set(uri, tblEntries);
   }
 
   private extractPhp(uri: string, text: string): Extracted {
@@ -115,6 +128,7 @@ export class PhpUsageIndex implements StringUsageRepository, TemplateUsageReposi
     const tEntries: TemplateEntry[] = [];
     const aEntries: AmdEntry[] = [];
     const cEntries: ConfigEntry[] = [];
+    const tblEntries: TableEntry[] = [];
     // 키 리터럴 내용 시작 = 매치 안 첫 따옴표 다음
     const firstLiteralColumn = (m: RegExpExecArray, lineStart: number) => m.index - lineStart + m[0].search(/['"]/) + 1;
     forEachMatch(text, USAGE_RE, (m, line, lineStart) => {
@@ -136,7 +150,14 @@ export class PhpUsageIndex implements StringUsageRepository, TemplateUsageReposi
     forEachMatch(text, CONFIG_SET_RE, (m, line, lineStart) => {
       cEntries.push({ id: configKeyId(m[2], m[1]), loc: { uri, line, column: firstLiteralColumn(m, lineStart) } });
     });
-    return { entries, tEntries, aEntries, cEntries };
+    forEachMatch(text, TABLE_BRACE_RE, (m, line, lineStart) => {
+      tblEntries.push({ name: m[1], loc: { uri, line, column: m.index - lineStart + 1 } }); // `{` 다음이 이름 시작
+    });
+    forEachMatch(text, TABLE_DML_RE, (m, line, lineStart) => {
+      if (m[1].startsWith('sql_')) return;
+      tblEntries.push({ name: m[2], loc: { uri, line, column: firstLiteralColumn(m, lineStart) } });
+    });
+    return { entries, tEntries, aEntries, cEntries, tblEntries };
   }
 
   /** mustache의 `{{> }}`·`{{< }}`는 템플릿 사용처, `{{#str}}`는 문자열 사용처다.
@@ -144,7 +165,7 @@ export class PhpUsageIndex implements StringUsageRepository, TemplateUsageReposi
   private extractMustache(uri: string, text: string): Extracted {
     const refs = scanMustache(text);
     return {
-      aEntries: [], cEntries: [],
+      aEntries: [], cEntries: [], tblEntries: [],
       entries: refs.stringRefs.map(r => ({
         component: normalizeComponent(r.component, this.hasCanonical),
         key: r.key,
@@ -158,7 +179,7 @@ export class PhpUsageIndex implements StringUsageRepository, TemplateUsageReposi
   private extractJs(uri: string, text: string): Extracted {
     const calls = scanJsCalls(text);
     return {
-      aEntries: [], cEntries: [],
+      aEntries: [], cEntries: [], tblEntries: [],
       entries: calls.stringCalls.map(c => ({
         component: normalizeComponent(c.component, this.hasCanonical),
         key: c.key,
@@ -171,7 +192,7 @@ export class PhpUsageIndex implements StringUsageRepository, TemplateUsageReposi
   /** 색인이 아는 모든 파일 — 도장이 있는 파일과 항목이 있는 파일의 합집합. */
   private trackedFiles(): string[] {
     return [...new Set([...this.stamps.keys(), ...this.byFile.keys(), ...this.templatesByFile.keys(),
-      ...this.amdByFile.keys(), ...this.configByFile.keys()])];
+      ...this.amdByFile.keys(), ...this.configByFile.keys(), ...this.tablesByFile.keys()])];
   }
 
   /** 도장 행 — 도장이 없는 파일(저장 증분으로 갱신된 파일)은 size 음수로 담아 다음 검증에서 다시 읽는다. */
@@ -197,6 +218,7 @@ export class PhpUsageIndex implements StringUsageRepository, TemplateUsageReposi
       t: packRows(rows(this.templatesByFile), e => [e.ref, e.loc.line, e.loc.column]),
       a: packRows(rows(this.amdByFile), e => [e.ref, e.loc.line, e.loc.column]),
       c: packRows(rows(this.configByFile), e => [e.id, e.loc.line, e.loc.column]),
+      x: packRows(rows(this.tablesByFile), e => [e.name, e.loc.line, e.loc.column]),
     };
   }
 
@@ -206,6 +228,7 @@ export class PhpUsageIndex implements StringUsageRepository, TemplateUsageReposi
     this.byTemplateRef = new Map(); this.templatesByFile = new Map();
     this.byAmdRef = new Map(); this.amdByFile = new Map();
     this.byConfigId = new Map(); this.configByFile = new Map();
+    this.byTableName = new Map(); this.tablesByFile = new Map();
     this.stamps = new Map();
   }
 
@@ -219,7 +242,7 @@ export class PhpUsageIndex implements StringUsageRepository, TemplateUsageReposi
     const per = new Map<number, Extracted>();
     const slot = (i: number): Extracted => {
       let e = per.get(i);
-      if (!e) { e = { entries: [], tEntries: [], aEntries: [], cEntries: [] }; per.set(i, e); }
+      if (!e) { e = { entries: [], tEntries: [], aEntries: [], cEntries: [], tblEntries: [] }; per.set(i, e); }
       return e;
     };
     const known = (i: number): boolean => files[i] !== undefined; // 손상된 스냅샷의 범위 밖 인덱스는 버린다
@@ -229,6 +252,7 @@ export class PhpUsageIndex implements StringUsageRepository, TemplateUsageReposi
     unpackRows(snap.t, 3, (i, r) => { if (known(i)) slot(i).tEntries.push({ ref: r[0] as string, loc: at(i, r[1] as number, r[2] as number) }); });
     unpackRows(snap.a, 3, (i, r) => { if (known(i)) slot(i).aEntries.push({ ref: r[0] as string, loc: at(i, r[1] as number, r[2] as number) }); });
     unpackRows(snap.c, 3, (i, r) => { if (known(i)) slot(i).cEntries.push({ id: r[0] as string, loc: at(i, r[1] as number, r[2] as number) }); });
+    unpackRows(snap.x, 3, (i, r) => { if (known(i)) slot(i).tblEntries.push({ name: r[0] as string, loc: at(i, r[1] as number, r[2] as number) }); });
 
     // 파일 인덱스 순서로 적용한다 — 종류별로 채운 순서를 그대로 쓰면 위치 배열 순서가 스캔과 달라진다.
     for (const i of [...per.keys()].sort((x, y) => x - y)) {
@@ -272,6 +296,10 @@ export class PhpUsageIndex implements StringUsageRepository, TemplateUsageReposi
     return this.byConfigId.get(configKeyId(plugin, key)) ?? [];
   }
 
+  tableRefsOf(name: string): SourceLocation[] {
+    return this.byTableName.get(name) ?? [];
+  }
+
   private addEntry(e: UsageEntry): void {
     let comp = this.byComponent.get(e.component);
     if (!comp) { comp = new Map(); this.byComponent.set(e.component, comp); }
@@ -311,6 +339,16 @@ export class PhpUsageIndex implements StringUsageRepository, TemplateUsageReposi
   }
   private removeConfigEntry(e: ConfigEntry): void {
     const arr = this.byConfigId.get(e.id);
+    if (!arr) return;
+    const i = arr.indexOf(e.loc);
+    if (i >= 0) arr.splice(i, 1);
+  }
+  private addTableEntry(e: TableEntry): void {
+    const arr = this.byTableName.get(e.name);
+    if (arr) arr.push(e.loc); else this.byTableName.set(e.name, [e.loc]);
+  }
+  private removeTableEntry(e: TableEntry): void {
+    const arr = this.byTableName.get(e.name);
     if (!arr) return;
     const i = arr.indexOf(e.loc);
     if (i >= 0) arr.splice(i, 1);

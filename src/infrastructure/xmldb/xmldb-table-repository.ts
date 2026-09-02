@@ -53,4 +53,5 @@ export class InMemoryTableRepository implements TableRepository {
   removeByUri(uri: string) { for (const [n, t] of this.byName) if (t.location.uri === uri) this.byName.delete(n); }
   getTable(name: string): Table | undefined { return this.byName.get(name); }
   allTableNames(): string[] { return [...this.byName.keys()]; }
+  tablesIn(file: string): Table[] { return [...this.byName.values()].filter(t => t.location.uri === file); }
 }

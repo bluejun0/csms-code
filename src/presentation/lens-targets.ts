@@ -1,4 +1,4 @@
-import { ReferenceCounter, SHOW_AMD_REFERENCES_COMMAND, SHOW_CONFIG_REFERENCES_COMMAND, SHOW_STRING_REFERENCES_COMMAND, SHOW_TEMPLATE_REFERENCES_COMMAND, UsageLensTarget } from './references-link';
+import { ReferenceCounter, SHOW_AMD_REFERENCES_COMMAND, SHOW_CONFIG_REFERENCES_COMMAND, SHOW_STRING_REFERENCES_COMMAND, SHOW_TABLE_REFERENCES_COMMAND, SHOW_TEMPLATE_REFERENCES_COMMAND, UsageLensTarget } from './references-link';
 
 const countOf = (counter: ReferenceCounter, component: string, key: string) =>
   () => counter.built() ? counter.count(component, key) : null;
@@ -31,6 +31,17 @@ export function templateLensTargets(uri: string, ref: { component: string; name:
 export function amdLensTargets(uri: string, ref: { component: string; name: string },
                                counter: ReferenceCounter): UsageLensTarget[] {
   return wholeFileTargets(SHOW_AMD_REFERENCES_COMMAND, uri, ref, counter);
+}
+
+/** install.xml: `<TABLE>` 선언 줄마다 테이블 사용처 버튼. 테이블은 이름만 대상이라 component 자리는 비운다. */
+export function tableLensTargets(uri: string,
+                                 tables: { name: string; location: { line: number; column: number } }[],
+                                 counter: ReferenceCounter): UsageLensTarget[] {
+  return tables.map(t => ({
+    line: t.location.line, command: SHOW_TABLE_REFERENCES_COMMAND,
+    args: { uri, line: t.location.line, character: t.location.column, component: '', key: t.name },
+    count: countOf(counter, '', t.name),
+  }));
 }
 
 /** settings.php: `new admin_setting_*(…)` 선언 줄마다 설정 사용처 버튼 — peek은 첫 인자 위치에 연다 */

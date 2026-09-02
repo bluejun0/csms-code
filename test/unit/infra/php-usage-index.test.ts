@@ -103,6 +103,22 @@ describe('PhpUsageIndex', () => {
     assert.equal(idx2.configRefsOf('local_x', 'k2').length, 0, '메서드 호출은 플러그인 설정 함수가 아니다');
     assert.equal(idx2.configRefsOf('local_x', 'k3').length, 1);
   });
+  it('테이블 사용처: SQL의 {table}과 $DB 리터럴 인자, sql_ 계열은 제외', () => {
+    const idx2 = new PhpUsageIndex(() => false);
+    const src = "<?php\n$x = $DB->get_records_sql('SELECT * FROM {local_x_cfg} c JOIN {user} u ON u.id = c.userid');\n$DB->insert_record('local_x_cfg', $d);\n$DB->sql_like('email', '?');\n$n = $DB->count_records('user');\necho 'id={course}';\n";
+    idx2.updateFileText('/t.php', src);
+    const lines = src.split('\n');
+    const cfg = idx2.tableRefsOf('local_x_cfg');
+    assert.equal(cfg.length, 2, 'SQL 1건 + insert_record 1건');
+    assert.equal(cfg[0].line, 1);
+    assert.equal(cfg[0].column, lines[1].indexOf('local_x_cfg'), '{ 다음이 이름 시작');
+    assert.equal(cfg[1].column, lines[2].indexOf('local_x_cfg'));
+    assert.equal(idx2.tableRefsOf('user').length, 2, 'SQL 1건 + count_records 1건');
+    assert.equal(idx2.tableRefsOf('email').length, 0, 'sql_ 계열의 첫 인자는 컬럼이다');
+    assert.equal(idx2.tableRefsOf('course').length, 1, '비SQL 문자열의 {course}도 담는다(조회는 실재 테이블만)');
+    idx2.updateFileText('/t.php', '<?php\n');
+    assert.equal(idx2.tableRefsOf('local_x_cfg').length, 0, '증분 제거');
+  });
   it("lang 디렉터리는 스캔에서 제외 — 값/노트 속 get_string 유령 매치 방지", () => {
     assert.equal(idx.referencesOf('local_ubattend', 'ghost_key').length, 0);
   });
@@ -439,8 +455,19 @@ describe('PhpUsageIndex — 복원 순서·재복원', () => {
   });
   it('범위 밖 파일 인덱스는 uri 없는 항목을 만들지 않는다', () => {
     const idx = new PhpUsageIndex(() => true);
-    idx.loadSnapshot({ v: 1, ext: '1', root: '/m', files: [['a.php', 1, 2]],
-      s: [7, 1, 'local_x', 'k', 0, 0], t: [], a: [], c: [] }, '/m');
+    idx.loadSnapshot({ v: 2, ext: '1', root: '/m', files: [['a.php', 1, 2]],
+      s: [7, 1, 'local_x', 'k', 0, 0], t: [], a: [], c: [], x: [] }, '/m');
     assert.deepEqual(idx.referencesOf('local_x', 'k'), []);
+  });
+});
+
+describe('PhpUsageIndex — 테이블 사용처 스냅샷', () => {
+  it('스냅샷 왕복에 테이블 사용처가 포함된다', async () => {
+    const src = new PhpUsageIndex(() => true);
+    src.updateFileText('/s.php', "<?php\n$DB->delete_records('local_ubattend_config', []);\n");
+    const snap = src.toSnapshot('/', '1');
+    const loaded = new PhpUsageIndex(() => true);
+    loaded.loadSnapshot(snap, '/');
+    assert.deepEqual(loaded.tableRefsOf('local_ubattend_config'), src.tableRefsOf('local_ubattend_config'));
   });
 });

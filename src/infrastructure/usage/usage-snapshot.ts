@@ -1,5 +1,5 @@
 /** 사용처 색인의 디스크 표현 — 형식·검증·비교·행 인코딩만. fs·zlib을 모른다. */
-export const SNAPSHOT_VERSION = 1;
+export const SNAPSHOT_VERSION = 2;
 
 /** 파일 도장 행 — [루트 상대 경로, mtimeMs, size]. size가 음수면 "모름"(다음 검증에서 다시 읽는다). */
 export type StampRow = [string, number, number];
@@ -15,6 +15,7 @@ export interface UsageSnapshot {
   t: (string | number)[];   // 템플릿: [fileIdx, n, (ref, line, column) × n]
   a: (string | number)[];   // AMD: 템플릿과 같은 모양
   c: (string | number)[];   // 설정: [fileIdx, n, (id, line, column) × n]
+  x: (string | number)[];   // 테이블: [fileIdx, n, (name, line, column) × n]
 }
 
 /** 형태·형식 버전·확장 버전·루트가 모두 맞아야 쓸 수 있다. 하나라도 어긋나면 버린다(침묵). */
@@ -22,7 +23,8 @@ export function isSnapshotUsable(value: unknown, root: string, extVersion: strin
   if (typeof value !== 'object' || value === null) return false;
   const s = value as Partial<UsageSnapshot>;
   if (s.v !== SNAPSHOT_VERSION || s.ext !== extVersion || s.root !== root) return false;
-  return Array.isArray(s.files) && Array.isArray(s.s) && Array.isArray(s.t) && Array.isArray(s.a) && Array.isArray(s.c);
+  return Array.isArray(s.files) && Array.isArray(s.s) && Array.isArray(s.t)
+    && Array.isArray(s.a) && Array.isArray(s.c) && Array.isArray(s.x);
 }
 
 /** 캐시 시점과 현재의 도장을 비교 — 결과는 루트 상대 경로. */

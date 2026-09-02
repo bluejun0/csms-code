@@ -6,7 +6,7 @@ import { UsageIndexCache } from '../../../src/infrastructure/usage/usage-index-c
 import { SNAPSHOT_VERSION, UsageSnapshot } from '../../../src/infrastructure/usage/usage-snapshot';
 
 const snap = (root: string, ext: string): UsageSnapshot =>
-  ({ v: SNAPSHOT_VERSION, ext, root, files: [['a.php', 1, 2]], s: [0, 1, 'local_x', 'k', 3, 4], t: [], a: [], c: [] });
+  ({ v: SNAPSHOT_VERSION, ext, root, files: [['a.php', 1, 2]], s: [0, 1, 'local_x', 'k', 3, 4], t: [], a: [], c: [], x: [] });
 
 describe('UsageIndexCache', () => {
   let dir: string;
