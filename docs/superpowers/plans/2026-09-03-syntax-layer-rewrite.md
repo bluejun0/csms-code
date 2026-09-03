@@ -1699,6 +1699,7 @@ git commit -m "feat: 클래스 멤버 읽기 분리"
   - `syntax.facts(text: string, need?: ReadonlySet<FactKind>): DocumentFacts`
   - `syntax.classMembers(text: string, className: string): RawClassMember[]`
   - `MAX_DOCUMENT_BYTES = 1_048_576`
+  - `ALL_FRAGMENTS: readonly QueryFragment[]` — Task 14가 같은 목록을 검사하도록 export 한다
 
 **정규화가 필요한 두 곳** — 통합 쿼리는 매치를 조각별이 아니라 문서 순서로 주므로, 현행이 "먼저 돈 쿼리 결과를 우선"으로 처리하던 두 자리를 명시적 정규화로 옮긴다.
 
@@ -1779,7 +1780,7 @@ import { CompiledQuery, PhpRuntime } from './tree-sitter-runtime';
 
 export const MAX_DOCUMENT_BYTES = 1_048_576;
 
-const ALL_FRAGMENTS = [
+export const ALL_FRAGMENTS = [
   ...recordFragments, ...accessFragments, ...stringFragments,
   ...configFragments, ...tableFragments, ...templateFragments,
 ];
@@ -1971,7 +1972,7 @@ git commit -m "feat: need를 아는 팩트 캐시"
 - Create: `test/unit/php/combined-query-equivalence.test.ts`
 
 **Interfaces:**
-- Consumes: `FragmentSet` (Task 4), `PhpRuntime` (Task 3), 조각 전부 (Task 5~10)
+- Consumes: `FragmentSet` (Task 4), `PhpRuntime` (Task 3), `ALL_FRAGMENTS` (Task 12)
 
 조각을 하나씩 따로 컴파일했을 때와 통합 쿼리의 **패턴별 매치 수**가 같아야 한다. 총합만 비교하면 오분배를 놓친다 — 총합은 같고 귀속만 어긋나는 것이 정확히 이 실패 모드다. 코퍼스가 있으면 실제 파일까지 확인하고, 없으면 픽스처만으로도 게이트가 선다.
 
@@ -1985,17 +1986,7 @@ import * as path from 'path';
 import { FragmentSet } from '../../../src/infrastructure/php/fragment-set';
 import { PhpRuntime } from '../../../src/infrastructure/php/tree-sitter-runtime';
 import { ScopeTable } from '../../../src/infrastructure/php/scope-table';
-import { accessFragments } from '../../../src/infrastructure/php/fragments/access';
-import { configFragments } from '../../../src/infrastructure/php/fragments/config';
-import { recordFragments } from '../../../src/infrastructure/php/fragments/record';
-import { stringFragments } from '../../../src/infrastructure/php/fragments/strings';
-import { tableFragments } from '../../../src/infrastructure/php/fragments/tables';
-import { templateFragments } from '../../../src/infrastructure/php/fragments/templates';
-
-const FRAGMENTS = [
-  ...recordFragments, ...accessFragments, ...stringFragments,
-  ...configFragments, ...tableFragments, ...templateFragments,
-];
+import { ALL_FRAGMENTS as FRAGMENTS } from '../../../src/infrastructure/php/php-syntax';
 
 function fixturePhpFiles(): string[] {
   const root = path.join(__dirname, '../../fixtures');
@@ -2083,10 +2074,13 @@ Expected: PASS (2 passing 또는 코퍼스 없으면 1 passing / 1 pending)
 
 `FragmentSet.of`의 불변식이 없으면 어떤 일이 일어나는지 확인해, 이 테스트가 그 실패를 잡는지 본다.
 `src/infrastructure/php/fragment-set.ts`의 `if (count !== 1) throw ...` 줄을 잠시 주석 처리하고,
-테스트 파일의 `FRAGMENTS` 배열 첫 원소를 아래로 바꾼 뒤 실행한다.
+테스트 파일에서 `FRAGMENTS`를 직접 쓰는 대신 첫 원소를 바꾼 사본을 만들어 실행한다.
 
 ```ts
-{ ...recordFragments[0], pattern: `${recordFragments[0].pattern}\n(comment) @extra` },
+const FRAGMENTS = [
+  { ...ALL_FRAGMENTS[0], pattern: `${ALL_FRAGMENTS[0].pattern}\n(comment) @extra` },
+  ...ALL_FRAGMENTS.slice(1),
+];
 ```
 
 Run: `npx mocha test/unit/php/combined-query-equivalence.test.ts`
@@ -2101,7 +2095,7 @@ Expected: FAIL — `조각 0의 최상위 패턴이 2개다` (밀림이 아니�
 
 - [ ] **Step 5: 실험을 되돌리고 커밋**
 
-`FRAGMENTS` 배열 첫 원소를 원래대로 `...recordFragments`가 펼쳐지는 형태로 되돌린다(테스트 파일은 아직 커밋 전이라 `git checkout`으로는 되돌아오지 않는다).
+임시로 만든 `FRAGMENTS` 사본을 지우고 `ALL_FRAGMENTS`를 그대로 쓰는 형태로 되돌린다(테스트 파일은 아직 커밋 전이라 `git checkout`으로는 되돌아오지 않는다).
 
 ```bash
 git checkout -- src/infrastructure/php/fragment-set.ts
@@ -2153,6 +2147,13 @@ describe('facts-diff', () => {
     assert.deepEqual(diffFacts(a, b), []);
   });
 
+  it('스코프만 달라도 차이로 잡는다', () => {
+    const a = emptyFacts(); const b = emptyFacts();
+    a.plainAssignments.push({ varName: 'x', index: 5, scope: { start: 0, end: 100 } });
+    b.plainAssignments.push({ varName: 'x', index: 5, scope: { start: 0, end: 200 } });
+    assert.equal(diffFacts(a, b).length, 1);
+  });
+
   it('값이 다르면 차이로 잡는다', () => {
     const a = emptyFacts(); const b = emptyFacts();
     a.tableRefs.push({ name: 'x', nameLine: 1, nameColumn: 0, nameIndex: 10 });
@@ -2195,8 +2196,13 @@ export type FactKind = keyof DocumentFacts;
 
 export interface FactDifference { kind: FactKind; onlyInA: string[]; onlyInB: string[] }
 
-function canonical(fact: unknown): string {
-  return JSON.stringify(fact, Object.keys(fact as object).sort());
+// JSON.stringify의 replacer 배열은 모든 깊이에서 같은 키 목록만 남긴다 —
+// 최상위 키만 넘기면 중첩된 scope가 {}로 지워져 스코프 차이가 diff에 안 잡힌다.
+function canonical(value: unknown): string {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value) ?? 'null';
+  if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
+  const entries = Object.entries(value as Record<string, unknown>).sort(([a], [b]) => (a < b ? -1 : 1));
+  return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${canonical(v)}`).join(',')}}`;
 }
 
 function multiset(list: readonly unknown[]): Map<string, number> {
@@ -2572,21 +2578,31 @@ import { TreeSitterPhpSyntax } from './src/infrastructure/php/php-syntax';
 "
 ```
 
-차이가 난 파일마다 원인을 가른다. 허용되는 원인은 둘뿐이다.
+차이가 난 파일 목록은 `/tmp/grammar-diff-files.json`에 남는다. 자동 분류는 하지 않는다 — "최신 PHP 문법"을
+정규식으로 가르려 하면 URL·배열 리터럴에도 걸려 진짜 문법 회귀가 설명된 차이로 묻힌다.
+
+목록의 파일을 하나씩 열어 셋 중 하나로 분류한다.
+
+1. **16진 이스케이프** — 옛 문법이 예외를 던져 팩트가 비어 있던 파일. 새 문법에서 팩트가 생긴 것이 정상이다.
+2. **최신 PHP 문법** — enum·readonly·named argument·first-class callable 등 옛 문법이 못 읽던 구문이 있는 파일.
+3. **설명 안 됨** — 위 둘 다 아닌 차이. 조각이 신 문법의 노드 이름·트리 모양과 어긋난 것이다.
+
+3번이 하나라도 있으면 해당 조각을 고치고 Step 9를 다시 돌린다. 상세는 그 파일만 다시 뽑는다.
 
 ```bash
 npx ts-node -O '{"module":"commonjs","target":"ES2021","esModuleInterop":true,"skipLibCheck":true,"strict":false}' -e "
 import * as fs from 'fs';
-const changed: [string, string[]][] = JSON.parse(fs.readFileSync('/tmp/grammar-diff-files.json', 'utf8'));
-const hex = /\\x[0-9a-fA-F]{2}/;
-const modern = /\benum\s+\w+|readonly\s|\.\.\.\)|\w+:\s*[\w'\"]/;
-const unexplained = changed.filter(([f]) => { const t = fs.readFileSync(f, 'utf8'); return !hex.test(t) && !modern.test(t); });
-console.log('설명되는 차이', changed.length - unexplained.length, '| 설명 안 되는 차이', unexplained.length);
-unexplained.slice(0, 20).forEach(([f, k]) => console.log(' ', f, k.join(',')));
-"
+import { diffFacts } from './test/tools/facts-diff';
+import { TreeSitterPhpSyntax } from './src/infrastructure/php/php-syntax';
+(async () => {
+  const file = process.argv[process.argv.length - 1];
+  const syntax = await TreeSitterPhpSyntax.create();
+  console.log(JSON.stringify(diffFacts(JSON.parse(fs.readFileSync('/tmp/one-old.json', 'utf8')), syntax.facts(fs.readFileSync(file, 'utf8'))), null, 2));
+})();
+" <파일경로>
 ```
 
-Expected: `설명 안 되는 차이 0`. 0이 아니면 그 파일들을 열어 어느 조각이 달라졌는지 보고 신 문법에 맞게 고친 뒤 이 단계를 다시 돌린다. **0이 되기 전에는 커밋하지 않는다.**
+**3번이 0이 되기 전에는 커밋하지 않는다.**
 
 - [ ] **Step 10: 전체 검증**
 
