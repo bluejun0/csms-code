@@ -1,37 +1,43 @@
 import * as path from 'path';
-import Parser from 'web-tree-sitter';
+import { Language, Node, Parser, Query, QueryMatch, Tree } from 'web-tree-sitter';
 import { Scope } from '../../domain/code-analysis/facts';
 import { Captures } from './query-fragment';
 import { ScopeTable } from './scope-table';
 
+// tree-sitter-php 0.24.2에서 익명 함수 노드 이름이 anonymous_function_creation_expression에서
+// anonymous_function으로 바뀌었다.
 const SCOPE_TYPES = new Set([
   'function_definition', 'method_declaration',
-  'anonymous_function_creation_expression', 'arrow_function',
+  'anonymous_function', 'arrow_function',
 ]);
 
-export type CompiledQuery = Parser.Query;
+export type CompiledQuery = Query;
 
 export interface FragmentMatch { patternIndex: number; captures: Captures }
 
-export interface ClassBodyReader { children(): Parser.SyntaxNode[] }
+export interface ClassBodyReader { children(): Node[] }
 
 // web-tree-sitter 0.20.8은 `pattern`, 0.27.0은 `patternIndex`를 쓴다. 어댑터가 둘 다 읽는다.
-function patternIndexOf(match: Parser.QueryMatch): number {
+// 기본값을 0으로 두면 셋째 이름으로 또 바뀌었을 때 모든 매치가 조용히 패턴 0으로
+// 오분류된다 — 조각 설계 전체가 막으려는 바로 그 실패라 값 대신 예외로 드러낸다.
+function patternIndexOf(match: QueryMatch): number {
   const m = match as unknown as { patternIndex?: number; pattern?: number };
-  return m.patternIndex ?? m.pattern ?? 0;
+  if (m.patternIndex !== undefined) return m.patternIndex;
+  if (m.pattern !== undefined) return m.pattern;
+  throw new Error('QueryMatch에 patternIndex도 pattern도 없다 — web-tree-sitter API가 바뀌었다');
 }
 
 class NodeCaptures implements Captures {
   constructor(
-    private readonly caps: readonly { name: string; node: Parser.SyntaxNode }[],
+    private readonly caps: readonly { name: string; node: Node }[],
     private readonly scopes: ScopeTable,
   ) {}
 
-  private node(name: string): Parser.SyntaxNode | undefined {
+  private node(name: string): Node | undefined {
     for (const c of this.caps) if (c.name === name) return c.node;
     return undefined;
   }
-  private required(name: string): Parser.SyntaxNode {
+  private required(name: string): Node {
     const n = this.node(name);
     if (!n) throw new Error(`캡처 ${name}가 없다`);
     return n;
@@ -51,13 +57,13 @@ class NodeCaptures implements Captures {
 }
 
 export class ParsedDocument {
-  constructor(private readonly tree: Parser.Tree) {}
+  constructor(private readonly tree: Tree) {}
 
   get endIndex(): number { return this.tree.rootNode.endIndex; }
 
   scopeRanges(): Scope[] {
     const out: Scope[] = [];
-    const stack: Parser.SyntaxNode[] = [this.tree.rootNode];
+    const stack: Node[] = [this.tree.rootNode];
     while (stack.length) {
       const node = stack.pop()!;
       if (SCOPE_TYPES.has(node.type)) out.push({ start: node.startIndex, end: node.endIndex });
@@ -73,7 +79,7 @@ export class ParsedDocument {
   }
 
   classBody(className: string): ClassBodyReader | null {
-    const stack: Parser.SyntaxNode[] = [this.tree.rootNode];
+    const stack: Node[] = [this.tree.rootNode];
     while (stack.length) {
       const node = stack.pop()!;
       const declares = node.type === 'class_declaration'
@@ -83,7 +89,7 @@ export class ParsedDocument {
         if (!body) return null;
         return {
           children: () => {
-            const out: Parser.SyntaxNode[] = [];
+            const out: Node[] = [];
             for (let i = 0; i < body.childCount; i++) out.push(body.child(i)!);
             return out;
           },
@@ -98,25 +104,31 @@ export class ParsedDocument {
 }
 
 export class PhpRuntime {
-  private constructor(private readonly parser: Parser, private readonly language: Parser.Language) {}
+  private constructor(private readonly parser: Parser, private readonly language: Language) {}
 
   static async create(runtimeDir?: string): Promise<PhpRuntime> {
     const rt = runtimeDir ?? path.join(__dirname, '../../../node_modules/web-tree-sitter');
     const grammar = runtimeDir
       ? path.join(runtimeDir, 'tree-sitter-php.wasm')
-      : path.join(__dirname, '../../../node_modules/tree-sitter-wasms/out/tree-sitter-php.wasm');
+      : path.join(__dirname, '../../../node_modules/tree-sitter-php/tree-sitter-php.wasm');
     await Parser.init({ locateFile: (f: string) => path.join(rt, f) });
-    const language = await Parser.Language.load(grammar);
+    const language = await Language.load(grammar);
     const parser = new Parser();
     parser.setLanguage(language);
     return new PhpRuntime(parser, language);
   }
 
-  compile(source: string): CompiledQuery { return this.language.query(source); }
+  compile(source: string): CompiledQuery { return new Query(this.language, source); }
 
   // 중단된 파싱은 파서에 내부 상태를 남겨 다음 문서를 조용히 망가뜨린다.
   parse(text: string): ParsedDocument | null {
-    try { return new ParsedDocument(this.parser.parse(text)); }
-    catch { this.parser.reset(); return null; }
+    try {
+      const tree = this.parser.parse(text);
+      if (!tree) { this.parser.reset(); return null; }
+      return new ParsedDocument(tree);
+    } catch {
+      this.parser.reset();
+      return null;
+    }
   }
 }

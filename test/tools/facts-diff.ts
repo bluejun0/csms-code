@@ -1,3 +1,4 @@
+import * as crypto from 'crypto';
 import * as fs from 'fs';
 import { DocumentFacts } from '../../src/domain/code-analysis/facts';
 import { PhpSyntax } from '../../src/domain/code-analysis/ports/php-syntax';
@@ -66,4 +67,15 @@ export function compareOverFilesDetailed(
 
 export function compareOverFiles(a: PhpSyntax, b: PhpSyntax, files: readonly string[]): Map<string, FactDifference[]> {
   return compareOverFilesDetailed(a, b, files).differences;
+}
+
+/** 파일·팩트 종류별 정규 해시. 문법 교체처럼 옛 팩트를 되살릴 수 없는 비교 대상은
+ *  이 지문만 저장해두면 어느 파일의 어느 종류가 달라졌는지 가리기에 충분하다. */
+export function factFingerprint(facts: DocumentFacts): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const kind of Object.keys(facts) as FactKind[]) {
+    const rows = (facts[kind] as readonly unknown[]).map(canonical).sort();
+    out[kind] = crypto.createHash('sha1').update(rows.join('\u0000')).digest('hex');
+  }
+  return out;
 }

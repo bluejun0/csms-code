@@ -125,8 +125,8 @@
     "package": "npm run bundle && vsce package --no-dependencies --no-rewrite-relative-links"
   },
   "dependencies": {
-    "web-tree-sitter": "0.20.8",
-    "tree-sitter-wasms": "0.1.13"
+    "tree-sitter-php": "0.24.2",
+    "web-tree-sitter": "0.27.0"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.6",

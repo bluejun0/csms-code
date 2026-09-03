@@ -69,8 +69,8 @@ const literalAssignment: QueryFragment = {
 
 const propertyLiteral: QueryFragment = {
   produces: ['propertyLiterals'],
-  pattern: `(property_declaration (property_element (variable_name (name) @prop)
-    (property_initializer (string (string_content) @value))))`,
+  pattern: `(property_declaration (property_element
+    (variable_name (name) @prop) (string (string_content) @value)))`,
   collect: (at, into) => into.add('propertyLiterals', {
     property: at.text('prop'), value: at.text('value'), index: at.index('prop'),
   }),

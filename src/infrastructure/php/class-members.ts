@@ -1,4 +1,4 @@
-import Parser from 'web-tree-sitter';
+import { Node } from 'web-tree-sitter';
 import { RawClassMember } from '../../domain/code-analysis/ports/php-syntax';
 import { ClassBodyReader } from './tree-sitter-runtime';
 
@@ -13,7 +13,7 @@ export function readClassMembers(body: ClassBodyReader): RawClassMember[] {
   return out;
 }
 
-function readMember(node: Parser.SyntaxNode): RawClassMember | null {
+function readMember(node: Node): RawClassMember | null {
   const visibility = childOfType(node, 'visibility_modifier')?.text ?? 'public';
   if (node.type === 'method_declaration') {
     const name = node.childForFieldName('name');
@@ -46,12 +46,12 @@ function readMember(node: Parser.SyntaxNode): RawClassMember | null {
   return null;
 }
 
-function childOfType(node: Parser.SyntaxNode, type: string): Parser.SyntaxNode | null {
+function childOfType(node: Node, type: string): Node | null {
   for (let i = 0; i < node.childCount; i++) if (node.child(i)!.type === type) return node.child(i);
   return null;
 }
 
-function firstDescendantOfType(node: Parser.SyntaxNode, type: string): Parser.SyntaxNode | null {
+function firstDescendantOfType(node: Node, type: string): Node | null {
   const stack = [node];
   while (stack.length) {
     const n = stack.pop()!;
@@ -62,7 +62,7 @@ function firstDescendantOfType(node: Parser.SyntaxNode, type: string): Parser.Sy
 }
 
 /** 선언 바로 앞 주석 블록의 첫 문장. `@var <타입>` 접두는 설명이 아니므로 떼어낸다. */
-function docBefore(node: Parser.SyntaxNode): string {
+function docBefore(node: Node): string {
   const prev = node.previousSibling;
   if (!prev || prev.type !== 'comment') return '';
   const lines = prev.text.replace(/^\/\*+|\*+\/$/g, '').split('\n')

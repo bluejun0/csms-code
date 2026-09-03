@@ -103,7 +103,7 @@ export async function activate(ctx: vscode.ExtensionContext) {
   const templates = new TemplateIndex();
   const amd = new AmdIndex();
 
-  // 번들 시 dist에 tree-sitter.wasm + tree-sitter-php.wasm 복사됨
+  // 번들 시 dist에 파서 런타임·PHP 문법 wasm 두 개가 복사됨
   let syntax: CachedPhpSyntax;
   try {
     syntax = new CachedPhpSyntax(await TreeSitterPhpSyntax.create(path.join(ctx.extensionPath, 'dist')), 8);
