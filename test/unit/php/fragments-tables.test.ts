@@ -18,11 +18,18 @@ SQL;
 $OUTPUT->render_from_template('local_x/card', $ctx);
 `;
 
-async function factsOf(): Promise<DocumentFacts> {
+// 문법 고정 — 이중 인용 문자열의 {$var} 보간은 별도 노드로 쪼개져 string_content에
+// 남지 않는다는 tree-sitter grammar 사실을 고정한다. 확장 로직이 아니라 grammar
+// 업그레이드로 이 형태가 바뀌면 이 테스트가 잡는다.
+const CODE_INTERP = `<?php
+$q = "SELECT * FROM {local_pin} WHERE id = {$id}";
+`;
+
+async function factsOf(code: string = CODE): Promise<DocumentFacts> {
   const runtime = await PhpRuntime.create();
   const set = FragmentSet.of(tableFragments);
   const query = runtime.compile(set.source);
-  const doc = runtime.parse(CODE)!;
+  const doc = runtime.parse(code)!;
   const facts = emptyFacts();
   set.collect(doc.run(query, ScopeTable.of(doc.scopeRanges(), doc.endIndex)),
     { add: (kind, fact) => { (facts[kind] as unknown[]).push(fact); } });
@@ -62,5 +69,16 @@ describe('tableFragments', () => {
     // $OUTPUT->render_from_template의 첫 인자는 템플릿 이름이지 테이블이 아니다.
     // recv !== 'DB' 가드가 없으면 이 값이 그대로 tableRefs에 섞여 들어간다.
     assert.ok(!f.tableRefs.some(r => r.name === 'local_x/card'));
+  });
+});
+
+describe('tableFragments — 문법 고정(보간 제외)', () => {
+  let f: DocumentFacts;
+  before(async () => { f = await factsOf(CODE_INTERP); });
+
+  it('실제 {table}은 잡고 {$var} 보간은 변수 이름으로 잡지 않는다', () => {
+    assert.ok(f.tableRefs.some(r => r.name === 'local_pin'), '실제 테이블 참조 {local_pin}은 잡아야 함');
+    assert.ok(!f.tableRefs.some(r => r.name === 'id'),
+      '보간 {$id}는 변수명 id로 잡히면 안 됨 — 잡히면 이중 인용 보간이 문자열 내용에 남도록 grammar가 바뀐 것');
   });
 });

@@ -15,11 +15,26 @@ function f() {
   $rec = build();
 }`;
 
-async function factsOf(): Promise<DocumentFacts> {
+// 문법 고정 — 복합(+=/??=/.=)·구조분해([$e,$f]=/list()=)·참조(=&) 대입은
+// plainAssignments의 grammar 패턴(assignment_expression left: (variable_name))에
+// 매칭되지 않는다는 tree-sitter grammar 사실을 고정한다. 확장 로직이 아니라
+// grammar 업그레이드로 이 형태가 바뀌면 이 테스트가 잡는다.
+const CODE_GRAMMAR_PIN = `<?php
+function g() {
+  $a = 1;
+  $b += 2;
+  $c ??= 3;
+  $d .= 'x';
+  [$e, $f] = [1, 2];
+  list($g, $h) = [3, 4];
+  $i =& $ref;
+}`;
+
+async function factsOf(code: string = CODE): Promise<DocumentFacts> {
   const runtime = await PhpRuntime.create();
   const set = FragmentSet.of(recordFragments);
   const query = runtime.compile(set.source);
-  const doc = runtime.parse(CODE)!;
+  const doc = runtime.parse(code)!;
   const facts = emptyFacts();
   set.collect(doc.run(query, ScopeTable.of(doc.scopeRanges(), doc.endIndex)),
     { add: (kind, fact) => { (facts[kind] as unknown[]).push(fact); } });
@@ -55,5 +70,16 @@ describe('recordFragments', () => {
   it('함수 스코프가 문서 전체가 아니다', () => {
     const a = f.assignments.find(x => x.varName === 'rec')!;
     assert.ok(a.scope.start > 0);
+  });
+});
+
+describe('recordFragments — plainAssignments 문법 고정(비캡처 형태)', () => {
+  let f: DocumentFacts;
+  before(async () => { f = await factsOf(CODE_GRAMMAR_PIN); });
+
+  it('단순 LHS 대입($a)만 캡처 — 복합·구조분해·참조 대입은 비캡처', () => {
+    const names = f.plainAssignments.map(x => x.varName).sort();
+    assert.deepEqual(names, ['a'],
+      '$b(+=)·$c(??=)·$d(.=)·$e/$f(구조분해 [])·$g/$h(구조분해 list())·$i(참조 =&) 중 하나라도 섞이면 grammar 노드 형태가 바뀐 것');
   });
 });
