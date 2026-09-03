@@ -1,5 +1,5 @@
 import { strict as assert } from 'assert';
-import { TreeSitterPhpSyntax } from '../../../src/infrastructure/tree-sitter/tree-sitter-php-syntax';
+import { TreeSitterPhpSyntax } from '../../../src/infrastructure/php/php-syntax';
 import { InMemoryTableRepository } from '../../../src/infrastructure/xmldb/xmldb-table-repository';
 import { Table } from '../../../src/domain/moodle-model/table';
 import { RecordTypeInference } from '../../../src/domain/code-analysis/record-type-inference';

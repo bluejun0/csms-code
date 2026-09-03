@@ -1,6 +1,6 @@
 import { strict as assert } from 'assert';
 import { join } from 'path';
-import { TreeSitterPhpSyntax } from '../../../src/infrastructure/tree-sitter/tree-sitter-php-syntax';
+import { TreeSitterPhpSyntax } from '../../../src/infrastructure/php/php-syntax';
 import { AmdIndex } from '../../../src/infrastructure/amd/amd-index';
 import { PhpUsageIndex } from '../../../src/infrastructure/usage/php-usage-index';
 import { ResolveAmdDefinition } from '../../../src/application/resolve-amd-definition';
