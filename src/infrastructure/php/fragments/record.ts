@@ -29,6 +29,13 @@ const assignWithoutTable: QueryFragment = {
   }),
 };
 
+// Deliberately matches assignments that assignWithTable already caught, producing duplicate entries at the same index.
+// A later step normalises them, keeping the one whose tableArg is non-null.
+// Without this note, the duplication appears to be a bug.
+
+// The value variable is wrapped in a different node per foreach form (plain, key=>value, by-ref, key=>by-ref),
+// so four patterns are required instead of one. The key variable is captured only to match the pattern precisely;
+// it is never a record and must never be used as itemVar.
 function foreachFragment(pattern: string): QueryFragment {
   return {
     produces: ['foreachBindings'],
@@ -40,6 +47,9 @@ function foreachFragment(pattern: string): QueryFragment {
   };
 }
 
+// The leading . anchor captures only the positional argument immediately after the table string, so later arguments
+// never become dataVar. The write-method filter lives in collect() rather than the pattern: predicates outside top-level
+// patterns are ignored by this grammar/runtime, so filtering must run after capture.
 const dataArg: QueryFragment = {
   produces: ['dataArgBindings'],
   pattern: `(member_call_expression
