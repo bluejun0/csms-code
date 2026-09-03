@@ -1716,7 +1716,7 @@ import { MAX_DOCUMENT_BYTES, TreeSitterPhpSyntax } from '../../../src/infrastruc
 const CODE = `<?php
 function f() {
   $rec = $DB->get_record('assign', ['id' => 1]);
-  $plain = $DB->get_record_sql('SELECT 1');
+  $plain = $DB->get_record_sql($sql);
   $rows = $DB->get_records('local_log', []);
   foreach ($rows as $r) { echo $r->id; }
   echo get_string('key', 'local_x');
@@ -1736,6 +1736,10 @@ describe('TreeSitterPhpSyntax', () => {
     assert.equal(found.tableArg, null);
     assert.equal(found.method, 'get_record_sql');
   });
+
+`tableArg`가 없는 경우를 만들려면 인자가 **변수**여야 한다. 테이블 조각은 메서드 이름을 보지 않고
+첫 문자열 인자를 그대로 잡으므로 `get_record_sql('SELECT 1')`은 `tableArg: 'SELECT 1'`을 낸다 —
+교체 대상 구현도 같다.
   it('foreach 바인딩은 위치당 하나다', () => {
     assert.equal(syntax.facts(CODE).foreachBindings.filter(b => b.itemVar === 'r').length, 1);
   });

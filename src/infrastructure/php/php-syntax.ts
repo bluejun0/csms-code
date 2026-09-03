@@ -16,7 +16,8 @@ import { CompiledQuery, PhpRuntime } from './tree-sitter-runtime';
 // 필요 없고, 편집기를 막지 않도록 팩트 없음으로 떨어뜨린다(파싱 실패와 동일하게 침묵 처리).
 export const MAX_DOCUMENT_BYTES = 1_048_576;
 
-// Task 14의 동등성 테스트가 이 배열을 그대로 임포트해 검사하므로 export 해서 구성이 갈라지지 않게 한다.
+// 동등성 테스트가 이 배열을 그대로 임포트해 검사하므로 export 해서, 실제 구성과 어긋난
+// 사본을 검사하는 일이 생기지 않게 한다.
 export const ALL_FRAGMENTS: readonly QueryFragment[] = [
   ...recordFragments, ...accessFragments, ...stringFragments,
   ...configFragments, ...tableFragments, ...templateFragments,
