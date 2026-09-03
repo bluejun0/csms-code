@@ -2,6 +2,8 @@ import { DocumentFacts } from '../../domain/code-analysis/facts';
 import { PhpSyntax, RawClassMember } from '../../domain/code-analysis/ports/php-syntax';
 import { FactKind } from './query-fragment';
 
+/** 텍스트·need 조합별 팩트를 LRU 캐시하는 데코레이터.
+ *  반환 객체는 캐시 히트 간 공유되므로 호출자는 팩트를 변형하지 않는다(기존 관례). */
 export class CachedPhpSyntax implements PhpSyntax {
   private readonly entries = new Map<string, DocumentFacts>();
 
