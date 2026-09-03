@@ -1,7 +1,4 @@
-import * as crypto from 'crypto';
-import * as fs from 'fs';
 import { DocumentFacts } from '../../src/domain/code-analysis/facts';
-import { PhpSyntax } from '../../src/domain/code-analysis/ports/php-syntax';
 
 export type FactKind = keyof DocumentFacts;
 
@@ -42,40 +39,6 @@ export function diffFacts(a: DocumentFacts, b: DocumentFacts): FactDifference[] 
     const onlyInA = surplus(left, right);
     const onlyInB = surplus(right, left);
     if (onlyInA.length || onlyInB.length) out.push({ kind, onlyInA, onlyInB });
-  }
-  return out;
-}
-
-/** compareOverFiles가 실제로 몇 개를 비교했는지 — 읽기 실패로 조용히 빠진 파일 수를
- *  드러내지 않으면 "2000개 비교"라는 주장이 사실은 "1990개만 비교"일 수 있다. */
-export interface CompareStats { compared: number; skipped: number; }
-
-export function compareOverFilesDetailed(
-  a: PhpSyntax, b: PhpSyntax, files: readonly string[],
-): { differences: Map<string, FactDifference[]>; stats: CompareStats } {
-  const differences = new Map<string, FactDifference[]>();
-  let compared = 0, skipped = 0;
-  for (const file of files) {
-    let text: string;
-    try { text = fs.readFileSync(file, 'utf8'); } catch { skipped++; continue; }
-    compared++;
-    const diff = diffFacts(a.facts(text), b.facts(text));
-    if (diff.length) differences.set(file, diff);
-  }
-  return { differences, stats: { compared, skipped } };
-}
-
-export function compareOverFiles(a: PhpSyntax, b: PhpSyntax, files: readonly string[]): Map<string, FactDifference[]> {
-  return compareOverFilesDetailed(a, b, files).differences;
-}
-
-/** 파일·팩트 종류별 정규 해시. 문법 교체처럼 옛 팩트를 되살릴 수 없는 비교 대상은
- *  이 지문만 저장해두면 어느 파일의 어느 종류가 달라졌는지 가리기에 충분하다. */
-export function factFingerprint(facts: DocumentFacts): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const kind of Object.keys(facts) as FactKind[]) {
-    const rows = (facts[kind] as readonly unknown[]).map(canonical).sort();
-    out[kind] = crypto.createHash('sha1').update(rows.join('\u0000')).digest('hex');
   }
   return out;
 }
