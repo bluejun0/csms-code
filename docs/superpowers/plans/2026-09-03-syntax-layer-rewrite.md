@@ -167,7 +167,17 @@ export function topLevelPatternCount(pattern: string): number {
 Run: `npx mocha test/unit/php/query-fragment.test.ts`
 Expected: PASS (4 passing)
 
-- [ ] **Step 5: 커밋**
+- [ ] **Step 5: 포트 변경이 기존 구현·테스트를 깨지 않는지 확인한다**
+
+옛 `TreeSitterPhpSyntax`와 옛 `CachedPhpSyntax`, 그 테스트의 `CountingFake`가 모두 `facts(text)`만 선언한다.
+인자가 적은 구현은 TypeScript에서 여전히 할당 가능하지만, 확인 없이 넘어가지 않는다.
+
+```bash
+npx tsc -noEmit && npm run test:unit
+```
+Expected: 둘 다 통과. 실패하면 그 파일의 `facts` 시그니처에 `need?: ReadonlySet<FactKind>`를 더한다.
+
+- [ ] **Step 6: 커밋**
 
 ```bash
 git add src/infrastructure/php/query-fragment.ts src/domain/code-analysis/facts.ts \
@@ -2334,6 +2344,13 @@ npx tsc -noEmit && npm run test:unit && npm run lint
 ```
 Expected: 세 명령 모두 통과
 
+- [ ] **Step 5: tree-sitter 타입이 문법 계층 밖으로 나가지 않는지 확인한다**
+
+```bash
+grep -rln "web-tree-sitter" src | grep -v "^src/infrastructure/php/" || echo "격리 OK"
+```
+Expected: `격리 OK`
+
 - [ ] **Step 5: 통합 테스트를 돌린다**
 
 Run: `xvfb-run -a npm run test:integration`
@@ -2387,34 +2404,53 @@ describe('16진 이스케이프', () => {
 Run: `npx mocha test/unit/php/hex-escape.test.ts`
 Expected: FAIL — 파싱이 예외를 던져 팩트가 비고 `stringCalls.length`가 0이다
 
-- [ ] **Step 3: 구 문법 팩트를 먼저 저장한다**
+- [ ] **Step 3: 구 문법 팩트의 지문을 먼저 저장한다**
 
-문법 교체 뒤에는 옛 조합을 되살릴 수 없다(`node_modules`가 바뀐다). 비교 대상을 지금 파일로 남긴다.
+문법 교체 뒤에는 옛 조합을 되살릴 수 없다(`node_modules`가 바뀐다). 비교 대상을 지금 남긴다.
+팩트를 통째로 직렬화하면 수십 MB가 되고 JSON 왕복이 값 동일성에 잡음을 넣으므로,
+**파일·팩트 종류별 정규 해시**만 남긴다. 어느 파일의 어느 종류가 달라졌는지 가리기에 충분하고,
+상세는 그 파일만 다시 뽑으면 된다.
+
+`test/tools/facts-diff.ts`에 지문 함수를 더한다.
+
+```ts
+import * as crypto from 'crypto';
+
+export function factFingerprint(facts: DocumentFacts): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const kind of Object.keys(facts) as FactKind[]) {
+    const rows = facts[kind].map(canonical).sort();
+    out[kind] = crypto.createHash('sha1').update(rows.join('\u0000')).digest('hex');
+  }
+  return out;
+}
+```
 
 ```bash
 CSMS_CORPUS=~/workspace/csms45 npx ts-node -O '{"module":"commonjs","target":"ES2021","esModuleInterop":true,"skipLibCheck":true,"strict":false}' -e "
 import * as fs from 'fs'; import * as path from 'path';
+import { factFingerprint } from './test/tools/facts-diff';
 import { TreeSitterPhpSyntax } from './src/infrastructure/php/php-syntax';
 (async () => {
   const syntax = await TreeSitterPhpSyntax.create();
   const files: string[] = [];
   const walk = (d: string) => {
-    if (files.length >= 500) return;
+    if (files.length >= 2000) return;
     let e: fs.Dirent[]; try { e = fs.readdirSync(d, { withFileTypes: true }); } catch { return; }
-    for (const x of e) { if (files.length >= 500) return;
+    for (const x of e) { if (files.length >= 2000) return;
       if (['node_modules', '.git', 'vendor'].includes(x.name)) continue;
       const p = path.join(d, x.name);
       if (x.isDirectory()) walk(p);
       else if (x.name.endsWith('.php') && fs.statSync(p).size < 200000) files.push(p); } };
   walk(process.env.CSMS_CORPUS!);
-  const out: Record<string, unknown> = {};
-  for (const f of files) out[f] = syntax.facts(fs.readFileSync(f, 'utf8'));
+  const out: Record<string, Record<string, string>> = {};
+  for (const f of files) out[f] = factFingerprint(syntax.facts(fs.readFileSync(f, 'utf8')));
   fs.writeFileSync('/tmp/facts-old-grammar.json', JSON.stringify(out));
-  console.log('구 문법 팩트 저장:', files.length, '파일');
+  console.log('구 문법 지문 저장:', files.length, '파일');
 })();
 "
 ```
-Expected: `구 문법 팩트 저장: 500 파일`
+Expected: `구 문법 지문 저장: 2000 파일`
 
 - [ ] **Step 4: 의존성을 바꾼다**
 
@@ -2510,30 +2546,46 @@ Expected: PASS (1 passing)
 
 - [ ] **Step 9: 문법 교체로 생긴 팩트 차이를 전부 확인한다**
 
-Step 3에서 저장한 구 문법 팩트와 지금(신 문법) 팩트를 같은 파일들에서 비교한다.
-
 ```bash
 npx ts-node -O '{"module":"commonjs","target":"ES2021","esModuleInterop":true,"skipLibCheck":true,"strict":false}' -e "
 import * as fs from 'fs';
-import { diffFacts } from './test/tools/facts-diff';
+import { factFingerprint } from './test/tools/facts-diff';
 import { TreeSitterPhpSyntax } from './src/infrastructure/php/php-syntax';
 (async () => {
   const syntax = await TreeSitterPhpSyntax.create();
-  const before = JSON.parse(fs.readFileSync('/tmp/facts-old-grammar.json', 'utf8'));
-  let changed = 0; const byKind = new Map<string, number>();
-  for (const [file, oldFacts] of Object.entries(before)) {
-    const d = diffFacts(oldFacts as never, syntax.facts(fs.readFileSync(file, 'utf8')));
-    if (!d.length) continue;
-    changed++;
-    for (const x of d) byKind.set(x.kind, (byKind.get(x.kind) ?? 0) + 1);
-    if (changed <= 10) console.log(file, JSON.stringify(d).slice(0, 300));
+  const before: Record<string, Record<string, string>> = JSON.parse(fs.readFileSync('/tmp/facts-old-grammar.json', 'utf8'));
+  const changed: [string, string[]][] = [];
+  const byKind = new Map<string, number>();
+  for (const [file, prints] of Object.entries(before)) {
+    const now = factFingerprint(syntax.facts(fs.readFileSync(file, 'utf8')));
+    const kinds = Object.keys(prints).filter(k => prints[k] !== now[k]);
+    if (!kinds.length) continue;
+    changed.push([file, kinds]);
+    for (const k of kinds) byKind.set(k, (byKind.get(k) ?? 0) + 1);
   }
-  console.log('차이 파일', changed, '/', Object.keys(before).length, [...byKind]);
+  console.log('차이 파일', changed.length, '/', Object.keys(before).length);
+  console.log('종류별', [...byKind]);
+  fs.writeFileSync('/tmp/grammar-diff-files.json', JSON.stringify(changed));
+  changed.slice(0, 20).forEach(([f, k]) => console.log(' ', f, k.join(',')));
 })();
 "
 ```
 
-Expected: 차이가 나온 파일은 전부 16진 이스케이프로 옛 문법이 침묵하던 파일이거나, 옛 문법이 못 읽던 최신 PHP 문법을 담은 파일이어야 한다. 각 파일을 열어 어느 쪽인지 확인하고, 둘 다 아닌 차이가 하나라도 있으면 해당 조각을 신 문법에 맞게 고치고 이 단계를 다시 돌린다.
+차이가 난 파일마다 원인을 가른다. 허용되는 원인은 둘뿐이다.
+
+```bash
+npx ts-node -O '{"module":"commonjs","target":"ES2021","esModuleInterop":true,"skipLibCheck":true,"strict":false}' -e "
+import * as fs from 'fs';
+const changed: [string, string[]][] = JSON.parse(fs.readFileSync('/tmp/grammar-diff-files.json', 'utf8'));
+const hex = /\\x[0-9a-fA-F]{2}/;
+const modern = /\benum\s+\w+|readonly\s|\.\.\.\)|\w+:\s*[\w'\"]/;
+const unexplained = changed.filter(([f]) => { const t = fs.readFileSync(f, 'utf8'); return !hex.test(t) && !modern.test(t); });
+console.log('설명되는 차이', changed.length - unexplained.length, '| 설명 안 되는 차이', unexplained.length);
+unexplained.slice(0, 20).forEach(([f, k]) => console.log(' ', f, k.join(',')));
+"
+```
+
+Expected: `설명 안 되는 차이 0`. 0이 아니면 그 파일들을 열어 어느 조각이 달라졌는지 보고 신 문법에 맞게 고친 뒤 이 단계를 다시 돌린다. **0이 되기 전에는 커밋하지 않는다.**
 
 - [ ] **Step 10: 전체 검증**
 
