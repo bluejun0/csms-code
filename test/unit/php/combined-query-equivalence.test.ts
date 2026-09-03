@@ -82,9 +82,6 @@ describe('통합 쿼리 등가성', () => {
   let runtime: PhpRuntime;
   let combined: ReturnType<PhpRuntime['compile']>;
   let singles: ReturnType<PhpRuntime['compile']>[];
-  // 픽스처 테스트와 인라인 보강 테스트가 같은 배열에 누적한다 — 커버리지 단언은
-  // 둘을 합친 값을 봐야 하므로, 이 파일 안에서 두 it()가 순서대로 도는 것을 전제한다.
-  const totals = new Array(FRAGMENTS.length).fill(0);
 
   before(async () => {
     runtime = await PhpRuntime.create();
@@ -124,10 +121,14 @@ describe('통합 쿼리 등가성', () => {
   it('픽스처 PHP 파일에서 패턴별 매치 수가 같다', () => {
     const files = fixturePhpFiles();
     assert.ok(files.length > 0);
-    files.forEach(file => checkFile(file, i => { totals[i]++; }));
+    files.forEach(file => checkFile(file));
   });
 
+  // 픽스처 테스트와 별개로 다시 훑는다 — --grep이나 .only로 이 테스트만 돌려도
+  // 커버리지 판정이 그 자체로 성립해야 한다. 파일 몇십 개 재파싱은 무시할 비용이다.
   it('픽스처가 다루지 않는 조각을 인라인 소스로 보강한다', () => {
+    const totals = new Array(FRAGMENTS.length).fill(0);
+    fixturePhpFiles().forEach(file => checkFile(file, i => { totals[i]++; }));
     assert.ok(check('보강 소스', SUPPLEMENTAL_PHP_SOURCE, i => { totals[i]++; }), '보강 소스가 파싱에 실패했다');
     const uncovered = totals.flatMap((t, i) => (t === 0 ? [i] : []));
     assert.deepEqual(uncovered, [], `픽스처+보강 소스로도 매치가 없는 조각: ${uncovered.join(', ')}`);
