@@ -25,4 +25,12 @@ describe('ScopeTable', () => {
   it('구간이 없으면 언제나 문서 전체', () => {
     assert.deepEqual(ScopeTable.of([], 80).at(5), { start: 0, end: 80 });
   });
+  it('시작이 같은 두 구간은 바깥이 앞선다 — 안쪽만 포함하는 위치는 안쪽을, 바깥만 포함하는 위치는 바깥을 돌려준다', () => {
+    const tied = ScopeTable.of([
+      { start: 0, end: 5 },  // 안쪽 — 입력 순서상 바깥보다 먼저 온다
+      { start: 0, end: 10 }, // 바깥
+    ], 20);
+    assert.deepEqual(tied.at(3), { start: 0, end: 5 });
+    assert.deepEqual(tied.at(7), { start: 0, end: 10 });
+  });
 });
