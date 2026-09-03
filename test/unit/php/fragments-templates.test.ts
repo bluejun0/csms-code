@@ -30,8 +30,20 @@ describe('templateFragments', () => {
   it('템플릿 참조', () => {
     assert.equal(f.templateCalls[0].ref, 'local_x/card');
   });
+  it('템플릿 호출의 index는 메서드명 위치', () => {
+    assert.equal(f.templateCalls[0].index, CODE.indexOf('render_from_template'));
+  });
+  it('템플릿 호출의 refIndex는 참조 문자열 위치', () => {
+    assert.equal(f.templateCalls[0].refIndex, CODE.indexOf("'local_x/card'") + 1);
+  });
   it('AMD 참조', () => {
     assert.equal(f.amdCalls[0].ref, 'local_x/view');
+  });
+  it('AMD 호출의 index는 메서드명 위치', () => {
+    assert.equal(f.amdCalls[0].index, CODE.indexOf('js_call_amd'));
+  });
+  it('AMD 호출의 refIndex는 참조 문자열 위치', () => {
+    assert.equal(f.amdCalls[0].refIndex, CODE.indexOf("'local_x/view'") + 1);
   });
   it('관심 없는 메서드는 담지 않는다', () => {
     assert.equal(f.templateCalls.length + f.amdCalls.length, 2);
