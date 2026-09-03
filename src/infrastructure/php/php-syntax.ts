@@ -41,6 +41,8 @@ export class TreeSitterPhpSyntax implements PhpSyntax {
     if (!doc) return emptyFacts();
     const facts = emptyFacts();
     // collect() 도중 예외가 나도(예: 캡처 누락) tree는 반드시 해제한다 — WASM 트리는 GC 대상이 아니다.
+    // 파싱 실패와 달리 이 예외는 삼키지 않고 그대로 던진다: 파싱 실패는 (여기 전제한 대로) 흔한
+    // 입력 문제라 침묵 처리하지만, collect() 예외는 조각의 캡처 이름 오타 같은 버그 신호라 숨기면 안 된다.
     try {
       const scopes = ScopeTable.of(doc.scopeRanges(), doc.endIndex);
       this.fragments.collect(doc.run(this.query, scopes), {

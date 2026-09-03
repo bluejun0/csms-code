@@ -32,7 +32,11 @@ describe('TreeSitterPhpSyntax', () => {
   it('need에 없는 팩트는 만들지 않는다', () => {
     const f = syntax.facts(CODE, new Set(['stringCalls'] as const));
     assert.equal(f.stringCalls.length, 1);
+    // assignments는 정규화를 거치므로 애초에 안 만들어졌는지 정규화가 빈 배열을 그대로
+    // 돌려줬는지 이 값만으로는 구분 안 된다. 정규화를 안 거치는 plainAssignments로 게이팅
+    // 자체를 확인한다 — need 없이는 3건(rec/plain/rows)이 나온다.
     assert.equal(f.assignments.length, 0);
+    assert.equal(f.plainAssignments.length, 0);
   });
   it('16진 이스케이프가 있어도 다음 문서가 멀쩡하다', () => {
     syntax.facts('<?php $a = "\\x41";');
