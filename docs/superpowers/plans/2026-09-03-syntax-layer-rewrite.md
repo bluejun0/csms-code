@@ -2607,10 +2607,14 @@ npx tsc -noEmit && npm run test:unit && npm run lint && npm run bundle
 ```
 Expected: 모두 통과
 
+번들을 `require`로 확인하려 해서는 안 된다 — `vscode`가 external이라 확장 호스트 밖에서는 해석되지 않는다.
+대신 번들 산출물에서 배너와 wasm 경로가 실제로 들어갔는지 확인한다.
+
 ```bash
-node -e "require('./dist/extension.js'); console.log('번들 로드 OK')"
+head -c 200 dist/extension.js | grep -q "__ts_import_meta_url" && echo "배너 OK"
+ls -la dist/web-tree-sitter.wasm dist/tree-sitter-php.wasm
 ```
-Expected: `번들 로드 OK`
+Expected: `배너 OK`와 wasm 2개
 
 Run: `xvfb-run -a npm run test:integration`
 Expected: PASS
