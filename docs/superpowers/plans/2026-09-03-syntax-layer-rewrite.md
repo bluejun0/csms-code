@@ -2351,12 +2351,12 @@ grep -rln "web-tree-sitter" src | grep -v "^src/infrastructure/php/" || echo "�
 ```
 Expected: `격리 OK`
 
-- [ ] **Step 5: 통합 테스트를 돌린다**
+- [ ] **Step 6: 통합 테스트를 돌린다**
 
 Run: `xvfb-run -a npm run test:integration`
 Expected: PASS
 
-- [ ] **Step 6: 커밋**
+- [ ] **Step 7: 커밋**
 
 ```bash
 git add -A
@@ -2368,11 +2368,12 @@ git commit -m "refactor: 문법 계층을 조각 기반 구현으로 교체"
 ### Task 17: 런타임·문법 업그레이드 (1b)
 
 **Files:**
-- Modify: `package.json` (dependencies), `esbuild.mjs`, `src/infrastructure/php/tree-sitter-runtime.ts`, `src/infrastructure/php/fragments/strings.ts`
+- Modify: `package.json` (dependencies), `esbuild.mjs`, `src/infrastructure/php/tree-sitter-runtime.ts`, `src/infrastructure/php/class-members.ts`, `src/infrastructure/php/fragments/strings.ts`, `test/tools/facts-diff.ts` (`factFingerprint` 추가)
 - Test: `test/unit/php/hex-escape.test.ts`
 
 **Interfaces:**
-- Consumes: Task 12의 `TreeSitterPhpSyntax`, Task 15의 `compareOverFiles`
+- Consumes: Task 12의 `TreeSitterPhpSyntax`, Task 15의 `canonical`
+- Produces: `factFingerprint(facts: DocumentFacts): Record<string, string>` — 팩트 종류별 정규 해시
 
 `web-tree-sitter@0.27.0`은 ESM 기본이라 esbuild CJS 번들에서 `import.meta.url`이 `undefined`가 되고 emscripten의 wasm 탐색이 `new URL(undefined)`로 실패한다. 배너로 파일 URL을 넣어 준다.
 
