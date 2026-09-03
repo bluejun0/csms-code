@@ -45,13 +45,25 @@ export function diffFacts(a: DocumentFacts, b: DocumentFacts): FactDifference[] 
   return out;
 }
 
-export function compareOverFiles(a: PhpSyntax, b: PhpSyntax, files: readonly string[]): Map<string, FactDifference[]> {
-  const out = new Map<string, FactDifference[]>();
+/** compareOverFiles가 실제로 몇 개를 비교했는지 — 읽기 실패로 조용히 빠진 파일 수를
+ *  드러내지 않으면 "2000개 비교"라는 주장이 사실은 "1990개만 비교"일 수 있다. */
+export interface CompareStats { compared: number; skipped: number; }
+
+export function compareOverFilesDetailed(
+  a: PhpSyntax, b: PhpSyntax, files: readonly string[],
+): { differences: Map<string, FactDifference[]>; stats: CompareStats } {
+  const differences = new Map<string, FactDifference[]>();
+  let compared = 0, skipped = 0;
   for (const file of files) {
     let text: string;
-    try { text = fs.readFileSync(file, 'utf8'); } catch { continue; }
-    const differences = diffFacts(a.facts(text), b.facts(text));
-    if (differences.length) out.set(file, differences);
+    try { text = fs.readFileSync(file, 'utf8'); } catch { skipped++; continue; }
+    compared++;
+    const diff = diffFacts(a.facts(text), b.facts(text));
+    if (diff.length) differences.set(file, diff);
   }
-  return out;
+  return { differences, stats: { compared, skipped } };
+}
+
+export function compareOverFiles(a: PhpSyntax, b: PhpSyntax, files: readonly string[]): Map<string, FactDifference[]> {
+  return compareOverFilesDetailed(a, b, files).differences;
 }
