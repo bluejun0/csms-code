@@ -2,6 +2,7 @@ import { configFunctionKind } from '../../../domain/code-analysis/config-functio
 import { QueryFragment } from '../query-fragment';
 import { DYNAMIC_COMPONENT_ARG, componentRefOf } from './strings';
 
+// 함수명 필터는 쿼리 술어가 아니라 collect()에서 수행한다 — top-level 패턴 밖의 술어는 이 grammar/runtime 조합에서 무시되기 때문이다.
 function literalConfig(pattern: string, kind: 'get' | 'set'): QueryFragment {
   return {
     produces: ['configCalls'],
