@@ -15,6 +15,7 @@ $q = 'SELECT * FROM {local_first} WHERE id = ?';
 $nd = <<<'SQL'
 SELECT * FROM {local_nowdoc}
 SQL;
+$OUTPUT->render_from_template('local_x/card', $ctx);
 `;
 
 async function factsOf(): Promise<DocumentFacts> {
@@ -56,5 +57,10 @@ describe('tableFragments', () => {
   });
   it('nowdoc 본문의 중괄호 참조도 담는다', () => {
     assert.ok(f.tableRefs.some(r => r.name === 'local_nowdoc'));
+  });
+  it('DB가 아닌 수신자의 첫 인자는 테이블이 아니다', () => {
+    // $OUTPUT->render_from_template의 첫 인자는 템플릿 이름이지 테이블이 아니다.
+    // recv !== 'DB' 가드가 없으면 이 값이 그대로 tableRefs에 섞여 들어간다.
+    assert.ok(!f.tableRefs.some(r => r.name === 'local_x/card'));
   });
 });
