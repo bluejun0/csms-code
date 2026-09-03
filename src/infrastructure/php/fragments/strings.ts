@@ -2,7 +2,7 @@ import { ComponentRef } from '../../../domain/code-analysis/facts';
 import { StringCallForm, effectiveComponent, stringClassForm, stringFunctionForm } from '../../../domain/code-analysis/string-functions';
 import { Captures, QueryFragment } from '../query-fragment';
 
-// get_config/set_config(Task 8)도 컴포넌트가 리터럴이 아닐 때 같은 세 형태를 받으므로 여기서 내보내 공유한다.
+// get_config/set_config의 플러그인 인자도 컴포넌트가 리터럴이 아닐 때 같은 세 형태(변수·$this프로퍼티·클래스 상수)를 받으므로 여기서 내보내 공유한다.
 export const DYNAMIC_COMPONENT_ARG =
   '[(variable_name (name) @dynvar) (member_access_expression object: (variable_name) @dynrecv name: (name) @dynprop) (class_constant_access_expression) @dynconst]';
 

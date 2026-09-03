@@ -70,7 +70,7 @@ describe('stringFragments', () => {
     assert.ok(f.propertyLiterals.some(p => p.property === 'comp' && p.value === 'local_x'));
     assert.ok(f.constLiterals.some(c => c.name === 'NAME' && c.value === 'local_y'));
   });
-  it('DYNAMIC_COMPONENT_ARG는 인자 자리에 끼워도 컴파일된다 — 설정 조각(Task 8)이 그대로 재사용한다', async () => {
+  it('DYNAMIC_COMPONENT_ARG는 인자 자리에 끼워도 컴파일된다 — get_config/set_config의 플러그인 인자가 그대로 재사용한다', async () => {
     const runtime = await PhpRuntime.create();
     assert.doesNotThrow(() => runtime.compile(`(argument ${DYNAMIC_COMPONENT_ARG})`));
   });
