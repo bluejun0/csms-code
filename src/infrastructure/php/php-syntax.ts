@@ -72,14 +72,16 @@ export class TreeSitterPhpSyntax implements PhpSyntax {
 }
 
 // assignWithTable·assignWithoutTable 둘 다 걸리는 자리(예: $DB->get_record)는 같은 index에
-// 두 항목을 만든다. tableArg가 있는 쪽을 남긴다 — 먼저 나온 순서와 무관하다.
+// 항목을 만든다. 규칙은 "index당 하나"가 아니다 — 백슬래시가 든 문자열 리터럴은 string_content
+// 자식이 여럿으로 갈라져(예: 'content\cm\cmname' → "content"·"cm"·"cmname") assignWithTable이
+// 같은 index에 매치를 여러 개 낼 수 있는데, 그 매치는 전부(tableArg 있는 것 전부) 살아남는다.
+// 옛 구현이 그랬다: assign 쿼리 결과를 전부 쌓고, 같은 index가 이미 나왔으면(개수 무관)
+// assignNoTable 쪽의 null 항목만 버린다. 즉 규칙은 "해당 index에 tableArg 있는 항목이 하나라도
+// 있으면 tableArg 있는 것을 전부 남기고 null 항목은 버린다, 없으면 null 항목을 남긴다"이다.
 function preferTableArg(assignments: RecordAssignment[]): RecordAssignment[] {
-  const best = new Map<number, RecordAssignment>();
-  for (const a of assignments) {
-    const kept = best.get(a.index);
-    if (!kept || (kept.tableArg === null && a.tableArg !== null)) best.set(a.index, a);
-  }
-  return [...best.values()];
+  const hasTable = new Set<number>();
+  for (const a of assignments) if (a.tableArg !== null) hasTable.add(a.index);
+  return assignments.filter(a => a.tableArg !== null || !hasTable.has(a.index));
 }
 
 // foreach 네 조각은 노드 형태가 서로 달라 원래 겹치지 않지만, 방어적으로 item 위치 기준

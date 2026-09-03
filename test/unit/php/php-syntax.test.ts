@@ -26,6 +26,21 @@ describe('TreeSitterPhpSyntax', () => {
     assert.equal(found.tableArg, null);
     assert.equal(found.method, 'get_record_sql');
   });
+  it('백슬래시가 든 문자열 리터럴은 매치가 여러 개로 갈라져도 전부 남는다 — index당 하나가 아니라 옛 구현과 같은 규칙', () => {
+    // 'content\\cm\\cmname'는 grammar에서 string_content 자식 3개(content/cm/cmname)로
+    // 갈린다 — assignWithTable이 이 문서에 3번 매치한다. 옛 구현은 이 3개를 전부 쌓고 같은
+    // index의 null 항목만 버린다(preferTableArg가 "index당 하나"가 아니라 이 규칙을 따라야
+    // 하는 이유). 기대값 3·["content","cm","cmname"]는 옛 구현(TreeSitterPhpSyntax,
+    // src/infrastructure/tree-sitter/tree-sitter-php-syntax.ts)을 이 소스에 직접 돌려 확인한
+    // 실측치다 — 규칙만 보고 짐작한 값이 아니다.
+    const src = `<?php
+function f() {
+  $x = $format->get_output_classname('content\\\\cm\\\\cmname');
+}`;
+    const found = syntax.facts(src).assignments.filter(a => a.varName === 'x');
+    assert.equal(found.length, 3);
+    assert.deepEqual(found.map(a => a.tableArg), ['content', 'cm', 'cmname']);
+  });
   it('foreach 바인딩은 위치당 하나다', () => {
     assert.equal(syntax.facts(CODE).foreachBindings.filter(b => b.itemVar === 'r').length, 1);
   });
