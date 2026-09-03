@@ -120,7 +120,12 @@ export class PhpRuntime {
 
   compile(source: string): CompiledQuery { return new Query(this.language, source); }
 
-  // 중단된 파싱은 파서에 내부 상태를 남겨 다음 문서를 조용히 망가뜨린다.
+  // tree-sitter는 오류 복구 문법이라 PHP 텍스트 내용만으로는 여기서 null도 예외도 만들 수
+  // 없다(16진 이스케이프·깊은 중첩·NUL 바이트·깨진 UTF-16·불균형 중괄호 등을 직접 확인함 —
+  // 전부 ERROR 노드를 포함한 트리로 성공한다). 그래도 이 try/catch·reset()을 남겨두는 건
+  // 텍스트가 아니라 런타임 자체의 실패(예: wasm 메모리 부족, 향후 라이브러리 버그)에 대비하기
+  // 위해서다 — 중단된 파싱은 파서에 내부 상태를 남겨 다음 문서를 조용히 망가뜨리므로, 어떤
+  // 이유로든 실패하면 reset()으로 그 상태부터 지운다.
   parse(text: string): ParsedDocument | null {
     try {
       const tree = this.parser.parse(text);
