@@ -29,13 +29,11 @@ const assignWithoutTable: QueryFragment = {
   }),
 };
 
-// Deliberately matches assignments that assignWithTable already caught, producing duplicate entries at the same index.
-// A later step normalises them, keeping the one whose tableArg is non-null.
-// Without this note, the duplication appears to be a bug.
+// assignWithTable가 이미 잡은 대입도 함께 매칭되어 같은 인덱스에 두 항목을 만든다.
+// 나중 단계에서 tableArg가 null이 아닌 것을 보관한다.
 
-// The value variable is wrapped in a different node per foreach form (plain, key=>value, by-ref, key=>by-ref),
-// so four patterns are required instead of one. The key variable is captured only to match the pattern precisely;
-// it is never a record and must never be used as itemVar.
+// 값 변수를 감싸는 노드가 형태마다 다르다 (단순 / $k => $v / &$r / $k => &$v), 그래서 패턴이 네 개다.
+// key 변수는 패턴이 정확히 매칭되도록 캡처만 하고, itemVar로 절대 쓰지 않는다.
 function foreachFragment(pattern: string): QueryFragment {
   return {
     produces: ['foreachBindings'],
@@ -47,9 +45,8 @@ function foreachFragment(pattern: string): QueryFragment {
   };
 }
 
-// The leading . anchor captures only the positional argument immediately after the table string, so later arguments
-// never become dataVar. The write-method filter lives in collect() rather than the pattern: predicates outside top-level
-// patterns are ignored by this grammar/runtime, so filtering must run after capture.
+// 선행 anchor(.)는 테이블 문자열 직후 인자만 캡처하므로 뒤의 인자는 dataVar가 되지 않는다.
+// 쓰기 메서드 필터는 쿼리 술어가 아니라 collect()에서 실행된다 — top-level 패턴 밖의 술어는 이 grammar/runtime 조합에서 무시되기 때문이다.
 const dataArg: QueryFragment = {
   produces: ['dataArgBindings'],
   pattern: `(member_call_expression
