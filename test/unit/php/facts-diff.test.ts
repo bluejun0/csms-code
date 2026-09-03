@@ -42,6 +42,14 @@ describe('facts-diff', () => {
       }
     };
     walk(root);
+    // 픽스처가 비거나 전부 파싱 실패하면 아래 diff는 파일 0개를 비교하고도 조용히
+    // 통과한다 — 그 공허한 통과를 막기 위해 실제로 팩트가 나왔는지까지 확인한다.
+    assert.ok(files.length > 0, '픽스처 PHP 파일이 없다');
+    const totalFacts = files.reduce(
+      (sum, file) => sum + Object.values(legacy.facts(fs.readFileSync(file, 'utf8'))).reduce((n, list) => n + list.length, 0),
+      0,
+    );
+    assert.ok(totalFacts > 0, '픽스처에서 팩트가 하나도 안 나왔다');
     const differences = compareOverFiles(legacy, next, files);
     assert.deepEqual([...differences.keys()], []);
   });
