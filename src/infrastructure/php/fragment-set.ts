@@ -7,6 +7,7 @@ export class FragmentSet {
     private readonly fragments: readonly QueryFragment[],
   ) {}
 
+  // 조각당 최상위 패턴이 하나여야 매치의 패턴 인덱스가 조각 배열 인덱스와 같아진다.
   static of(fragments: readonly QueryFragment[]): FragmentSet {
     fragments.forEach((f, i) => {
       const count = topLevelPatternCount(f.pattern);

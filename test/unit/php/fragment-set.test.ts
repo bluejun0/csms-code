@@ -15,9 +15,26 @@ function fragment(produces: FactKind, pattern: string): QueryFragment {
   };
 }
 
+function fragmentWithMultipleProduces(produces: FactKind[], pattern: string): QueryFragment {
+  return {
+    produces,
+    pattern,
+    collect: (_at, into) => {
+      for (const kind of produces) {
+        into.add(kind as FactKind, { name: kind, nameLine: 0, nameColumn: 0, nameIndex: 0 });
+      }
+    },
+  };
+}
+
 function recordingSink(): { sink: FactSink; seen: string[] } {
   const seen: string[] = [];
   return { seen, sink: { add: (_kind, fact) => seen.push((fact as { name: string }).name) } };
+}
+
+function recordingSinkWithKind(): { sink: FactSink; seen: Array<{ kind: FactKind; name: string }> } {
+  const seen: Array<{ kind: FactKind; name: string }> = [];
+  return { seen, sink: { add: (kind, fact) => seen.push({ kind, name: (fact as { name: string }).name }) } };
 }
 
 describe('FragmentSet', () => {
@@ -44,5 +61,19 @@ describe('FragmentSet', () => {
 
   it('최상위 패턴이 하나가 아닌 조각은 거부한다', () => {
     assert.throws(() => FragmentSet.of([fragment('tableRefs', '(a) @x\n(b) @y')]), /최상위 패턴/);
+  });
+
+  it('부분적으로 필요한 조각(여러 produces, need에 일부만)은 실행되고 모든 종류를 쓴다', () => {
+    const set = FragmentSet.of([fragmentWithMultipleProduces(['templateCalls', 'amdCalls'], '(a) @x')]);
+    const { sink, seen } = recordingSinkWithKind();
+    set.collect([{ patternIndex: 0, captures: stubCaptures }], sink, new Set<FactKind>(['templateCalls']));
+    assert.deepEqual(seen.map(s => s.kind).sort(), ['amdCalls', 'templateCalls']);
+  });
+
+  it('범위 밖의 패턴 인덱스는 무시하고 아무것도 쓰지 않는다', () => {
+    const set = FragmentSet.of([fragment('tableRefs', '(a) @x')]);
+    const { sink, seen } = recordingSink();
+    set.collect([{ patternIndex: 999, captures: stubCaptures }], sink);
+    assert.deepEqual(seen, []);
   });
 });
