@@ -61,7 +61,7 @@ function firstDescendantOfType(node: Parser.SyntaxNode, type: string): Parser.Sy
   return null;
 }
 
-/** 선언 바로 앞 주석 블록의 첫 문장. @var <타입> 접두는 설명이 아니므로 떼어낸다. */
+/** 선언 바로 앞 주석 블록의 첫 문장. `@var <타입>` 접두는 설명이 아니므로 떼어낸다. */
 function docBefore(node: Parser.SyntaxNode): string {
   const prev = node.previousSibling;
   if (!prev || prev.type !== 'comment') return '';

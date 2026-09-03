@@ -11,6 +11,7 @@ class moodle_page {
   private function secret() {}
   /** 레코드를 읽는다. */
   public function get_record($table, $conditions) {}
+  public function reset() {}
 }`;
 
 describe('readClassMembers', () => {
@@ -33,6 +34,15 @@ describe('readClassMembers', () => {
   });
   it('magic_get_은 프로퍼티로 바꿔 담는다', () => {
     assert.equal(members.find(x => x.name === 'context')!.kind, 'property');
+  });
+  it('docBefore는 첫 문장만 추출한다', () => {
+    const m = members.find(x => x.name === 'context')!;
+    assert.equal(m.doc, '페이지 컨텍스트.');
+  });
+  it('formal_parameters가 없는 메서드는 () 시그니처를 담는다', () => {
+    const m = members.find(x => x.name === 'reset')!;
+    assert.equal(m.kind, 'method');
+    assert.equal(m.signature, '()');
   });
   it('private 멤버는 담지 않는다', () => {
     assert.ok(!members.some(x => x.name === 'hidden' || x.name === 'secret'));
