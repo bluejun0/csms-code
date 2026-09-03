@@ -8,6 +8,18 @@
   },
   "overrides": [
     {
+      "files": ["src/**/*.ts"],
+      "excludedFiles": ["src/infrastructure/php/**"],
+      "rules": {
+        "no-restricted-imports": ["error", {
+          "patterns": [{
+            "group": ["web-tree-sitter", "web-tree-sitter/*"],
+            "message": "tree-sitter 타입은 src/infrastructure/php/ 안에서만 다뤄야 한다 — 그 바깥 계층은 도메인 팩트만 주고받는다는 것이 이 재작성의 경계 원칙이다."
+          }]
+        }]
+      }
+    },
+    {
       "files": ["src/domain/**/*.ts"],
       "rules": {
         "no-restricted-imports": ["error", {
@@ -19,7 +31,7 @@
       "files": ["src/application/**/*.ts"],
       "rules": {
         "no-restricted-imports": ["error", {
-          "patterns": ["vscode", "fs", "path", "node:fs", "node:path", "node:*", "*/infrastructure/*", "*/presentation/*"]
+          "patterns": ["vscode", "fs", "path", "node:fs", "node:path", "node:*", "web-tree-sitter", "*/infrastructure/*", "*/presentation/*"]
         }]
       }
     }
