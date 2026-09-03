@@ -2587,20 +2587,11 @@ import { TreeSitterPhpSyntax } from './src/infrastructure/php/php-syntax';
 2. **최신 PHP 문법** — enum·readonly·named argument·first-class callable 등 옛 문법이 못 읽던 구문이 있는 파일.
 3. **설명 안 됨** — 위 둘 다 아닌 차이. 조각이 신 문법의 노드 이름·트리 모양과 어긋난 것이다.
 
-3번이 하나라도 있으면 해당 조각을 고치고 Step 9를 다시 돌린다. 상세는 그 파일만 다시 뽑는다.
+3번이 하나라도 있으면 해당 조각을 신 문법의 노드 이름·트리 모양에 맞게 고치고 Step 9를 다시 돌린다.
+어느 조각인지는 Step 9가 찍는 **종류별 집계**가 가리킨다 — 예를 들어 `propertyLiterals`만 달라졌다면
+Step 6에서 고친 패턴이 여전히 어긋난 것이다. 해당 파일의 실제 트리는 Step 6의 s-expression 출력 방법으로 본다.
 
-```bash
-npx ts-node -O '{"module":"commonjs","target":"ES2021","esModuleInterop":true,"skipLibCheck":true,"strict":false}' -e "
-import * as fs from 'fs';
-import { diffFacts } from './test/tools/facts-diff';
-import { TreeSitterPhpSyntax } from './src/infrastructure/php/php-syntax';
-(async () => {
-  const file = process.argv[process.argv.length - 1];
-  const syntax = await TreeSitterPhpSyntax.create();
-  console.log(JSON.stringify(diffFacts(JSON.parse(fs.readFileSync('/tmp/one-old.json', 'utf8')), syntax.facts(fs.readFileSync(file, 'utf8'))), null, 2));
-})();
-" <파일경로>
-```
+Step 3이 지문만 저장하므로 옛 팩트의 상세는 남아 있지 않다. 분류의 근거는 **바뀐 팩트 종류 + 파일 내용**이다.
 
 **3번이 0이 되기 전에는 커밋하지 않는다.**
 
