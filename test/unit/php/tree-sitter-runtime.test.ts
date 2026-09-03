@@ -28,9 +28,12 @@ describe('PhpRuntime', () => {
     const broken = runtime.parse('<?php $a = "\\x41";');
     const next = runtime.parse('<?php $b = 1; $c = 2;')!;
     assert.ok(next !== null);
-    const query = runtime.compile('(variable_name (name) @v)');
-    const texts = [...next.run(query, ScopeTable.of([], next.endIndex))].map(m => m.captures.text('v'));
+    const varQuery = runtime.compile('(variable_name (name) @v)');
+    const texts = [...next.run(varQuery, ScopeTable.of([], next.endIndex))].map(m => m.captures.text('v'));
     assert.deepEqual(texts, ['b', 'c']);
+    const stmtQuery = runtime.compile('(expression_statement) @s');
+    const stmts = [...next.run(stmtQuery, ScopeTable.of([], next.endIndex))];
+    assert.equal(stmts.length, 2);
     if (broken) broken.dispose();
     next.dispose();
   });
