@@ -121,14 +121,18 @@ describe('통합 쿼리 등가성', () => {
   it('픽스처 PHP 파일에서 패턴별 매치 수가 같다', () => {
     const files = fixturePhpFiles();
     assert.ok(files.length > 0);
-    files.forEach(file => checkFile(file));
+    const parsed = files.filter(file => checkFile(file)).length;
+    assert.equal(parsed, files.length,
+      `${files.length}개 중 ${files.length - parsed}개가 파싱에 실패해 비교 없이 빠졌다`);
   });
 
   // 픽스처 테스트와 별개로 다시 훑는다 — --grep이나 .only로 이 테스트만 돌려도
   // 커버리지 판정이 그 자체로 성립해야 한다. 파일 몇십 개 재파싱은 무시할 비용이다.
   it('픽스처가 다루지 않는 조각을 인라인 소스로 보강한다', () => {
+    const files = fixturePhpFiles();
+    assert.ok(files.length > 0);
     const totals = new Array(FRAGMENTS.length).fill(0);
-    fixturePhpFiles().forEach(file => checkFile(file, i => { totals[i]++; }));
+    files.forEach(file => checkFile(file, i => { totals[i]++; }));
     assert.ok(check('보강 소스', SUPPLEMENTAL_PHP_SOURCE, i => { totals[i]++; }), '보강 소스가 파싱에 실패했다');
     const uncovered = totals.flatMap((t, i) => (t === 0 ? [i] : []));
     assert.deepEqual(uncovered, [], `픽스처+보강 소스로도 매치가 없는 조각: ${uncovered.join(', ')}`);
