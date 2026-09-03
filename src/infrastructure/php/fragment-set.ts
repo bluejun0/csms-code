@@ -19,6 +19,7 @@ export class FragmentSet {
   collect(matches: Iterable<FragmentMatch>, into: FactSink, need?: ReadonlySet<FactKind>): void {
     for (const match of matches) {
       const fragment = this.fragments[match.patternIndex];
+      // of()가 인덱스 정렬을 보장하니 범위 밖 인덱스는 다르게 컴파일된 쿼리의 매치가 섞인 경우일 뿐이라, 문서 전체 팩트를 죽이는 대신 이 확장의 침묵 관례대로 그 매치만 무시한다.
       if (!fragment) continue;
       if (need && !fragment.produces.some(kind => need.has(kind))) continue;
       fragment.collect(match.captures, into);

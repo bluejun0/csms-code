@@ -29,6 +29,7 @@ function readMember(node: Node): RawClassMember | null {
     if (visibility !== 'public') return null;
     return {
       name: name.text, kind: 'method',
+      // tree-sitter는 인자 없는 메서드에도 formal_parameters 노드를 항상 내놓으므로 '()' 쪽은 실제로 닿지 않는 방어 코드다.
       signature: childOfType(node, 'formal_parameters')?.text ?? '()', doc: docBefore(node),
       line: name.startPosition.row, column: name.startPosition.column,
     };

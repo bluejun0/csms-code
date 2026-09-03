@@ -8,6 +8,8 @@ export class ScopeTable {
   ) {}
 
   static of(ranges: readonly Scope[], documentEnd: number): ScopeTable {
+    // start가 같으면 end가 큰(바깥) 범위를 앞에 두어야 아래 스택 구성이 성립한다 — start만으로 정렬하면
+    // 안쪽이 바깥보다 먼저 와 at()이 바깥만 포함하는 위치에서 안쪽 범위를 돌려줄 수 있다.
     const sorted = [...ranges].sort((a, b) => a.start - b.start || b.end - a.end);
     const enclosing: number[] = [];
     const open: number[] = [];

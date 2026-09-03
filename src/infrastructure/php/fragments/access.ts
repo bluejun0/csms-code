@@ -27,6 +27,7 @@ const phpdocVars: QueryFragment = {
   produces: ['phpdocVars'],
   pattern: '(comment) @c',
   collect: (at, into) => {
+    // index는 @var 매치 위치가 아니라 주석 노드 시작 오프셋이다 — 타입 추론이 이 오프셋을 사용 위치와 비교해 어느 주석이 이기는지 정하기 때문이다.
     const index = at.index('c');
     const scope = at.scope('c');
     const text = at.text('c');

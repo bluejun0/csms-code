@@ -22,6 +22,8 @@ export interface QueryFragment {
   collect(at: Captures, into: FactSink): void;
 }
 
+// tree-sitter 쿼리 문법 기준: `;`는 줄 끝까지 주석, `"`는 그 안에서 괄호를 세지 않는 문자열을 열고,
+// `\`는 다음 한 글자를 이스케이프하며, 최상위 `[...]` 대안은 그 전체가 패턴 하나다.
 export function topLevelPatternCount(pattern: string): number {
   let depth = 0;
   let count = 0;
