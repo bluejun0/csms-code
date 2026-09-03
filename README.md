@@ -87,7 +87,9 @@ Moodle 코드는 DB 레코드를 대부분 `stdClass`로 다루기 때문에, �
 ```bash
 npm install
 npm run compile        # tsc -noEmit + esbuild
-npm run test:unit       # 단위 테스트 (mocha)
+npm run test:unit       # 단위 테스트 (mocha) — 환경변수로 게이트된 테스트 2개는 기본 스킵됨:
+                         #   CSMS_CORPUS=<PHP 코퍼스 경로>: 대용량 PHP 트리에서 통합 쿼리 등가성 검증
+                         #   CSMS_BUDGET_FILE=<PHP 파일 경로>: 그 파일로 facts() 성능 예산 검증
 npm run lint            # eslint
 npm run package         # esbuild(production) + vsce package → csms-code-<version>.vsix
 ```
