@@ -37,6 +37,16 @@ describe('CachedPhpSyntax', () => {
     assert.equal(inner.calls, 3);
   });
 
+  it('같은 텍스트의 서로 다른 need는 outer 슬롯 하나를 공유한다 — capacity는 문서 수를 센다', () => {
+    const inner = new Counting();
+    const cached = new CachedPhpSyntax(inner, 1); // outer capacity 1: 문서 하나만 살아남는다
+    const text = '<?php $a = 1;';
+    cached.facts(text, new Set<FactKind>(['stringCalls']));
+    cached.facts(text, new Set<FactKind>(['tableRefs'])); // 같은 텍스트 → outer 재사용, 축출 없음
+    cached.facts(text, new Set<FactKind>(['stringCalls'])); // outer가 살아있으니 이 need도 여전히 캐시돼 있어야 함
+    assert.equal(inner.calls, 2);
+  });
+
   it('히트가 LRU 순서를 갱신 — A 히트 후 C 삽입이면 B가 축출된다', () => {
     const inner = new Counting();
     const cached = new CachedPhpSyntax(inner, 2);
