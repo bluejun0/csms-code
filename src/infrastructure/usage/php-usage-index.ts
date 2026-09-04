@@ -8,29 +8,12 @@ import { ConfigUsageRepository } from '../../domain/moodle-model/ports/config-us
 import { TableUsageRepository } from '../../domain/moodle-model/ports/table-usage-repository';
 import { configKeyId } from '../../domain/moodle-model/services/config-plugin';
 import { SNAPSHOT_VERSION, StampRow, UsageSnapshot, diffStamps, packRows, unpackRows } from './usage-snapshot';
-import { normalizeComponent } from '../../domain/lang-model/services/component-normalizer';
-import { STRING_FUNCTION_ALTERNATION, STRING_CLASS_ALTERNATION, stringFunctionForm, stringClassForm, effectiveComponent } from '../../domain/code-analysis/string-functions';
-import { scanJsCalls } from '../../domain/code-analysis/js-call-scanner';
-import { scanMustache } from '../../domain/code-analysis/mustache-scanner';
+import { StringPool } from './string-pool';
+import { UsageExtract } from './usage-entries';
+import { SKIP_DIRS, isIndexableSourcePath, extractUsages } from './extract-usages';
 
-// 리터럴 key + (닫힘 | 리터럴 component). 컴포넌트가 변수·보간이면 통째로 비매칭 — 기본 컴포넌트로 오귀속하지 않는다(침묵 원칙).
-// 1=함수 이름 2=클래스 이름(`new` 꼴) 3=key 4=component(생략이면 undefined)
-const USAGE_RE = new RegExp(String.raw`(?:\b(${STRING_FUNCTION_ALTERNATION})|new\s+\\?(${STRING_CLASS_ALTERNATION}))\(\s*['"]([\w:./-]+)['"]\s*(?:\)|,\s*['"](\w*)['"])`, 'g');
-// 템플릿 사용처 — 같은 스캔에서 함께 수집한다(23초 스캔을 두 번 돌리지 않기 위해)
-const TEMPLATE_USAGE_RE = /render_from_template\(\s*['"]([\w:./-]+)['"]/g;
-// AMD 모듈 사용처 — 같은 스캔에서 함께 수집한다
-const AMD_USAGE_RE = /js_call_amd\(\s*['"]([\w:./-]+)['"]/g;
-// 설정 사용처 — get_config(plugin, key) / set_config(key, value, plugin). 값에 괄호가 있으면 어디서 끝나는지 정규식으로 알 수 없어 비매칭.
-// `->get_config(…)`·`::get_config(…)`는 다른 의미의 메서드라 제외한다(팩트도 함수 호출만 본다).
-const CONFIG_GET_RE = /(?<![>\w$:])get_config\(\s*['"](\w+)['"]\s*,\s*['"](\w+)['"]\s*\)/g;
-const CONFIG_SET_RE = /(?<![>\w$:])set_config\(\s*['"](\w+)['"]\s*,\s*[^;()]*?,\s*['"](\w+)['"]\s*\)/g;
-// 테이블 사용처 — SQL 문자열의 `{name}`과 `$DB->메서드('name', …)`. `sql_` 계열은 첫 인자가 컬럼·식이라 제외한다.
-// 실재 테이블인지는 걸러내지 않는다 — 조회는 색인된 이름으로만 하고, 걸러 두면 install.xml에
-// 테이블을 새로 추가했을 때 그 테이블이 "사용 0건"으로 보인다.
-const TABLE_BRACE_RE = /\{([a-z][a-z0-9_]*)\}/g;
-const TABLE_DML_RE = /\$DB->([a-z_]\w*)\(\s*['"]([a-z][a-z0-9_]*)['"]/g;
-// 'lang'은 lang 팩 자체 — 사용처가 아니고, 값 텍스트 속 "get_string(" 유령 매치 방지를 겸한다
-const SKIP_DIRS = new Set(['node_modules', 'vendor', '.git', '.superpowers', 'dist', 'lang']);
+export { isIndexableSourcePath } from './extract-usages';
+
 const YIELD_EVERY = 200;
 const READ_CHUNK = 16;   // 읽기 동시 수 — 순차 대비 4배가량, 8~32 구간에서 평탄하다
 const STAT_CHUNK = 64;   // stat은 읽기보다 싸다
@@ -88,13 +71,15 @@ export class PhpUsageIndex implements StringUsageRepository, TemplateUsageReposi
     this.builtFlag = true;
   }
 
-  /** 파일 단위 증분: 기존 항목 제거 후 재추출 (저장 시 호출). 확장자로 PHP/JS 추출기를 고른다.
+  /** 파일 단위 증분: 기존 항목 제거 후 재추출 (저장 시 호출). 확장자별 추출은 extractUsages가 고른다.
    *  `stamp`를 주면 기록하고, 주지 않으면 그 파일 도장을 지운다 — 저장 시점에는 mtime을 모르므로
-   *  다음 검증에서 디스크와 한 번 맞춰 본다. */
+   *  다음 검증에서 디스크와 한 번 맞춰 본다. 풀은 이 호출 동안만 쓰는 임시 풀이다 — 색인 자체는
+   *  여전히 문자열로 보관하므로 경계에서 풀어 담는다. */
   updateFileText(uri: string, text: string, stamp?: FileStamp): void {
-    this.applyExtracted(uri, uri.endsWith('.js') ? this.extractJs(uri, text)
-      : uri.endsWith('.mustache') ? this.extractMustache(uri, text)
-        : this.extractPhp(uri, text), stamp);
+    const pool = new StringPool();
+    const file = pool.id(uri);
+    const extract = extractUsages(uri, text, { pool, file, hasCanonical: this.hasCanonical });
+    this.applyExtracted(uri, toLegacyExtracted(uri, pool, extract), stamp);
   }
 
   /** 추출 결과를 색인에 반영하는 단일 지점 — 스캔·증분·스냅샷 복원이 모두 이 경로를 지난다. */
@@ -121,72 +106,6 @@ export class PhpUsageIndex implements StringUsageRepository, TemplateUsageReposi
     if (aEntries.length) this.amdByFile.set(uri, aEntries);
     if (cEntries.length) this.configByFile.set(uri, cEntries);
     if (tblEntries.length) this.tablesByFile.set(uri, tblEntries);
-  }
-
-  private extractPhp(uri: string, text: string): Extracted {
-    const entries: UsageEntry[] = [];
-    const tEntries: TemplateEntry[] = [];
-    const aEntries: AmdEntry[] = [];
-    const cEntries: ConfigEntry[] = [];
-    const tblEntries: TableEntry[] = [];
-    // 키 리터럴 내용 시작 = 매치 안 첫 따옴표 다음
-    const firstLiteralColumn = (m: RegExpExecArray, lineStart: number) => m.index - lineStart + m[0].search(/['"]/) + 1;
-    forEachMatch(text, USAGE_RE, (m, line, lineStart) => {
-      const form = m[1] ? stringFunctionForm(m[1]) : stringClassForm(m[2]);
-      if (!form) return;
-      const component = normalizeComponent(effectiveComponent(form, m[4] ?? ''), this.hasCanonical);
-      entries.push({ component, key: m[3], loc: { uri, line, column: firstLiteralColumn(m, lineStart) } });
-    });
-    forEachMatch(text, TEMPLATE_USAGE_RE, (m, line, lineStart) => {
-      tEntries.push({ ref: m[1], loc: { uri, line, column: firstLiteralColumn(m, lineStart) } });
-    });
-    forEachMatch(text, AMD_USAGE_RE, (m, line, lineStart) => {
-      aEntries.push({ ref: m[1], loc: { uri, line, column: firstLiteralColumn(m, lineStart) } });
-    });
-    forEachMatch(text, CONFIG_GET_RE, (m, line, lineStart) => {
-      const keyOffset = m[0].indexOf(m[2], m[0].indexOf(',')); // 둘째 리터럴의 내용 시작
-      cEntries.push({ id: configKeyId(m[1], m[2]), loc: { uri, line, column: m.index - lineStart + keyOffset } });
-    });
-    forEachMatch(text, CONFIG_SET_RE, (m, line, lineStart) => {
-      cEntries.push({ id: configKeyId(m[2], m[1]), loc: { uri, line, column: firstLiteralColumn(m, lineStart) } });
-    });
-    forEachMatch(text, TABLE_BRACE_RE, (m, line, lineStart) => {
-      tblEntries.push({ name: m[1], loc: { uri, line, column: m.index - lineStart + 1 } }); // `{` 다음이 이름 시작
-    });
-    forEachMatch(text, TABLE_DML_RE, (m, line, lineStart) => {
-      if (m[1].startsWith('sql_')) return;
-      tblEntries.push({ name: m[2], loc: { uri, line, column: firstLiteralColumn(m, lineStart) } });
-    });
-    return { entries, tEntries, aEntries, cEntries, tblEntries };
-  }
-
-  /** mustache의 `{{> }}`·`{{< }}`는 템플릿 사용처, `{{#str}}`는 문자열 사용처다.
-   *  component는 PHP 경로와 같은 정규화를 거쳐야 lang 쪽 참조 목록에서 갈리지 않는다. */
-  private extractMustache(uri: string, text: string): Extracted {
-    const refs = scanMustache(text);
-    return {
-      aEntries: [], cEntries: [], tblEntries: [],
-      entries: refs.stringRefs.map(r => ({
-        component: normalizeComponent(r.component, this.hasCanonical),
-        key: r.key,
-        loc: { uri, line: r.keyLine, column: r.keyColumn },
-      })),
-      tEntries: refs.templateRefs.map(r => ({ ref: r.ref, loc: { uri, line: r.line, column: r.column } })),
-    };
-  }
-
-  /** JS에는 js_call_amd가 없다(모듈 로딩은 import·require) — aEntries는 항상 비어 있다. */
-  private extractJs(uri: string, text: string): Extracted {
-    const calls = scanJsCalls(text);
-    return {
-      aEntries: [], cEntries: [], tblEntries: [],
-      entries: calls.stringCalls.map(c => ({
-        component: normalizeComponent(c.component, this.hasCanonical),
-        key: c.key,
-        loc: { uri, line: c.keyLine, column: c.keyColumn },
-      })),
-      tEntries: calls.templateCalls.map(c => ({ ref: c.ref, loc: { uri, line: c.refLine, column: c.refColumn } })),
-    };
   }
 
   /** 색인이 아는 모든 파일 — 도장이 있는 파일과 항목이 있는 파일의 합집합. */
@@ -355,16 +274,20 @@ export class PhpUsageIndex implements StringUsageRepository, TemplateUsageReposi
   }
 }
 
-/** 매치마다 (줄, 줄 시작 오프셋)을 누적해서 준다 — 매치마다 앞을 되짚으면 매치 수에 제곱이 된다. */
-function forEachMatch(text: string, re: RegExp, fn: (m: RegExpExecArray, line: number, lineStart: number) => void): void {
-  re.lastIndex = 0;
-  let m: RegExpExecArray | null;
-  let lastIdx = 0, line = 0, lineStart = 0;
-  while ((m = re.exec(text))) {
-    for (let i = lastIdx; i < m.index; i++) if (text.charCodeAt(i) === 10) { line++; lineStart = i + 1; }
-    lastIdx = m.index;
-    fn(m, line, lineStart);
-  }
+/** extractUsages가 돌려주는 id 기반 결과를 색인이 여전히 쓰는 문자열 기반 구조로 되돌린다.
+ *  색인은 문자열로 보관하므로 경계에서만 id를 풀어 담는다. loc은 항목마다 한 번씩만 만들어야
+ *  addEntry·removeEntry가 같은 객체 동일성으로 짝을 맞춘다. */
+function toLegacyExtracted(uri: string, pool: StringPool, extract: UsageExtract): Extracted {
+  return {
+    entries: extract.strings.map(e => ({
+      component: pool.text(e.component), key: pool.text(e.key),
+      loc: { uri, line: e.line, column: e.column },
+    })),
+    tEntries: extract.templates.map(e => ({ ref: pool.text(e.ref), loc: { uri, line: e.line, column: e.column } })),
+    aEntries: extract.amd.map(e => ({ ref: pool.text(e.ref), loc: { uri, line: e.line, column: e.column } })),
+    cEntries: extract.config.map(e => ({ id: pool.text(e.id), loc: { uri, line: e.line, column: e.column } })),
+    tblEntries: extract.tables.map(e => ({ name: pool.text(e.name), loc: { uri, line: e.line, column: e.column } })),
+  };
 }
 
 /** 루트 재귀 소스 파일(.php/.js) 열거 — realpath 순환 가드, 채택 여부는 isIndexableSourcePath로 통일해
@@ -436,14 +359,3 @@ async function readWithStamp(file: string): Promise<{ file: string; text: string
   } catch { return null; }
 }
 
-/** 콜드 스캔과 저장 증분이 같은 제외 규칙을 쓰게 하는 단일 술어.
- *  amd/build는 amd/src의 미니파이 사본이라 색인하면 참조가 중복되고 생성 파일로 점프한다. */
-export function isIndexableSourcePath(root: string, fsPath: string): boolean {
-  if (!fsPath.endsWith('.php') && !fsPath.endsWith('.js') && !fsPath.endsWith('.mustache')) return false;
-  if (fsPath.endsWith('.min.js')) return false;
-  const rel = path.relative(root, fsPath);
-  if (rel.startsWith('..') || path.isAbsolute(rel)) return false;
-  const segs = rel.split(path.sep);
-  if (segs.some(seg => SKIP_DIRS.has(seg))) return false;
-  return !segs.some((seg, i) => seg === 'build' && segs[i - 1] === 'amd');
-}
