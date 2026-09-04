@@ -87,7 +87,9 @@ Moodle 코드는 DB 레코드를 대부분 `stdClass`로 다루기 때문에, �
 ```bash
 npm install
 npm run compile        # tsc -noEmit + esbuild
-npm run test:unit       # 단위 테스트 (mocha)
+npm run test:unit       # 단위 테스트 (mocha) — 환경변수로 게이트된 테스트 2개는 기본 스킵됨:
+                         #   CSMS_CORPUS=<PHP 코퍼스 경로>: 대용량 PHP 트리에서 통합 쿼리 등가성 검증
+                         #   CSMS_BUDGET_FILE=<PHP 파일 경로>: 그 파일로 facts() 성능 예산 검증
 npm run lint            # eslint
 npm run package         # esbuild(production) + vsce package → csms-code-<version>.vsix
 ```
@@ -104,9 +106,6 @@ npm run package         # esbuild(production) + vsce package → csms-code-<vers
 추적해 바인딩을 끊지만(kill-on-reassign), 구조 분해(`[$a, $b] = …`)·복합 대입(`+=`, `??=`)·
 참조 대입(`=&`)은 캡처하지 않아 이전 바인딩이 남습니다. 오탐이 생기면
 `csmscode.diagnostics.enable`로 진단을 끄거나 해당 변수에 정확한 `@var` 주석을 달 수 있습니다.
-`"\x00"` 같은 16진 이스케이프가 있는 PHP 파일은 현재 tree-sitter 조합에서 파싱이 실패해 그 파일의
-인텔리전스가 전부 침묵합니다(다른 파일에는 영향이 없습니다). 실측상 vendor·번들 라이브러리 파일에만
-해당합니다.
 
 컴포넌트가 동적인 `get_string` 호출은 정의 이동·hover·하이라이트·진단이 되지만, **사용처 목록(Shift+F12)과
 "사용 N건" 개수에는 나타나지 않습니다**(사용처 색인이 정규식 기반이라 리터럴 컴포넌트만 봅니다). 플러그인이

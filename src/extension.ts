@@ -2,8 +2,8 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { IndexStore } from './infrastructure/indexing/index-store';
 import { StringIndexStore } from './infrastructure/lang/string-index-store';
-import { TreeSitterPhpSyntax } from './infrastructure/tree-sitter/tree-sitter-php-syntax';
-import { CachedPhpSyntax } from './infrastructure/caching/cached-php-syntax';
+import { TreeSitterPhpSyntax } from './infrastructure/php/php-syntax';
+import { CachedPhpSyntax } from './infrastructure/php/facts-cache';
 import { pluginTypeDirsAsync, clearPluginTypeCache } from './infrastructure/workspace/plugin-type-map';
 import { findMoodleRoot, componentOfLangFile, componentOfTemplateFile, componentOfInstallXmlFile, componentOfAmdFile, langFileMetaOf } from './infrastructure/workspace/moodle-root-resolver';
 import { RecordTypeInference } from './domain/code-analysis/record-type-inference';
@@ -103,7 +103,7 @@ export async function activate(ctx: vscode.ExtensionContext) {
   const templates = new TemplateIndex();
   const amd = new AmdIndex();
 
-  // 번들 시 dist에 tree-sitter.wasm + tree-sitter-php.wasm 복사됨
+  // 번들 시 dist에 파서 런타임·PHP 문법 wasm 두 개가 복사됨
   let syntax: CachedPhpSyntax;
   try {
     syntax = new CachedPhpSyntax(await TreeSitterPhpSyntax.create(path.join(ctx.extensionPath, 'dist')), 8);

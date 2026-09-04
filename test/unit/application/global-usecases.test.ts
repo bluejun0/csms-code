@@ -1,6 +1,6 @@
 import { strict as assert } from 'assert';
 import { join } from 'path';
-import { TreeSitterPhpSyntax } from '../../../src/infrastructure/tree-sitter/tree-sitter-php-syntax';
+import { TreeSitterPhpSyntax } from '../../../src/infrastructure/php/php-syntax';
 import { IndexStore } from '../../../src/infrastructure/indexing/index-store';
 import { ClassMemberIndex } from '../../../src/infrastructure/coreapi/class-member-index';
 import { ConfigKeyIndex } from '../../../src/infrastructure/config/config-key-index';

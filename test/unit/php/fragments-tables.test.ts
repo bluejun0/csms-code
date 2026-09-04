@@ -1,0 +1,84 @@
+import { strict as assert } from 'assert';
+import { tableFragments } from '../../../src/infrastructure/php/fragments/tables';
+import { FragmentSet } from '../../../src/infrastructure/php/fragment-set';
+import { PhpRuntime } from '../../../src/infrastructure/php/tree-sitter-runtime';
+import { ScopeTable } from '../../../src/infrastructure/php/scope-table';
+import { DocumentFacts, emptyFacts } from '../../../src/domain/code-analysis/facts';
+
+const CODE = `<?php
+$sql = "SELECT *
+  FROM {local_a} a
+  JOIN {local_b} b ON a.id = b.aid";
+$DB->update_record('local_c', $x);
+$DB->sql_like('col', '?');
+$q = 'SELECT * FROM {local_first} WHERE id = ?';
+$nd = <<<'SQL'
+SELECT * FROM {local_nowdoc}
+SQL;
+$OUTPUT->render_from_template('local_x/card', $ctx);
+`;
+
+// 문법 고정 — 이중 인용 문자열의 {$var} 보간은 별도 노드로 쪼개져 string_content에
+// 남지 않는다는 tree-sitter grammar 사실을 고정한다. 확장 로직이 아니라 grammar
+// 업그레이드로 이 형태가 바뀌면 이 테스트가 잡는다.
+const CODE_INTERP = `<?php
+$q = "SELECT * FROM {local_pin} WHERE id = {$id}";
+`;
+
+async function factsOf(code: string = CODE): Promise<DocumentFacts> {
+  const runtime = await PhpRuntime.create();
+  const set = FragmentSet.of(tableFragments);
+  const query = runtime.compile(set.source);
+  const doc = runtime.parse(code)!;
+  const facts = emptyFacts();
+  set.collect(doc.run(query, ScopeTable.of(doc.scopeRanges(), doc.endIndex)),
+    { add: (kind, fact) => { (facts[kind] as unknown[]).push(fact); } });
+  doc.dispose();
+  return facts;
+}
+
+describe('tableFragments', () => {
+  let f: DocumentFacts;
+  before(async () => { f = await factsOf(); });
+
+  it('SQL 중괄호 참조를 담는다', () => {
+    assert.deepEqual(f.tableRefs.filter(r => r.name.startsWith('local_')).map(r => r.name).sort(),
+      ['local_a', 'local_b', 'local_c', 'local_first', 'local_nowdoc']);
+  });
+  it('여러 줄 문자열에서 줄·컬럼이 문서 기준이다', () => {
+    const b = f.tableRefs.find(r => r.name === 'local_b')!;
+    assert.equal(b.nameLine, 3);
+    assert.equal(CODE.slice(b.nameIndex, b.nameIndex + 7), 'local_b');
+  });
+  it('sql_ 접두 메서드의 첫 인자는 테이블이 아니다', () => {
+    assert.ok(!f.tableRefs.some(r => r.name === 'col'));
+  });
+  it('문자열 노드의 첫 줄(개행 이전)에서도 컬럼이 문서 기준이다', () => {
+    // local_first는 문자열이 시작하는 바로 그 줄에 있다 — lineStart를 노드 시작 컬럼의 음수로
+    // 초기화하는 분기(줄바꿈을 아직 한 번도 못 만난 상태)를 검증한다.
+    const first = f.tableRefs.find(r => r.name === 'local_first')!;
+    const lines = CODE.split('\n');
+    const lineIndex = lines.findIndex(l => l.includes('local_first'));
+    assert.equal(first.nameLine, lineIndex);
+    assert.equal(first.nameColumn, lines[lineIndex].indexOf('local_first'));
+  });
+  it('nowdoc 본문의 중괄호 참조도 담는다', () => {
+    assert.ok(f.tableRefs.some(r => r.name === 'local_nowdoc'));
+  });
+  it('DB가 아닌 수신자의 첫 인자는 테이블이 아니다', () => {
+    // $OUTPUT->render_from_template의 첫 인자는 템플릿 이름이지 테이블이 아니다.
+    // recv !== 'DB' 가드가 없으면 이 값이 그대로 tableRefs에 섞여 들어간다.
+    assert.ok(!f.tableRefs.some(r => r.name === 'local_x/card'));
+  });
+});
+
+describe('tableFragments — 문법 고정(보간 제외)', () => {
+  let f: DocumentFacts;
+  before(async () => { f = await factsOf(CODE_INTERP); });
+
+  it('실제 {table}은 잡고 {$var} 보간은 변수 이름으로 잡지 않는다', () => {
+    assert.ok(f.tableRefs.some(r => r.name === 'local_pin'), '실제 테이블 참조 {local_pin}은 잡아야 함');
+    assert.ok(!f.tableRefs.some(r => r.name === 'id'),
+      '보간 {$id}는 변수명 id로 잡히면 안 됨 — 잡히면 이중 인용 보간이 문자열 내용에 남도록 grammar가 바뀐 것');
+  });
+});

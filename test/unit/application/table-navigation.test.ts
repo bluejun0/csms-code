@@ -1,6 +1,6 @@
 import { strict as assert } from 'assert';
 import { join } from 'path';
-import { TreeSitterPhpSyntax } from '../../../src/infrastructure/tree-sitter/tree-sitter-php-syntax';
+import { TreeSitterPhpSyntax } from '../../../src/infrastructure/php/php-syntax';
 import { IndexStore } from '../../../src/infrastructure/indexing/index-store';
 import { ResolveTableDefinition } from '../../../src/application/resolve-table-definition';
 import { ListResolvedTableRefs } from '../../../src/application/list-resolved-table-refs';

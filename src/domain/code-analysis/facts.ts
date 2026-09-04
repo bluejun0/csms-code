@@ -95,3 +95,5 @@ export function emptyFacts(): DocumentFacts {
     configCalls: [], dynamicConfigCalls: [],
   };
 }
+
+export type FactKind = keyof DocumentFacts;

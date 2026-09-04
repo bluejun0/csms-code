@@ -1,6 +1,6 @@
 import { strict as assert } from 'assert';
 import { join } from 'path';
-import { TreeSitterPhpSyntax } from '../../../src/infrastructure/tree-sitter/tree-sitter-php-syntax';
+import { TreeSitterPhpSyntax } from '../../../src/infrastructure/php/php-syntax';
 import { TemplateIndex } from '../../../src/infrastructure/templates/template-index';
 import { ResolveTemplateDefinition } from '../../../src/application/resolve-template-definition';
 import { FindTemplateReferences } from '../../../src/application/find-template-references';
