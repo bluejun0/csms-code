@@ -1,5 +1,6 @@
 import { strict as assert } from 'assert';
 import { StringPool } from '../../../src/infrastructure/usage/string-pool';
+import { forceGc } from './gc-support';
 
 describe('StringPool', () => {
   it('같은 값은 같은 id', () => {
@@ -40,8 +41,6 @@ describe('StringPool', () => {
   });
 });
 
-const gc = () => { for (let i = 0; i < 4; i++) (global as { gc?: () => void }).gc?.(); };
-
 const CAPTURE_PATTERN = /get_string\('([\w]+)',\s*'([\w]+)'\)/;
 
 function poolCapturesFromBigText(pool: StringPool, i: number): void {
@@ -56,14 +55,14 @@ describe('StringPool 보유량', () => {
   it('조각을 풀에 넣어도 원본 문자열이 남지 않는다', function () {
     if (typeof (global as { gc?: () => void }).gc !== 'function') this.skip();
     const pool = new StringPool();
-    gc();
+    forceGc();
     const before = process.memoryUsage().heapUsed;
     for (let i = 0; i < 5; i++) {
       poolCapturesFromBigText(pool, i);
     }
     // 정규식 엔진은 마지막으로 매치한 대상 문자열 전체를 전역 상태로 붙잡으므로, 짧은 문자열로 한 번 더 실행해 놓아주지 않으면 풀과 무관하게 픽스처 텍스트 하나가 측정값에 항상 섞인다.
     CAPTURE_PATTERN.exec("get_string('k', 'c')");
-    gc();
+    forceGc();
     const retained = process.memoryUsage().heapUsed - before;
     assert.ok(retained < 1024 * 1024,
       `원본 텍스트가 붙잡혀 있다 — 보유 ${(retained / 1024).toFixed(1)} KB (조각만 남아야 한다)`);

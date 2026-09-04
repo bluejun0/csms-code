@@ -91,6 +91,8 @@ export class PhpUsageIndex implements StringUsageRepository, TemplateUsageReposi
    *  그 항목의 file id로 판별해야 한다. 걸러낸 배열이 비면 키째로 지운다 — 그러지 않으면 저장을
    *  반복하거나 revalidateFromRoot를 돌릴 때마다 한 번이라도 등장했던 (component, key)·ref·id·이름마다
    *  빈 배열이 맵에 영영 남는다. */
+  // UsageExtract에 종류를 하나 추가하면 여기도 한 줄 늘려야 한다 — 빠뜨려도 타입 검사는 통과하고,
+  // 저장할 때마다 그 종류의 옛 항목만 조용히 쌓인다.
   private removeFileEntries(file: StringId): void {
     const prev = this.byFile.get(file);
     if (!prev) return;
