@@ -36,10 +36,12 @@ describe('StringPool', () => {
 
 const gc = () => { for (let i = 0; i < 4; i++) (global as { gc?: () => void }).gc?.(); };
 
+const CAPTURE_PATTERN = /get_string\('([\w]+)',\s*'([\w]+)'\)/;
+
 function poolCapturesFromBigText(pool: StringPool, i: number): void {
   // 13자 이상 길이의 다양한 캡처를 사용해야 V8가 조각(slice)을 만들고 풀의 구현이 정말 제대로 작동하는지 판별할 수 있다.
   const big = `${'x'.repeat(4 * 1024 * 1024)}\nget_string('a_rather_long_key_${i}', 'local_component_${i}')\n`;
-  const m = /get_string\('([\w]+)',\s*'([\w]+)'\)/.exec(big)!;
+  const m = CAPTURE_PATTERN.exec(big)!;
   pool.id(m[1]);
   pool.id(m[2]);
 }
@@ -53,6 +55,8 @@ describe('StringPool 보유량', () => {
     for (let i = 0; i < 5; i++) {
       poolCapturesFromBigText(pool, i);
     }
+    // 정규식 엔진은 마지막으로 매치한 대상 문자열 전체를 전역 상태로 붙잡으므로, 짧은 문자열로 한 번 더 실행해 놓아주지 않으면 풀과 무관하게 픽스처 텍스트 하나가 측정값에 항상 섞인다.
+    CAPTURE_PATTERN.exec("get_string('k', 'c')");
     gc();
     const retained = process.memoryUsage().heapUsed - before;
     assert.ok(retained < 1024 * 1024,
