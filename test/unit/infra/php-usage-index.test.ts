@@ -322,9 +322,11 @@ describe('PhpUsageIndex — 파일 스탬프', () => {
 });
 
 describe('PhpUsageIndex — 스냅샷 왕복', () => {
-  it('빌드한 색인을 스냅샷으로 저장하고 되돌리면 네 조회가 모두 같다', async () => {
+  it('빌드한 색인을 스냅샷으로 저장하고 되돌리면 다섯 조회가 모두 같다', async () => {
     const src = new PhpUsageIndex(hasCanonical);
     await src.buildFromRoot(root);
+    // 픽스처 루트 자체에는 테이블 사용처가 없다 — 왕복에 테이블도 실리는지 보려면 하나 보태야 한다.
+    src.updateFileText(join(root, 'synthetic-table-usage.php'), "<?php\n$DB->get_record('local_ubattend_config', []);\n");
     const snap = src.toSnapshot(root, '9.9.9');
     assert.equal(snap.ext, '9.9.9');
     assert.equal(snap.root, root);
@@ -341,6 +343,8 @@ describe('PhpUsageIndex — 스냅샷 왕복', () => {
     assert.deepEqual(loaded.templateRefsOf('local_ubattend', 'setting'), src.templateRefsOf('local_ubattend', 'setting'));
     assert.deepEqual(loaded.amdRefsOf('local_ubattend', 'setting'), src.amdRefsOf('local_ubattend', 'setting'));
     assert.deepEqual(loaded.configRefsOf('local_ubattend', 'attendlimit'), src.configRefsOf('local_ubattend', 'attendlimit'));
+    assert.deepEqual(loaded.tableRefsOf('local_ubattend_config'), src.tableRefsOf('local_ubattend_config'));
+    assert.ok(src.tableRefsOf('local_ubattend_config').length >= 1, '보탠 테이블 사용처가 실제로 잡혀야 비교에 의미가 있다');
   });
   it('되돌린 색인도 증분 갱신이 된다(파일별 역인덱스가 복원됨)', async () => {
     const src = new PhpUsageIndex(hasCanonical);
