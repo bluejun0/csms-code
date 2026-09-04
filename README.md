@@ -88,7 +88,7 @@ Moodle 코드는 DB 레코드를 대부분 `stdClass`로 다루기 때문에, �
 npm install
 npm run compile        # tsc -noEmit + esbuild
 npm run test:unit       # 단위 테스트 (mocha) — 환경변수로 게이트된 테스트 3개는 기본 스킵됨:
-                         #   CSMS_CORPUS=<PHP 코퍼스 경로>: 대용량 PHP 트리에서 통합 쿼리 등가성 검증 + 사용처 색인 보유 메모리 상한(테스트 2개)
+                         #   CSMS_CORPUS=<PHP 코퍼스 경로>(테스트 2개): 통합 쿼리 등가성 검증 + 사용처 색인 보유 메모리 상한
                          #   CSMS_BUDGET_FILE=<PHP 파일 경로>: 그 파일로 facts() 성능 예산 검증
                          #   메모리 보유량 게이트(StringPool·PhpUsageIndex)는 --expose-gc가 있어야 도는데 .mocharc.json이 모든 mocha 실행에 이미 공급하므로 별도 명령이 필요 없고, PhpUsageIndex 쪽만 위 CSMS_CORPUS가 추가로 있어야 스킵되지 않습니다
 npm run lint            # eslint
