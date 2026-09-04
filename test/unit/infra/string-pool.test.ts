@@ -36,21 +36,26 @@ describe('StringPool', () => {
 
 const gc = () => { for (let i = 0; i < 4; i++) (global as { gc?: () => void }).gc?.(); };
 
+function poolCapturesFromBigText(pool: StringPool, i: number): void {
+  const big = `${'x'.repeat(4 * 1024 * 1024)}\nget_string('key_${i}', 'local_component')\n`;
+  const m = /get_string\('([\w]+)',\s*'([\w]+)'\)/.exec(big)!;
+  pool.id(m[1]);
+  pool.id(m[2]);
+}
+
 describe('StringPool 보유량', () => {
   it('조각을 풀에 넣어도 원본 문자열이 남지 않는다', function () {
     if (typeof (global as { gc?: () => void }).gc !== 'function') this.skip();
     const pool = new StringPool();
     gc();
-    const before = process.memoryUsage().heapUsed;
     for (let i = 0; i < 5; i++) {
-      const big = `${'x'.repeat(4 * 1024 * 1024)}\nget_string('key_${i}', 'local_component')\n`;
-      const m = /get_string\('([\w]+)',\s*'([\w]+)'\)/.exec(big)!;
-      pool.id(m[1]);
-      pool.id(m[2]);
+      poolCapturesFromBigText(pool, i);
     }
     gc();
+    const before = process.memoryUsage().heapUsed;
+    gc();
     const retained = process.memoryUsage().heapUsed - before;
-    assert.ok(retained < 4 * 1024 * 1024,
-      `원본 텍스트가 붙잡혀 있다 — 보유 ${(retained / 1048576).toFixed(1)} MB (조각 10개만 남아야 한다)`);
+    assert.ok(retained < 1024 * 1024,
+      `원본 텍스트가 붙잡혀 있다 — 보유 ${(retained / 1024).toFixed(1)} KB (조각만 남아야 한다)`);
   });
 });
