@@ -526,9 +526,10 @@ export async function activate(ctx: vscode.ExtensionContext) {
   }));
 
   // 삭제된 파일의 참조는 저장 이벤트가 없어 자가치유되지 않는다 — 빈 텍스트로 증분 제거
+  // 저장 핸들러와 같은 필터를 써야 한다 — 아니면 색인 대상이 아닌 삭제까지 풀에 경로만 쌓인다.
   ctx.subscriptions.push(vscode.workspace.onDidDeleteFiles(e => {
     if (!usageIndex.isBuilt) return;
-    for (const f of e.files) usageIndex.updateFileText(f.fsPath, '');
+    for (const f of e.files) if (isIndexableSourcePath(root, f.fsPath)) usageIndex.updateFileText(f.fsPath, '');
     refreshLenses();
     cacheDebouncer.schedule('usagecache', writeUsageCache);
   }));

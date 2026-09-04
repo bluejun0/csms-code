@@ -497,6 +497,14 @@ describe('PhpUsageIndex — 풀 규율', () => {
     assert.equal((idx as unknown as { pool: { size: number } }).pool.size, before);
   });
 
+  it('색인에 없는 경로를 빈 텍스트로 지워도 풀이 자라지 않는다(삭제 이벤트가 대상 밖 파일에도 오는 경우)', () => {
+    const idx = new PhpUsageIndex(() => true);
+    idx.updateFileText('/a/b.php', `<?php echo get_string('k', 'local_x');`);
+    const before = (idx as unknown as { pool: { size: number } }).pool.size;
+    for (let i = 0; i < 5000; i++) idx.updateFileText(`/deleted/${i}.png`, '');
+    assert.equal((idx as unknown as { pool: { size: number } }).pool.size, before);
+  });
+
   it('파일을 다시 읽으면 옛 항목이 게시 목록에서 빠진다', () => {
     const idx = new PhpUsageIndex(() => true);
     idx.updateFileText('/a/b.php', `<?php echo get_string('old', 'local_x');`);
