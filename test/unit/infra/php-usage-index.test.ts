@@ -310,11 +310,13 @@ describe('PhpUsageIndex — 파일 스탬프', () => {
       fs.writeFileSync(f, "<?php\nget_string('k', 'local_x');\n");
       const idx = new PhpUsageIndex(() => true);
       await idx.buildFromRoot(tmp);
-      const stamps = (idx as unknown as { stamps: Map<string, { size: number }> }).stamps;
-      assert.equal(stamps.size, 1);
-      assert.ok(stamps.get(f)!.size > 0);
+      // stamps는 파일 경로가 아니라 풀 id로 담긴다 — find로 id를 먼저 얻는다.
+      const internal = idx as unknown as { stamps: Map<number, { size: number }>; pool: { find(v: string): number | undefined } };
+      const fid = internal.pool.find(f)!;
+      assert.equal(internal.stamps.size, 1);
+      assert.ok(internal.stamps.get(fid)!.size > 0);
       idx.updateFileText(f, "<?php\n");
-      assert.equal(stamps.has(f), false, '다음 검증에서 다시 읽도록 표시');
+      assert.equal(internal.stamps.has(fid), false, '다음 검증에서 다시 읽도록 표시');
     } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
   });
 });
@@ -469,5 +471,37 @@ describe('PhpUsageIndex — 테이블 사용처 스냅샷', () => {
     const loaded = new PhpUsageIndex(() => true);
     loaded.loadSnapshot(snap, '/');
     assert.deepEqual(loaded.tableRefsOf('local_ubattend_config'), src.tableRefsOf('local_ubattend_config'));
+  });
+});
+
+describe('PhpUsageIndex — 풀 규율', () => {
+  it('없는 값으로 조회해도 풀이 자라지 않는다', () => {
+    const idx = new PhpUsageIndex(() => true);
+    idx.updateFileText('/a/b.php', `<?php echo get_string('k', 'local_x');`);
+    const before = (idx as unknown as { pool: { size: number } }).pool.size;
+    idx.referencesOf('없는컴포넌트', '없는키');
+    idx.templateRefsOf('없는컴포넌트', '없는이름');
+    idx.amdRefsOf('없는컴포넌트', '없는이름');
+    idx.configRefsOf('없는플러그인', '없는키');
+    idx.tableRefsOf('없는테이블');
+    assert.equal((idx as unknown as { pool: { size: number } }).pool.size, before);
+  });
+
+  it('파일을 다시 읽으면 옛 항목이 게시 목록에서 빠진다', () => {
+    const idx = new PhpUsageIndex(() => true);
+    idx.updateFileText('/a/b.php', `<?php echo get_string('old', 'local_x');`);
+    idx.updateFileText('/a/b.php', `<?php echo get_string('new', 'local_x');`);
+    assert.equal(idx.referencesOf('local_x', 'old').length, 0);
+    assert.equal(idx.referencesOf('local_x', 'new').length, 1);
+  });
+
+  it('두 파일이 같은 키를 쓰면 한 파일만 지워도 다른 파일은 남는다', () => {
+    const idx = new PhpUsageIndex(() => true);
+    idx.updateFileText('/a/one.php', `<?php echo get_string('k', 'local_x');`);
+    idx.updateFileText('/a/two.php', `<?php echo get_string('k', 'local_x');`);
+    idx.updateFileText('/a/one.php', '');
+    const found = idx.referencesOf('local_x', 'k');
+    assert.equal(found.length, 1);
+    assert.equal(found[0].uri, '/a/two.php');
   });
 });

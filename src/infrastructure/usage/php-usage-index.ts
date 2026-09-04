@@ -8,8 +8,8 @@ import { ConfigUsageRepository } from '../../domain/moodle-model/ports/config-us
 import { TableUsageRepository } from '../../domain/moodle-model/ports/table-usage-repository';
 import { configKeyId } from '../../domain/moodle-model/services/config-plugin';
 import { SNAPSHOT_VERSION, StampRow, UsageSnapshot, diffStamps, packRows, unpackRows } from './usage-snapshot';
-import { StringPool } from './string-pool';
-import { UsageExtract } from './usage-entries';
+import { StringId, StringPool } from './string-pool';
+import { ConfigUsage, RefUsage, StringUsage, TableUsage, UsageExtract, emptyExtract } from './usage-entries';
 import { SKIP_DIRS, isIndexableSourcePath, extractUsages } from './extract-usages';
 
 export { isIndexableSourcePath } from './extract-usages';
@@ -24,27 +24,18 @@ export interface FileStamp { mtimeMs: number; size: number; }
 /** 열거 결과. `failures`는 읽지 못한 디렉터리 수 — 0이 아니면 "파일이 사라졌다"고 단정할 수 없다. */
 interface Scan { files: string[]; failures: number }
 
-interface UsageEntry { component: string; key: string; loc: SourceLocation; }
-interface TemplateEntry { ref: string; loc: SourceLocation; }
-interface AmdEntry { ref: string; loc: SourceLocation; }
-interface ConfigEntry { id: string; loc: SourceLocation; }
-interface TableEntry { name: string; loc: SourceLocation; }
-interface Extracted { entries: UsageEntry[]; tEntries: TemplateEntry[]; aEntries: AmdEntry[]; cEntries: ConfigEntry[]; tblEntries: TableEntry[] }
-
 /** 문자열·템플릿·AMD·설정·테이블 사용처의 워크스페이스 색인 — PHP·JS·mustache를 한 번의 스캔에서 함께 훑는다.
- *  lazy 빌드 + 저장/삭제 시 파일 단위 증분. */
+ *  lazy 빌드 + 저장/삭제 시 파일 단위 증분. 문자열은 모두 pool을 지나 id로 보관한다 — 정규식 캡처
+ *  조각이 그대로 붙잡혀 파일 전체를 물고 늘어지는 일이 타입 수준에서 불가능해진다. */
 export class PhpUsageIndex implements StringUsageRepository, TemplateUsageRepository, AmdUsageRepository, ConfigUsageRepository, TableUsageRepository {
-  private byComponent = new Map<string, Map<string, SourceLocation[]>>();
-  private byFile = new Map<string, UsageEntry[]>();
-  private byTemplateRef = new Map<string, SourceLocation[]>();
-  private templatesByFile = new Map<string, TemplateEntry[]>();
-  private byAmdRef = new Map<string, SourceLocation[]>();
-  private amdByFile = new Map<string, AmdEntry[]>();
-  private byConfigId = new Map<string, SourceLocation[]>();
-  private configByFile = new Map<string, ConfigEntry[]>();
-  private byTableName = new Map<string, SourceLocation[]>();
-  private tablesByFile = new Map<string, TableEntry[]>();
-  private stamps = new Map<string, FileStamp>();
+  private pool = new StringPool();
+  private byFile = new Map<StringId, UsageExtract>();
+  private byComponentKey = new Map<StringId, Map<StringId, StringUsage[]>>();
+  private byTemplateRef = new Map<StringId, RefUsage[]>();
+  private byAmdRef = new Map<StringId, RefUsage[]>();
+  private byConfigId = new Map<StringId, ConfigUsage[]>();
+  private byTableName = new Map<StringId, TableUsage[]>();
+  private stamps = new Map<StringId, FileStamp>();
   private builtFlag = false;
 
   constructor(private hasCanonical: (c: string) => boolean) {}
@@ -73,109 +64,122 @@ export class PhpUsageIndex implements StringUsageRepository, TemplateUsageReposi
 
   /** 파일 단위 증분: 기존 항목 제거 후 재추출 (저장 시 호출). 확장자별 추출은 extractUsages가 고른다.
    *  `stamp`를 주면 기록하고, 주지 않으면 그 파일 도장을 지운다 — 저장 시점에는 mtime을 모르므로
-   *  다음 검증에서 디스크와 한 번 맞춰 본다. 풀은 이 호출 동안만 쓰는 임시 풀이다 — 색인 자체는
-   *  여전히 문자열로 보관하므로 경계에서 풀어 담는다. */
+   *  다음 검증에서 디스크와 한 번 맞춰 본다. */
   updateFileText(uri: string, text: string, stamp?: FileStamp): void {
-    const pool = new StringPool();
-    const file = pool.id(uri);
-    const extract = extractUsages(uri, text, { pool, file, hasCanonical: this.hasCanonical });
-    this.applyExtracted(uri, toLegacyExtracted(uri, pool, extract), stamp);
+    const file = this.pool.id(uri);
+    const extract = extractUsages(uri, text, { pool: this.pool, file, hasCanonical: this.hasCanonical });
+    this.applyExtracted(file, extract, stamp);
   }
 
   /** 추출 결과를 색인에 반영하는 단일 지점 — 스캔·증분·스냅샷 복원이 모두 이 경로를 지난다. */
-  private applyExtracted(uri: string, { entries, tEntries, aEntries, cEntries, tblEntries }: Extracted, stamp?: FileStamp): void {
-    if (stamp) this.stamps.set(uri, stamp); else this.stamps.delete(uri);
-    const prev = this.byFile.get(uri);
-    if (prev) { for (const e of prev) this.removeEntry(e); this.byFile.delete(uri); }
-    const prevT = this.templatesByFile.get(uri);
-    if (prevT) { for (const e of prevT) this.removeTemplateEntry(e); this.templatesByFile.delete(uri); }
-    const prevA = this.amdByFile.get(uri);
-    if (prevA) { for (const e of prevA) this.removeAmdEntry(e); this.amdByFile.delete(uri); }
-    const prevC = this.configByFile.get(uri);
-    if (prevC) { for (const e of prevC) this.removeConfigEntry(e); this.configByFile.delete(uri); }
-    const prevTbl = this.tablesByFile.get(uri);
-    if (prevTbl) { for (const e of prevTbl) this.removeTableEntry(e); this.tablesByFile.delete(uri); }
+  private applyExtracted(file: StringId, extract: UsageExtract, stamp?: FileStamp): void {
+    if (stamp) this.stamps.set(file, stamp); else this.stamps.delete(file);
+    this.removeFileEntries(file);
 
-    for (const e of entries) this.addEntry(e);
-    for (const e of tEntries) this.addTemplateEntry(e);
-    for (const e of aEntries) this.addAmdEntry(e);
-    for (const e of cEntries) this.addConfigEntry(e);
-    for (const e of tblEntries) this.addTableEntry(e);
-    if (entries.length) this.byFile.set(uri, entries);
-    if (tEntries.length) this.templatesByFile.set(uri, tEntries);
-    if (aEntries.length) this.amdByFile.set(uri, aEntries);
-    if (cEntries.length) this.configByFile.set(uri, cEntries);
-    if (tblEntries.length) this.tablesByFile.set(uri, tblEntries);
+    for (const e of extract.strings) this.addEntry(e);
+    for (const e of extract.templates) this.addTemplateEntry(e);
+    for (const e of extract.amd) this.addAmdEntry(e);
+    for (const e of extract.config) this.addConfigEntry(e);
+    for (const e of extract.tables) this.addTableEntry(e);
+
+    const hasAny = extract.strings.length || extract.templates.length || extract.amd.length
+      || extract.config.length || extract.tables.length;
+    if (hasAny) this.byFile.set(file, extract);
   }
 
-  /** 색인이 아는 모든 파일 — 도장이 있는 파일과 항목이 있는 파일의 합집합. */
-  private trackedFiles(): string[] {
-    return [...new Set([...this.stamps.keys(), ...this.byFile.keys(), ...this.templatesByFile.keys(),
-      ...this.amdByFile.keys(), ...this.configByFile.keys(), ...this.tablesByFile.keys()])];
+  /** 게시 목록에서 한 파일의 항목만 걸러낸다 — 위치가 수치가 된 뒤로는 객체 동일성이 아니라
+   *  그 항목의 file id로 판별해야 한다. */
+  private removeFileEntries(file: StringId): void {
+    const prev = this.byFile.get(file);
+    if (!prev) return;
+    for (const e of prev.strings) {
+      const keys = this.byComponentKey.get(e.component);
+      if (keys) removeFileFromMap(keys, e.key, file);
+    }
+    for (const e of prev.templates) removeFileFromMap(this.byTemplateRef, e.ref, file);
+    for (const e of prev.amd) removeFileFromMap(this.byAmdRef, e.ref, file);
+    for (const e of prev.config) removeFileFromMap(this.byConfigId, e.id, file);
+    for (const e of prev.tables) removeFileFromMap(this.byTableName, e.name, file);
+    this.byFile.delete(file);
+  }
+
+  /** 색인이 아는 모든 파일(id) — 도장이 있는 파일과 항목이 있는 파일의 합집합. */
+  private trackedFiles(): StringId[] {
+    return [...new Set([...this.stamps.keys(), ...this.byFile.keys()])];
   }
 
   /** 도장 행 — 도장이 없는 파일(저장 증분으로 갱신된 파일)은 size 음수로 담아 다음 검증에서 다시 읽는다. */
   private stampRows(root: string): StampRow[] {
-    return this.trackedFiles().filter(f => insideRoot(root, f)).map(f => {
-      const s = this.stamps.get(f);
-      return [path.relative(root, f), s?.mtimeMs ?? 0, s?.size ?? -1] as StampRow;
-    });
+    return this.trackedFiles()
+      .map(file => ({ file, uri: this.pool.text(file) }))
+      .filter(f => insideRoot(root, f.uri))
+      .map(f => {
+        const s = this.stamps.get(f.file);
+        return [path.relative(root, f.uri), s?.mtimeMs ?? 0, s?.size ?? -1] as StampRow;
+      });
   }
 
   toSnapshot(root: string, extVersion: string): UsageSnapshot {
-    const files = this.trackedFiles().filter(f => insideRoot(root, f));
+    const files = this.trackedFiles().filter(f => insideRoot(root, this.pool.text(f)));
     const idxOf = new Map(files.map((f, i) => [f, i] as const));
-    const rows = <T>(m: Map<string, T[]>): Iterable<[number, readonly T[]]> =>
-      [...m].flatMap(([f, list]) => {
+    // byFile을 한 번 훑으며 다섯 종류를 나란히 뽑는다 — sel이 그때그때 어느 배열을 볼지 고른다.
+    const rows = <T>(sel: (e: UsageExtract) => readonly T[]): Iterable<[number, readonly T[]]> =>
+      [...this.byFile].flatMap(([f, extract]) => {
         const i = idxOf.get(f);
-        return i === undefined ? [] : [[i, list] as [number, readonly T[]]];
+        return i === undefined ? [] : [[i, sel(extract)] as [number, readonly T[]]];
       });
     return {
       v: SNAPSHOT_VERSION, ext: extVersion, root,
       files: this.stampRows(root),
-      s: packRows(rows(this.byFile), e => [e.component, e.key, e.loc.line, e.loc.column]),
-      t: packRows(rows(this.templatesByFile), e => [e.ref, e.loc.line, e.loc.column]),
-      a: packRows(rows(this.amdByFile), e => [e.ref, e.loc.line, e.loc.column]),
-      c: packRows(rows(this.configByFile), e => [e.id, e.loc.line, e.loc.column]),
-      x: packRows(rows(this.tablesByFile), e => [e.name, e.loc.line, e.loc.column]),
+      s: packRows(rows(e => e.strings), e => [this.pool.text(e.component), this.pool.text(e.key), e.line, e.column]),
+      t: packRows(rows(e => e.templates), e => [this.pool.text(e.ref), e.line, e.column]),
+      a: packRows(rows(e => e.amd), e => [this.pool.text(e.ref), e.line, e.column]),
+      c: packRows(rows(e => e.config), e => [this.pool.text(e.id), e.line, e.column]),
+      x: packRows(rows(e => e.tables), e => [this.pool.text(e.name), e.line, e.column]),
     };
   }
 
-  /** 색인을 빈 상태로 — 전체 빌드·복원이 앞선 내용을 물려받지 않게 한다. */
+  /** 색인을 빈 상태로 — 전체 빌드·복원이 앞선 내용을 물려받지 않게 한다. 풀도 새로 만든다 —
+   *  그러지 않으면 재빌드마다 옛 풀의 문자열이 쓰이지 않아도 계속 쌓인다. */
   private reset(): void {
-    this.byComponent = new Map(); this.byFile = new Map();
-    this.byTemplateRef = new Map(); this.templatesByFile = new Map();
-    this.byAmdRef = new Map(); this.amdByFile = new Map();
-    this.byConfigId = new Map(); this.configByFile = new Map();
-    this.byTableName = new Map(); this.tablesByFile = new Map();
+    this.pool = new StringPool();
+    this.byComponentKey = new Map(); this.byFile = new Map();
+    this.byTemplateRef = new Map(); this.byAmdRef = new Map();
+    this.byConfigId = new Map(); this.byTableName = new Map();
     this.stamps = new Map();
   }
 
-  /** 스냅샷으로 색인을 채운다 — 컴포넌트 정규화는 저장 시점에 끝나 있으므로 다시 하지 않는다. */
+  /** 스냅샷으로 색인을 채운다 — 컴포넌트 정규화는 저장 시점에 끝나 있으므로 다시 하지 않는다.
+   *  JSON에서 온 문자열은 조각이 아니지만, 풀을 지나야 같은 값이 하나의 id를 공유한다. */
   loadSnapshot(snap: UsageSnapshot, root: string): void {
     this.reset();
 
     const files = snap.files.map(([rel]) => path.join(root, rel));
-    snap.files.forEach(([, mtimeMs, size], i) => { if (size >= 0) this.stamps.set(files[i], { mtimeMs, size }); });
+    const fileIds = files.map(f => this.pool.id(f));
+    snap.files.forEach(([, mtimeMs, size], i) => { if (size >= 0) this.stamps.set(fileIds[i], { mtimeMs, size }); });
 
-    const per = new Map<number, Extracted>();
-    const slot = (i: number): Extracted => {
+    const per = new Map<number, UsageExtract>();
+    const slot = (i: number): UsageExtract => {
       let e = per.get(i);
-      if (!e) { e = { entries: [], tEntries: [], aEntries: [], cEntries: [], tblEntries: [] }; per.set(i, e); }
+      if (!e) { e = emptyExtract(); per.set(i, e); }
       return e;
     };
     const known = (i: number): boolean => files[i] !== undefined; // 손상된 스냅샷의 범위 밖 인덱스는 버린다
-    const at = (i: number, line: number, column: number): SourceLocation => ({ uri: files[i], line, column });
-    unpackRows(snap.s, 4, (i, r) => { if (known(i)) slot(i).entries.push({
-      component: r[0] as string, key: r[1] as string, loc: at(i, r[2] as number, r[3] as number) }); });
-    unpackRows(snap.t, 3, (i, r) => { if (known(i)) slot(i).tEntries.push({ ref: r[0] as string, loc: at(i, r[1] as number, r[2] as number) }); });
-    unpackRows(snap.a, 3, (i, r) => { if (known(i)) slot(i).aEntries.push({ ref: r[0] as string, loc: at(i, r[1] as number, r[2] as number) }); });
-    unpackRows(snap.c, 3, (i, r) => { if (known(i)) slot(i).cEntries.push({ id: r[0] as string, loc: at(i, r[1] as number, r[2] as number) }); });
-    unpackRows(snap.x, 3, (i, r) => { if (known(i)) slot(i).tblEntries.push({ name: r[0] as string, loc: at(i, r[1] as number, r[2] as number) }); });
+    unpackRows(snap.s, 4, (i, r) => { if (known(i)) slot(i).strings.push({
+      component: this.pool.id(r[0] as string), key: this.pool.id(r[1] as string),
+      file: fileIds[i], line: r[2] as number, column: r[3] as number }); });
+    unpackRows(snap.t, 3, (i, r) => { if (known(i)) slot(i).templates.push({
+      ref: this.pool.id(r[0] as string), file: fileIds[i], line: r[1] as number, column: r[2] as number }); });
+    unpackRows(snap.a, 3, (i, r) => { if (known(i)) slot(i).amd.push({
+      ref: this.pool.id(r[0] as string), file: fileIds[i], line: r[1] as number, column: r[2] as number }); });
+    unpackRows(snap.c, 3, (i, r) => { if (known(i)) slot(i).config.push({
+      id: this.pool.id(r[0] as string), file: fileIds[i], line: r[1] as number, column: r[2] as number }); });
+    unpackRows(snap.x, 3, (i, r) => { if (known(i)) slot(i).tables.push({
+      name: this.pool.id(r[0] as string), file: fileIds[i], line: r[1] as number, column: r[2] as number }); });
 
     // 파일 인덱스 순서로 적용한다 — 종류별로 채운 순서를 그대로 쓰면 위치 배열 순서가 스캔과 달라진다.
     for (const i of [...per.keys()].sort((x, y) => x - y)) {
-      this.applyExtracted(files[i], per.get(i)!, this.stamps.get(files[i]));
+      this.applyExtracted(fileIds[i], per.get(i)!, this.stamps.get(fileIds[i]));
     }
     this.builtFlag = true;
   }
@@ -199,95 +203,61 @@ export class PhpUsageIndex implements StringUsageRepository, TemplateUsageReposi
     return changed.length > 0 || (applyRemoved && removed.length > 0);
   }
 
+  /** id로 저장된 위치를 조회 시점에 되살린다 — 한 번 조회가 돌려주는 위치는 많아야 수백 건이라 비용이 없다. */
+  private location(e: { file: StringId; line: number; column: number }): SourceLocation {
+    return { uri: this.pool.text(e.file), line: e.line, column: e.column };
+  }
+
+  // 다섯 조회 메서드 모두 find()만 쓴다 — id()를 쓰면 없는 값을 조회할 때마다(예: 미색인 컴포넌트를
+  // 호버) 풀이 한 항목씩 자라 무한정 커진다.
   referencesOf(component: string, key: string): SourceLocation[] {
-    return this.byComponent.get(component)?.get(key) ?? [];
+    const c = this.pool.find(component);
+    const k = c === undefined ? undefined : this.pool.find(key);
+    if (c === undefined || k === undefined) return [];
+    return (this.byComponentKey.get(c)?.get(k) ?? []).map(e => this.location(e));
   }
 
   templateRefsOf(component: string, name: string): SourceLocation[] {
-    return this.byTemplateRef.get(`${component}/${name}`) ?? [];
+    const ref = this.pool.find(`${component}/${name}`);
+    return ref === undefined ? [] : (this.byTemplateRef.get(ref) ?? []).map(e => this.location(e));
   }
 
   amdRefsOf(component: string, name: string): SourceLocation[] {
-    return this.byAmdRef.get(`${component}/${name}`) ?? [];
+    const ref = this.pool.find(`${component}/${name}`);
+    return ref === undefined ? [] : (this.byAmdRef.get(ref) ?? []).map(e => this.location(e));
   }
 
   configRefsOf(plugin: string, key: string): SourceLocation[] {
-    return this.byConfigId.get(configKeyId(plugin, key)) ?? [];
+    const id = this.pool.find(configKeyId(plugin, key));
+    return id === undefined ? [] : (this.byConfigId.get(id) ?? []).map(e => this.location(e));
   }
 
   tableRefsOf(name: string): SourceLocation[] {
-    return this.byTableName.get(name) ?? [];
+    const id = this.pool.find(name);
+    return id === undefined ? [] : (this.byTableName.get(id) ?? []).map(e => this.location(e));
   }
 
-  private addEntry(e: UsageEntry): void {
-    let comp = this.byComponent.get(e.component);
-    if (!comp) { comp = new Map(); this.byComponent.set(e.component, comp); }
-    let arr = comp.get(e.key);
-    if (!arr) { arr = []; comp.set(e.key, arr); }
-    arr.push(e.loc);
+  private addEntry(e: StringUsage): void {
+    let comp = this.byComponentKey.get(e.component);
+    if (!comp) { comp = new Map(); this.byComponentKey.set(e.component, comp); }
+    pushToMap(comp, e.key, e);
   }
-  private removeEntry(e: UsageEntry): void {
-    const arr = this.byComponent.get(e.component)?.get(e.key);
-    if (!arr) return;
-    const i = arr.indexOf(e.loc);
-    if (i >= 0) arr.splice(i, 1);
-  }
-  private addTemplateEntry(e: TemplateEntry): void {
-    const arr = this.byTemplateRef.get(e.ref);
-    if (arr) arr.push(e.loc); else this.byTemplateRef.set(e.ref, [e.loc]);
-  }
-  private removeTemplateEntry(e: TemplateEntry): void {
-    const arr = this.byTemplateRef.get(e.ref);
-    if (!arr) return;
-    const i = arr.indexOf(e.loc);
-    if (i >= 0) arr.splice(i, 1);
-  }
-  private addAmdEntry(e: AmdEntry): void {
-    const arr = this.byAmdRef.get(e.ref);
-    if (arr) arr.push(e.loc); else this.byAmdRef.set(e.ref, [e.loc]);
-  }
-  private removeAmdEntry(e: AmdEntry): void {
-    const arr = this.byAmdRef.get(e.ref);
-    if (!arr) return;
-    const i = arr.indexOf(e.loc);
-    if (i >= 0) arr.splice(i, 1);
-  }
-  private addConfigEntry(e: ConfigEntry): void {
-    const arr = this.byConfigId.get(e.id);
-    if (arr) arr.push(e.loc); else this.byConfigId.set(e.id, [e.loc]);
-  }
-  private removeConfigEntry(e: ConfigEntry): void {
-    const arr = this.byConfigId.get(e.id);
-    if (!arr) return;
-    const i = arr.indexOf(e.loc);
-    if (i >= 0) arr.splice(i, 1);
-  }
-  private addTableEntry(e: TableEntry): void {
-    const arr = this.byTableName.get(e.name);
-    if (arr) arr.push(e.loc); else this.byTableName.set(e.name, [e.loc]);
-  }
-  private removeTableEntry(e: TableEntry): void {
-    const arr = this.byTableName.get(e.name);
-    if (!arr) return;
-    const i = arr.indexOf(e.loc);
-    if (i >= 0) arr.splice(i, 1);
-  }
+  private addTemplateEntry(e: RefUsage): void { pushToMap(this.byTemplateRef, e.ref, e); }
+  private addAmdEntry(e: RefUsage): void { pushToMap(this.byAmdRef, e.ref, e); }
+  private addConfigEntry(e: ConfigUsage): void { pushToMap(this.byConfigId, e.id, e); }
+  private addTableEntry(e: TableUsage): void { pushToMap(this.byTableName, e.name, e); }
 }
 
-/** extractUsages가 돌려주는 id 기반 결과를 색인이 여전히 쓰는 문자열 기반 구조로 되돌린다.
- *  색인은 문자열로 보관하므로 경계에서만 id를 풀어 담는다. loc은 항목마다 한 번씩만 만들어야
- *  addEntry·removeEntry가 같은 객체 동일성으로 짝을 맞춘다. */
-function toLegacyExtracted(uri: string, pool: StringPool, extract: UsageExtract): Extracted {
-  return {
-    entries: extract.strings.map(e => ({
-      component: pool.text(e.component), key: pool.text(e.key),
-      loc: { uri, line: e.line, column: e.column },
-    })),
-    tEntries: extract.templates.map(e => ({ ref: pool.text(e.ref), loc: { uri, line: e.line, column: e.column } })),
-    aEntries: extract.amd.map(e => ({ ref: pool.text(e.ref), loc: { uri, line: e.line, column: e.column } })),
-    cEntries: extract.config.map(e => ({ id: pool.text(e.id), loc: { uri, line: e.line, column: e.column } })),
-    tblEntries: extract.tables.map(e => ({ name: pool.text(e.name), loc: { uri, line: e.line, column: e.column } })),
-  };
+/** 없으면 새 배열로 만들고, 있으면 이어붙인다. */
+function pushToMap<K, T>(map: Map<K, T[]>, key: K, e: T): void {
+  const arr = map.get(key);
+  if (arr) arr.push(e); else map.set(key, [e]);
+}
+
+/** 한 파일의 항목만 걸러낸 배열로 되돌려 놓는다. */
+function removeFileFromMap<K, T extends { file: StringId }>(map: Map<K, T[]>, key: K, file: StringId): void {
+  const arr = map.get(key);
+  if (arr) map.set(key, arr.filter(x => x.file !== file));
 }
 
 /** 루트 재귀 소스 파일(.php/.js) 열거 — realpath 순환 가드, 채택 여부는 isIndexableSourcePath로 통일해
@@ -358,4 +328,3 @@ async function readWithStamp(file: string): Promise<{ file: string; text: string
     return { file, text, stamp: { mtimeMs: st.mtimeMs, size: st.size } };
   } catch { return null; }
 }
-
