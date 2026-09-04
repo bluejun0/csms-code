@@ -37,7 +37,8 @@ describe('StringPool', () => {
 const gc = () => { for (let i = 0; i < 4; i++) (global as { gc?: () => void }).gc?.(); };
 
 function poolCapturesFromBigText(pool: StringPool, i: number): void {
-  const big = `${'x'.repeat(4 * 1024 * 1024)}\nget_string('key_${i}', 'local_component')\n`;
+  // 13자 이상 길이의 다양한 캡처를 사용해야 V8가 조각(slice)을 만들고 풀의 구현이 정말 제대로 작동하는지 판별할 수 있다.
+  const big = `${'x'.repeat(4 * 1024 * 1024)}\nget_string('a_rather_long_key_${i}', 'local_component_${i}')\n`;
   const m = /get_string\('([\w]+)',\s*'([\w]+)'\)/.exec(big)!;
   pool.id(m[1]);
   pool.id(m[2]);
