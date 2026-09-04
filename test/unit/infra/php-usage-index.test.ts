@@ -373,6 +373,12 @@ describe('PhpUsageIndex — 백그라운드 검증', () => {
     await idx.buildFromRoot(tmp);
     assert.equal(await idx.revalidateFromRoot(tmp), false);
   });
+  it('빈 파일도 빌드 때 도장이 찍혀 재검증마다 다시 읽지 않는다', async () => {
+    write('empty.php', '');
+    const idx = new PhpUsageIndex(() => true);
+    await idx.buildFromRoot(tmp);
+    assert.equal(await idx.revalidateFromRoot(tmp), false, '빈 파일도 도장이 있어야 변경 없음으로 판정된다');
+  });
   it('수정·추가·삭제를 반영한다', async () => {
     const idx = new PhpUsageIndex(() => true);
     await idx.buildFromRoot(tmp);

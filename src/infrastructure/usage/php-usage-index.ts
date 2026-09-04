@@ -68,10 +68,11 @@ export class PhpUsageIndex implements StringUsageRepository, TemplateUsageReposi
    *  `stamp`를 주면 기록하고, 주지 않으면 그 파일 도장을 지운다 — 저장 시점에는 mtime을 모르므로
    *  다음 검증에서 디스크와 한 번 맞춰 본다. */
   updateFileText(uri: string, text: string, stamp?: FileStamp): void {
-    // 모르는 경로에 빈 텍스트 — 색인에 없던 파일의 삭제 알림 같은 경우로, 지울 것도 없다.
-    // find로 먼저 확인해 이런 호출까지 id()로 풀을 키우지 않는다.
+    // 모르는 경로에 도장 없이 빈 텍스트 — 색인에 없던 파일의 삭제 알림 같은 경우로, 지울 것도 없다.
+    // find로 먼저 확인해 이런 호출까지 id()로 풀을 키우지 않는다. 도장이 있으면(콜드 스캔이 읽은
+    // 빈 파일) 인터닝해서 찍어야 한다 — 그러지 않으면 재검증마다 도장이 없어 매번 "바뀜"으로 잡힌다.
     const known = this.pool.find(uri);
-    if (known === undefined && text === '') return;
+    if (known === undefined && text === '' && stamp === undefined) return;
     const file = known ?? this.pool.id(uri);
     const extract = extractUsages(uri, text, { pool: this.pool, file, hasCanonical: this.hasCanonical });
     this.applyExtracted(file, extract, stamp);
