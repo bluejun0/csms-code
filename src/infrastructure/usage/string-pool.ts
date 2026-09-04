@@ -20,8 +20,12 @@ export class StringPool {
     return this.ids.get(value);
   }
 
+  // 발급된 적 없는 id는 undefined를 조용히 돌려주지 않는다 — 그런 값이 SourceLocation.uri에
+  // undefined로 섞여 들어가면 "정의로 이동" 같은 결과가 그대로 침묵 속에 깨진다.
   text(id: StringId): string {
-    return this.texts[id];
+    const value = this.texts[id];
+    if (value === undefined) throw new Error(`문자열 풀에 없는 id: ${id}`);
+    return value;
   }
 
   get size(): number {

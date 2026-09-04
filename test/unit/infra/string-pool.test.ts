@@ -32,6 +32,12 @@ describe('StringPool', () => {
     const id = pool.id('있는값');
     assert.equal(pool.find('있는값'), id);
   });
+
+  it('발급된 적 없는 id로 text를 부르면 던진다(메시지에 id 포함)', () => {
+    const pool = new StringPool();
+    pool.id('a');
+    assert.throws(() => pool.text(42), /42/);
+  });
 });
 
 const gc = () => { for (let i = 0; i < 4; i++) (global as { gc?: () => void }).gc?.(); };
