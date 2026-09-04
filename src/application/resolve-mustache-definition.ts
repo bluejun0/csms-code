@@ -16,16 +16,18 @@ export class ResolveMustacheDefinition {
     if (t) {
       const ref = parseModuleRef(t.ref);
       if (!ref) return [];
-      return this.templates.locationsOf(ref.component, ref.name).map(location => ({ location }));
+      const origin = { line: t.line, column0: t.column, length: t.ref.length };
+      return this.templates.locationsOf(ref.component, ref.name).map(location => ({ location, origin }));
     }
     const s = itemWithKeyAt(refs.stringRefs, atIndex);
     if (!s) return [];
     const component = canonicalComponent(this.strings, s.component);
     const found = this.strings.getString(component, s.key);
     if (!found) return [];
+    const origin = { line: s.keyLine, column0: s.keyColumn, length: s.key.length };
     const out: DefinitionResult[] = [];
-    if (found.ko) out.push({ location: found.ko.location });
-    if (found.en) out.push({ location: found.en.location });
+    if (found.ko) out.push({ location: found.ko.location, origin });
+    if (found.en) out.push({ location: found.en.location, origin });
     return out;
   }
 }

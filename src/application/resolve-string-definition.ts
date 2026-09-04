@@ -10,9 +10,10 @@ export class ResolveStringDefinition {
     if (!call) return [];
     const s = this.strings.getString(call.component, call.key);
     if (!s) return [];
+    const origin = { line: call.keyLine, column0: call.keyColumn, length: call.key.length };
     const out: DefinitionResult[] = [];
-    if (s.ko) out.push({ location: s.ko.location });
-    if (s.en) out.push({ location: s.en.location });
+    if (s.ko) out.push({ location: s.ko.location, origin });
+    if (s.en) out.push({ location: s.en.location, origin });
     return out;
   }
 }
