@@ -310,19 +310,23 @@ describe('PhpUsageIndex — 파일 스탬프', () => {
       fs.writeFileSync(f, "<?php\nget_string('k', 'local_x');\n");
       const idx = new PhpUsageIndex(() => true);
       await idx.buildFromRoot(tmp);
-      const stamps = (idx as unknown as { stamps: Map<string, { size: number }> }).stamps;
-      assert.equal(stamps.size, 1);
-      assert.ok(stamps.get(f)!.size > 0);
+      // stamps는 파일 경로가 아니라 풀 id로 담긴다 — find로 id를 먼저 얻는다.
+      const internal = idx as unknown as { stamps: Map<number, { size: number }>; pool: { find(v: string): number | undefined } };
+      const fid = internal.pool.find(f)!;
+      assert.equal(internal.stamps.size, 1);
+      assert.ok(internal.stamps.get(fid)!.size > 0);
       idx.updateFileText(f, "<?php\n");
-      assert.equal(stamps.has(f), false, '다음 검증에서 다시 읽도록 표시');
+      assert.equal(internal.stamps.has(fid), false, '다음 검증에서 다시 읽도록 표시');
     } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
   });
 });
 
 describe('PhpUsageIndex — 스냅샷 왕복', () => {
-  it('빌드한 색인을 스냅샷으로 저장하고 되돌리면 네 조회가 모두 같다', async () => {
+  it('빌드한 색인을 스냅샷으로 저장하고 되돌리면 다섯 조회가 모두 같다', async () => {
     const src = new PhpUsageIndex(hasCanonical);
     await src.buildFromRoot(root);
+    // 픽스처 루트 자체에는 테이블 사용처가 없다 — 왕복에 테이블도 실리는지 보려면 하나 보태야 한다.
+    src.updateFileText(join(root, 'synthetic-table-usage.php'), "<?php\n$DB->get_record('local_ubattend_config', []);\n");
     const snap = src.toSnapshot(root, '9.9.9');
     assert.equal(snap.ext, '9.9.9');
     assert.equal(snap.root, root);
@@ -339,6 +343,8 @@ describe('PhpUsageIndex — 스냅샷 왕복', () => {
     assert.deepEqual(loaded.templateRefsOf('local_ubattend', 'setting'), src.templateRefsOf('local_ubattend', 'setting'));
     assert.deepEqual(loaded.amdRefsOf('local_ubattend', 'setting'), src.amdRefsOf('local_ubattend', 'setting'));
     assert.deepEqual(loaded.configRefsOf('local_ubattend', 'attendlimit'), src.configRefsOf('local_ubattend', 'attendlimit'));
+    assert.deepEqual(loaded.tableRefsOf('local_ubattend_config'), src.tableRefsOf('local_ubattend_config'));
+    assert.ok(src.tableRefsOf('local_ubattend_config').length >= 1, '보탠 테이블 사용처가 실제로 잡혀야 비교에 의미가 있다');
   });
   it('되돌린 색인도 증분 갱신이 된다(파일별 역인덱스가 복원됨)', async () => {
     const src = new PhpUsageIndex(hasCanonical);
@@ -366,6 +372,12 @@ describe('PhpUsageIndex — 백그라운드 검증', () => {
     const idx = new PhpUsageIndex(() => true);
     await idx.buildFromRoot(tmp);
     assert.equal(await idx.revalidateFromRoot(tmp), false);
+  });
+  it('빈 파일도 빌드 때 도장이 찍혀 재검증마다 다시 읽지 않는다', async () => {
+    write('empty.php', '');
+    const idx = new PhpUsageIndex(() => true);
+    await idx.buildFromRoot(tmp);
+    assert.equal(await idx.revalidateFromRoot(tmp), false, '빈 파일도 도장이 있어야 변경 없음으로 판정된다');
   });
   it('수정·추가·삭제를 반영한다', async () => {
     const idx = new PhpUsageIndex(() => true);
@@ -469,5 +481,79 @@ describe('PhpUsageIndex — 테이블 사용처 스냅샷', () => {
     const loaded = new PhpUsageIndex(() => true);
     loaded.loadSnapshot(snap, '/');
     assert.deepEqual(loaded.tableRefsOf('local_ubattend_config'), src.tableRefsOf('local_ubattend_config'));
+  });
+});
+
+describe('PhpUsageIndex — 풀 규율', () => {
+  it('없는 값으로 조회해도 풀이 자라지 않는다', () => {
+    const idx = new PhpUsageIndex(() => true);
+    idx.updateFileText('/a/b.php', `<?php echo get_string('k', 'local_x');`);
+    const before = (idx as unknown as { pool: { size: number } }).pool.size;
+    idx.referencesOf('없는컴포넌트', '없는키');
+    idx.templateRefsOf('없는컴포넌트', '없는이름');
+    idx.amdRefsOf('없는컴포넌트', '없는이름');
+    idx.configRefsOf('없는플러그인', '없는키');
+    idx.tableRefsOf('없는테이블');
+    assert.equal((idx as unknown as { pool: { size: number } }).pool.size, before);
+  });
+
+  it('아는 컴포넌트 + 모르는 키로 조회해도 풀이 자라지 않는다(둘째 find를 건너뛰지 않는지 확인)', () => {
+    // component가 undefined면 key는 아예 find를 부르지 않는다 — 그 경로만으로는 key 쪽에서
+    // find 대신 id를 쓰는 실수를 못 잡는다. component는 알고 key만 모르는 경우로 그 경로를 짚는다.
+    const idx = new PhpUsageIndex(() => true);
+    idx.updateFileText('/a/b.php', `<?php echo get_string('k', 'local_x');`);
+    const before = (idx as unknown as { pool: { size: number } }).pool.size;
+    assert.deepEqual(idx.referencesOf('local_x', '없는키'), []);
+    assert.equal((idx as unknown as { pool: { size: number } }).pool.size, before);
+  });
+
+  it('색인에 없는 경로를 빈 텍스트로 지워도 풀이 자라지 않는다(삭제 이벤트가 대상 밖 파일에도 오는 경우)', () => {
+    const idx = new PhpUsageIndex(() => true);
+    idx.updateFileText('/a/b.php', `<?php echo get_string('k', 'local_x');`);
+    const before = (idx as unknown as { pool: { size: number } }).pool.size;
+    for (let i = 0; i < 5000; i++) idx.updateFileText(`/deleted/${i}.png`, '');
+    assert.equal((idx as unknown as { pool: { size: number } }).pool.size, before);
+  });
+
+  it('파일을 다시 읽으면 옛 항목이 게시 목록에서 빠진다', () => {
+    const idx = new PhpUsageIndex(() => true);
+    idx.updateFileText('/a/b.php', `<?php echo get_string('old', 'local_x');`);
+    idx.updateFileText('/a/b.php', `<?php echo get_string('new', 'local_x');`);
+    assert.equal(idx.referencesOf('local_x', 'old').length, 0);
+    assert.equal(idx.referencesOf('local_x', 'new').length, 1);
+  });
+
+  it('두 파일이 같은 키를 쓰면 한 파일만 지워도 다른 파일은 남는다', () => {
+    const idx = new PhpUsageIndex(() => true);
+    idx.updateFileText('/a/one.php', `<?php echo get_string('k', 'local_x');`);
+    idx.updateFileText('/a/two.php', `<?php echo get_string('k', 'local_x');`);
+    idx.updateFileText('/a/one.php', '');
+    const found = idx.referencesOf('local_x', 'k');
+    assert.equal(found.length, 1);
+    assert.equal(found[0].uri, '/a/two.php');
+  });
+
+  it('빈 텍스트로 교체하면 게시 목록에 빈 배열이 남지 않는다(다섯 종류 모두)', () => {
+    const idx = new PhpUsageIndex(() => true);
+    const src = "<?php\n"
+      + "echo get_string('k', 'local_x');\n"
+      + "echo $OUTPUT->render_from_template('local_x/foo', []);\n"
+      + "$PAGE->requires->js_call_amd('local_x/mod', 'init');\n"
+      + "$a = get_config('local_x', 'apikey');\n"
+      + "$DB->insert_record('local_x_cfg', $d);\n";
+    idx.updateFileText('/a/many.php', src);
+    idx.updateFileText('/a/many.php', ''); // 파일 단위 교체 — 옛 항목을 모두 제거한다
+    const internal = idx as unknown as {
+      byComponentKey: Map<unknown, unknown>;
+      byTemplateRef: Map<unknown, unknown>;
+      byAmdRef: Map<unknown, unknown>;
+      byConfigId: Map<unknown, unknown>;
+      byTableName: Map<unknown, unknown>;
+    };
+    assert.equal(internal.byComponentKey.size, 0, '문자열 게시 목록(빈 컴포넌트 맵도 남지 않아야 함)');
+    assert.equal(internal.byTemplateRef.size, 0, '템플릿 게시 목록');
+    assert.equal(internal.byAmdRef.size, 0, 'AMD 게시 목록');
+    assert.equal(internal.byConfigId.size, 0, '설정 게시 목록');
+    assert.equal(internal.byTableName.size, 0, '테이블 게시 목록');
   });
 });
