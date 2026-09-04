@@ -15,7 +15,8 @@
 - **주석은 한국어로 쓴다.** 최소로 쓰되, 코드에서 읽어낼 수 없는 사실(불변식, 왜 대안이 안 되는지)은 예외로 남긴다.
 - **주석에 날짜·리뷰 참조·태스크 번호·백로그 번호를 쓰지 않는다.**
 - `PhpUsageIndex`의 공개 표면은 바꾸지 않는다: `isBuilt`, `buildFromRoot`, `updateFileText`, `toSnapshot`, `loadSnapshot`, `revalidateFromRoot`, `referencesOf`, `templateRefsOf`, `amdRefsOf`, `configRefsOf`, `tableRefsOf`. 조회 메서드는 계속 `SourceLocation[]`을 돌려준다.
-- 기존 테스트 73개(`php-usage-index` 48 · `usage-snapshot` 17 · `usage-index-cache` 8)가 그대로 통과해야 한다.
+- 기존 `php-usage-index`·`usage-snapshot`·`usage-index-cache` 테스트가 하나도 줄지 않고 그대로 통과해야 한다.
+  `.mocharc.json`의 `spec`이 고정이라 파일 하나만 돌리는 방법이 없다 — 전체 스위트 통과 수로 확인한다.
 - 도메인 스캐너(`scanJsCalls`, `scanMustache`)는 문자열을 돌려주는 그대로 둔다 — 도메인은 풀을 몰라야 한다. 풀 경계는 색인이 그 결과를 소비하는 자리다.
 - 스냅샷 포맷(`SNAPSHOT_VERSION = 2`)은 바꾸지 않는다. 저장·복원 시 경계에서 문자열↔id로 변환한다. 사용자의 기존 캐시가 무효화되지 않는다.
 - 모듈 스코프 정규식은 건드리지 않는다 — 대상 문자열을 붙잡지 않는 것이 측정으로 확인됐다.
@@ -484,8 +485,13 @@ private removeFileEntries(file: StringId): void {
 
 - [ ] **Step 1: 기존 테스트를 먼저 돌려 기준을 잡는다**
 
-Run: `npx mocha test/unit/infra/php-usage-index.test.ts`
-Expected: PASS (48 passing) — 이 48개가 이 태스크의 회귀 게이트다. 개수를 기록한다.
+`.mocharc.json`의 `spec`이 고정이라 파일 하나만 돌릴 수 없다. 전체 스위트로 기준을 잡는다.
+
+Run: `npm run test:unit`
+Expected: PASS. 통과 수를 기록한다 — 이 태스크가 끝났을 때 그 수보다 줄면 회귀다.
+
+빌드 시간 기준선도 함께 잡는다. 이 시점의 색인은 파일마다 임시 풀을 만들고 id를 문자열로 되돌리는
+과도기 상태라 빌드가 느리다(실측 13.6 s, 원래 6.3 s). 이 태스크가 그것을 되돌려야 한다.
 
 - [ ] **Step 2: 새 동작을 고정하는 테스트를 더한다**
 
