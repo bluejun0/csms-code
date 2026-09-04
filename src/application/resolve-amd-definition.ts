@@ -12,6 +12,7 @@ export class ResolveAmdDefinition {
     if (!call) return [];
     const ref = parseModuleRef(call.ref);
     if (!ref) return [];
-    return this.amd.locationsOf(ref.component, ref.name).map(location => ({ location }));
+    const origin = { line: call.refLine, column0: call.refColumn, length: call.ref.length };
+    return this.amd.locationsOf(ref.component, ref.name).map(location => ({ location, origin }));
   }
 }

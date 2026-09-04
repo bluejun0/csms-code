@@ -11,6 +11,7 @@ export class ResolveTemplateDefinition {
     if (!call) return [];
     const ref = parseTemplateRef(call.ref);
     if (!ref) return [];
-    return this.templates.locationsOf(ref.component, ref.name).map(location => ({ location }));
+    const origin = { line: call.refLine, column0: call.refColumn, length: call.ref.length };
+    return this.templates.locationsOf(ref.component, ref.name).map(location => ({ location, origin }));
   }
 }

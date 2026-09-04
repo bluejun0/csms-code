@@ -14,15 +14,17 @@ export class ResolveJsDefinition {
     if (s) {
       const found = this.strings.getString(s.component, s.key);
       if (!found) return [];
+      const origin = { line: s.keyLine, column0: s.keyColumn, length: s.key.length };
       const out: DefinitionResult[] = [];
-      if (found.ko) out.push({ location: found.ko.location });
-      if (found.en) out.push({ location: found.en.location });
+      if (found.ko) out.push({ location: found.ko.location, origin });
+      if (found.en) out.push({ location: found.en.location, origin });
       return out;
     }
     const t = calls.templateCalls.find(c => c.refIndex <= atIndex && atIndex <= c.refIndex + c.ref.length);
     if (!t) return [];
     const ref = parseTemplateRef(t.ref);
     if (!ref) return [];
-    return this.templates.locationsOf(ref.component, ref.name).map(location => ({ location }));
+    const origin = { line: t.refLine, column0: t.refColumn, length: t.ref.length };
+    return this.templates.locationsOf(ref.component, ref.name).map(location => ({ location, origin }));
   }
 }
