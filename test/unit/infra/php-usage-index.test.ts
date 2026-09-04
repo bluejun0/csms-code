@@ -487,6 +487,16 @@ describe('PhpUsageIndex — 풀 규율', () => {
     assert.equal((idx as unknown as { pool: { size: number } }).pool.size, before);
   });
 
+  it('아는 컴포넌트 + 모르는 키로 조회해도 풀이 자라지 않는다(둘째 find를 건너뛰지 않는지 확인)', () => {
+    // component가 undefined면 key는 아예 find를 부르지 않는다 — 그 경로만으로는 key 쪽에서
+    // find 대신 id를 쓰는 실수를 못 잡는다. component는 알고 key만 모르는 경우로 그 경로를 짚는다.
+    const idx = new PhpUsageIndex(() => true);
+    idx.updateFileText('/a/b.php', `<?php echo get_string('k', 'local_x');`);
+    const before = (idx as unknown as { pool: { size: number } }).pool.size;
+    assert.deepEqual(idx.referencesOf('local_x', '없는키'), []);
+    assert.equal((idx as unknown as { pool: { size: number } }).pool.size, before);
+  });
+
   it('파일을 다시 읽으면 옛 항목이 게시 목록에서 빠진다', () => {
     const idx = new PhpUsageIndex(() => true);
     idx.updateFileText('/a/b.php', `<?php echo get_string('old', 'local_x');`);
@@ -503,5 +513,29 @@ describe('PhpUsageIndex — 풀 규율', () => {
     const found = idx.referencesOf('local_x', 'k');
     assert.equal(found.length, 1);
     assert.equal(found[0].uri, '/a/two.php');
+  });
+
+  it('빈 텍스트로 교체하면 게시 목록에 빈 배열이 남지 않는다(다섯 종류 모두)', () => {
+    const idx = new PhpUsageIndex(() => true);
+    const src = "<?php\n"
+      + "echo get_string('k', 'local_x');\n"
+      + "echo $OUTPUT->render_from_template('local_x/foo', []);\n"
+      + "$PAGE->requires->js_call_amd('local_x/mod', 'init');\n"
+      + "$a = get_config('local_x', 'apikey');\n"
+      + "$DB->insert_record('local_x_cfg', $d);\n";
+    idx.updateFileText('/a/many.php', src);
+    idx.updateFileText('/a/many.php', ''); // 파일 단위 교체 — 옛 항목을 모두 제거한다
+    const internal = idx as unknown as {
+      byComponentKey: Map<unknown, unknown>;
+      byTemplateRef: Map<unknown, unknown>;
+      byAmdRef: Map<unknown, unknown>;
+      byConfigId: Map<unknown, unknown>;
+      byTableName: Map<unknown, unknown>;
+    };
+    assert.equal(internal.byComponentKey.size, 0, '문자열 게시 목록(빈 컴포넌트 맵도 남지 않아야 함)');
+    assert.equal(internal.byTemplateRef.size, 0, '템플릿 게시 목록');
+    assert.equal(internal.byAmdRef.size, 0, 'AMD 게시 목록');
+    assert.equal(internal.byConfigId.size, 0, '설정 게시 목록');
+    assert.equal(internal.byTableName.size, 0, '테이블 게시 목록');
   });
 });

@@ -88,13 +88,18 @@ export class PhpUsageIndex implements StringUsageRepository, TemplateUsageReposi
   }
 
   /** 게시 목록에서 한 파일의 항목만 걸러낸다 — 위치가 수치가 된 뒤로는 객체 동일성이 아니라
-   *  그 항목의 file id로 판별해야 한다. */
+   *  그 항목의 file id로 판별해야 한다. 걸러낸 배열이 비면 키째로 지운다 — 그러지 않으면 저장을
+   *  반복하거나 revalidateFromRoot를 돌릴 때마다 한 번이라도 등장했던 (component, key)·ref·id·이름마다
+   *  빈 배열이 맵에 영영 남는다. */
   private removeFileEntries(file: StringId): void {
     const prev = this.byFile.get(file);
     if (!prev) return;
     for (const e of prev.strings) {
       const keys = this.byComponentKey.get(e.component);
-      if (keys) removeFileFromMap(keys, e.key, file);
+      if (keys) {
+        removeFileFromMap(keys, e.key, file);
+        if (keys.size === 0) this.byComponentKey.delete(e.component);
+      }
     }
     for (const e of prev.templates) removeFileFromMap(this.byTemplateRef, e.ref, file);
     for (const e of prev.amd) removeFileFromMap(this.byAmdRef, e.ref, file);
@@ -254,10 +259,13 @@ function pushToMap<K, T>(map: Map<K, T[]>, key: K, e: T): void {
   if (arr) arr.push(e); else map.set(key, [e]);
 }
 
-/** 한 파일의 항목만 걸러낸 배열로 되돌려 놓는다. */
+/** 한 파일의 항목만 걸러낸 배열로 되돌려 놓는다. 다 걸러져 비면 키를 지운다 —
+ *  조회부는 이미 `?? []`로 없는 키를 빈 배열과 같게 다루므로 의미는 그대로다. */
 function removeFileFromMap<K, T extends { file: StringId }>(map: Map<K, T[]>, key: K, file: StringId): void {
   const arr = map.get(key);
-  if (arr) map.set(key, arr.filter(x => x.file !== file));
+  if (!arr) return;
+  const filtered = arr.filter(x => x.file !== file);
+  if (filtered.length) map.set(key, filtered); else map.delete(key);
 }
 
 /** 루트 재귀 소스 파일(.php/.js) 열거 — realpath 순환 가드, 채택 여부는 isIndexableSourcePath로 통일해
