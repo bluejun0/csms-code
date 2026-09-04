@@ -49,11 +49,10 @@ describe('StringPool 보유량', () => {
     if (typeof (global as { gc?: () => void }).gc !== 'function') this.skip();
     const pool = new StringPool();
     gc();
+    const before = process.memoryUsage().heapUsed;
     for (let i = 0; i < 5; i++) {
       poolCapturesFromBigText(pool, i);
     }
-    gc();
-    const before = process.memoryUsage().heapUsed;
     gc();
     const retained = process.memoryUsage().heapUsed - before;
     assert.ok(retained < 1024 * 1024,
