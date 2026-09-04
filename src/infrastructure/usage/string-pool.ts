@@ -9,7 +9,9 @@ export class StringPool {
   id(value: string): StringId {
     const known = this.ids.get(value);
     if (known !== undefined) return known;
-    const owned = Buffer.from(value, 'utf8').toString('utf8');
+    // utf8 왕복은 홀로 남은 서로게이트를 U+FFFD로 바꿔버린다 — 그런 값을 담을 수 있는 건
+    // 파일 경로뿐이라, 결과는 조용히 존재하지 않는 경로가 된다. utf16le는 그대로 왕복한다.
+    const owned = Buffer.from(value, 'utf16le').toString('utf16le');
     const id = this.texts.length;
     this.texts.push(owned);
     this.ids.set(owned, id);

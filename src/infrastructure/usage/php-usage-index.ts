@@ -12,6 +12,7 @@ import { StringId, StringPool } from './string-pool';
 import { ConfigUsage, RefUsage, StringUsage, TableUsage, UsageExtract, emptyExtract } from './usage-entries';
 import { SKIP_DIRS, isIndexableSourcePath, extractUsages } from './extract-usages';
 
+// 판정 자체는 extract-usages로 옮겼지만, 확장 쪽 import 경로는 그대로 두려고 여기서 다시 내보낸다.
 export { isIndexableSourcePath } from './extract-usages';
 
 const YIELD_EVERY = 200;
@@ -26,7 +27,8 @@ interface Scan { files: string[]; failures: number }
 
 /** 문자열·템플릿·AMD·설정·테이블 사용처의 워크스페이스 색인 — PHP·JS·mustache를 한 번의 스캔에서 함께 훑는다.
  *  lazy 빌드 + 저장/삭제 시 파일 단위 증분. 문자열은 모두 pool을 지나 id로 보관한다 — 정규식 캡처
- *  조각이 그대로 붙잡혀 파일 전체를 물고 늘어지는 일이 타입 수준에서 불가능해진다. */
+ *  조각을 문자열 그대로 저장 자리에 넣는 것은 타입 오류로 막힌다(StringId는 number 별칭이라
+ *  실제로 발급된 id인지까지 강제하지는 않는다). */
 export class PhpUsageIndex implements StringUsageRepository, TemplateUsageRepository, AmdUsageRepository, ConfigUsageRepository, TableUsageRepository {
   private pool = new StringPool();
   private byFile = new Map<StringId, UsageExtract>();
@@ -151,7 +153,9 @@ export class PhpUsageIndex implements StringUsageRepository, TemplateUsageReposi
   }
 
   /** 색인을 빈 상태로 — 전체 빌드·복원이 앞선 내용을 물려받지 않게 한다. 풀도 새로 만든다 —
-   *  그러지 않으면 재빌드마다 옛 풀의 문자열이 쓰이지 않아도 계속 쌓인다. */
+   *  그러지 않으면 재빌드마다 옛 풀의 문자열이 쓰이지 않아도 계속 쌓인다.
+   *  중간에 await를 두면 안 된다 — 그 틈에 조회(hover·CodeLens)가 들어오면 옛 풀의 id로
+   *  새 맵을 찾거나 그 반대가 되어 pool.text()가 발급된 적 없는 id에 대해 던진다. */
   private reset(): void {
     this.pool = new StringPool();
     this.byComponentKey = new Map(); this.byFile = new Map();
