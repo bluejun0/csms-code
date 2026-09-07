@@ -1,3 +1,4 @@
+import { literalString } from './literal-string';
 import { configFunctionKind } from '../../../domain/code-analysis/config-functions';
 import { QueryFragment } from '../query-fragment';
 import { DYNAMIC_COMPONENT_ARG, componentRefOf } from './strings';
@@ -37,11 +38,11 @@ function dynamicConfig(pattern: string, kind: 'get' | 'set'): QueryFragment {
 
 export const configFragments: readonly QueryFragment[] = [
   literalConfig(`(function_call_expression function: (name) @fn arguments: (arguments
-    . (argument (string (string_content) @plugin)) . (argument (string (string_content) @key))))`, 'get'),
+    . (argument ${literalString('plugin')}) . (argument ${literalString('key')})))`, 'get'),
   literalConfig(`(function_call_expression function: (name) @fn arguments: (arguments
-    . (argument (string (string_content) @key)) . (argument) . (argument (string (string_content) @plugin))))`, 'set'),
+    . (argument ${literalString('key')}) . (argument) . (argument ${literalString('plugin')})))`, 'set'),
   dynamicConfig(`(function_call_expression function: (name) @fn arguments: (arguments
-    . (argument ${DYNAMIC_COMPONENT_ARG}) . (argument (string (string_content) @key))))`, 'get'),
+    . (argument ${DYNAMIC_COMPONENT_ARG}) . (argument ${literalString('key')})))`, 'get'),
   dynamicConfig(`(function_call_expression function: (name) @fn arguments: (arguments
-    . (argument (string (string_content) @key)) . (argument) . (argument ${DYNAMIC_COMPONENT_ARG})))`, 'set'),
+    . (argument ${literalString('key')}) . (argument) . (argument ${DYNAMIC_COMPONENT_ARG})))`, 'set'),
 ];

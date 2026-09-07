@@ -1,3 +1,4 @@
+import { literalString } from './literal-string';
 import { Captures, FactSink, QueryFragment } from '../query-fragment';
 
 const BRACED_NAME = /\{(\w+)\}/g;
@@ -47,7 +48,7 @@ const dbFirstArgument: QueryFragment = {
   pattern: `(member_call_expression
     object: (variable_name (name) @recv)
     name: (name) @method
-    arguments: (arguments . (argument (string (string_content) @table))))`,
+    arguments: (arguments . (argument ${literalString('table')})))`,
   collect: (at, into) => {
     if (at.text('recv') !== 'DB') return;
     if (at.text('method').startsWith(SQL_HELPER_PREFIX)) return;

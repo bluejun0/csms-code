@@ -1,3 +1,4 @@
+import { literalString } from './literal-string';
 import { QueryFragment } from '../query-fragment';
 
 const WRITE_METHODS = new Set(['insert_record', 'update_record']);
@@ -9,7 +10,7 @@ const assignWithTable: QueryFragment = {
     right: (member_call_expression
       object: (variable_name (name) @recv)
       name: (name) @method
-      arguments: (arguments . (argument (string (string_content) @table)))))`,
+      arguments: (arguments . (argument ${literalString('table')}))))`,
   collect: (at, into) => into.add('assignments', {
     varName: at.text('var'), receiver: at.text('recv'), method: at.text('method'),
     tableArg: at.text('table'), index: at.index('var'), scope: at.scope('var'),
@@ -51,7 +52,7 @@ const dataArg: QueryFragment = {
   produces: ['dataArgBindings'],
   pattern: `(member_call_expression
     name: (name) @method
-    arguments: (arguments . (argument (string (string_content) @table)) . (argument (variable_name (name) @datavar))))`,
+    arguments: (arguments . (argument ${literalString('table')}) . (argument (variable_name (name) @datavar))))`,
   collect: (at, into) => {
     const method = at.text('method');
     if (!WRITE_METHODS.has(method)) return;
