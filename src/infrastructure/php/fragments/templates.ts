@@ -1,3 +1,4 @@
+import { literalString } from './literal-string';
 import { QueryFragment } from '../query-fragment';
 
 const TEMPLATE_METHOD = 'render_from_template';
@@ -10,7 +11,7 @@ const firstStringArgument: QueryFragment = {
   produces: ['templateCalls', 'amdCalls'],
   pattern: `(member_call_expression
     name: (name) @method
-    arguments: (arguments . (argument (string (string_content) @ref))))`,
+    arguments: (arguments . (argument ${literalString('ref')})))`,
   collect: (at, into) => {
     const method = at.text('method');
     if (method !== TEMPLATE_METHOD && method !== AMD_METHOD) return;

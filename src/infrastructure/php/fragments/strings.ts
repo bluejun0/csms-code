@@ -1,3 +1,4 @@
+import { literalString } from './literal-string';
 import { ComponentRef } from '../../../domain/code-analysis/facts';
 import { StringCallForm, effectiveComponent, stringClassForm, stringFunctionForm } from '../../../domain/code-analysis/string-functions';
 import { Captures, QueryFragment } from '../query-fragment';
@@ -61,7 +62,7 @@ function dynamicCall(pattern: string): QueryFragment {
 
 const literalAssignment: QueryFragment = {
   produces: ['literalAssignments'],
-  pattern: '(assignment_expression left: (variable_name (name) @var) right: (string (string_content) @val))',
+  pattern: `(assignment_expression left: (variable_name (name) @var) right: ${literalString('val')})`,
   collect: (at, into) => into.add('literalAssignments', {
     varName: at.text('var'), value: at.text('val'), index: at.index('var'), scope: at.scope('var'),
   }),
@@ -70,7 +71,7 @@ const literalAssignment: QueryFragment = {
 const propertyLiteral: QueryFragment = {
   produces: ['propertyLiterals'],
   pattern: `(property_declaration (property_element
-    (variable_name (name) @prop) (string (string_content) @value)))`,
+    (variable_name (name) @prop) ${literalString('value')}))`,
   collect: (at, into) => into.add('propertyLiterals', {
     property: at.text('prop'), value: at.text('value'), index: at.index('prop'),
   }),
@@ -78,7 +79,7 @@ const propertyLiteral: QueryFragment = {
 
 const constLiteral: QueryFragment = {
   produces: ['constLiterals'],
-  pattern: '(const_declaration (const_element (name) @cname (string (string_content) @cval)))',
+  pattern: `(const_declaration (const_element (name) @cname ${literalString('cval')}))`,
   collect: (at, into) => into.add('constLiterals', {
     name: at.text('cname'), value: at.text('cval'), index: at.index('cname'),
   }),
@@ -88,28 +89,28 @@ export const stringFragments: readonly QueryFragment[] = [
   literalCall(`(function_call_expression
     function: (name) @fn
     arguments: (arguments
-      . (argument (string (string_content) @key))
-      . (argument (string (string_content) @component))))`, stringFunctionForm, 'fn', true),
+      . (argument ${literalString('key')})
+      . (argument ${literalString('component')})))`, stringFunctionForm, 'fn', true),
   // 한 인자 호출 — 끝의 anchor(.)가 인자 하나짜리 호출만 매칭시킨다. 없으면 두 인자 호출에도
   // 매칭되어 기본 컴포넌트로 잘못된 팩트가 하나 더 생긴다.
   literalCall(`(function_call_expression
     function: (name) @fn
-    arguments: (arguments . (argument (string (string_content) @key)) .))`, stringFunctionForm, 'fn', false),
+    arguments: (arguments . (argument ${literalString('key')}) .))`, stringFunctionForm, 'fn', false),
   literalCall(`(object_creation_expression
     [(name) @cls (qualified_name (name) @cls)]
     (arguments
-      . (argument (string (string_content) @key))
-      . (argument (string (string_content) @component))))`, stringClassForm, 'cls', true),
+      . (argument ${literalString('key')})
+      . (argument ${literalString('component')})))`, stringClassForm, 'cls', true),
   literalCall(`(object_creation_expression
     [(name) @cls (qualified_name (name) @cls)]
-    (arguments . (argument (string (string_content) @key)) .))`, stringClassForm, 'cls', false),
+    (arguments . (argument ${literalString('key')}) .))`, stringClassForm, 'cls', false),
   dynamicCall(`(function_call_expression function: (name) @fn arguments: (arguments
-    . (argument (string (string_content) @key)) . (argument (variable_name (name) @dynvar))))`),
+    . (argument ${literalString('key')}) . (argument (variable_name (name) @dynvar))))`),
   dynamicCall(`(function_call_expression function: (name) @fn arguments: (arguments
-    . (argument (string (string_content) @key))
+    . (argument ${literalString('key')})
     . (argument (member_access_expression object: (variable_name) @dynrecv name: (name) @dynprop))))`),
   dynamicCall(`(function_call_expression function: (name) @fn arguments: (arguments
-    . (argument (string (string_content) @key)) . (argument (class_constant_access_expression) @dynconst)))`),
+    . (argument ${literalString('key')}) . (argument (class_constant_access_expression) @dynconst)))`),
   literalAssignment,
   propertyLiteral,
   constLiteral,
