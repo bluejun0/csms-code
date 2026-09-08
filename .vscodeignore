@@ -2,11 +2,16 @@ src/**
 test/**
 dist-test/**
 **/*.map
-**/tsconfig.json
+**/tsconfig*.json
 esbuild.mjs
 .eslintrc.json
 node_modules/**
 package-lock.json
+.github/**
+.gitignore
+.mocharc.json
+docs/manual-verification.md
+docs/PHASE2-BACKLOG.md
 .superpowers/**
 docs/superpowers/**
 # vsce's ignore engine is NOT gitignore-style (no last-match-wins): a "!" pattern
