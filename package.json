@@ -2,7 +2,7 @@
   "name": "csms-code",
   "displayName": "CSMS Code",
   "description": "CSMS/Moodle 개발 지원 — DB 컬럼·언어 문자열·템플릿·AMD 모듈·SQL 테이블·전역 인텔리전스",
-  "version": "0.23.2",
+  "version": "0.24.0",
   "publisher": "bluesoft",
   "license": "MIT",
   "repository": {
@@ -105,6 +105,11 @@
           "type": "boolean",
           "default": true,
           "description": "install.xml의 <TABLE> 선언 줄 위에 \"사용 N건\" 버튼(CodeLens)을 표시합니다. 클릭하면 그 자리에서 그 테이블을 쓰는 SQL·$DB 호출 목록이 열립니다."
+        },
+        "csmscode.checkForUpdates": {
+          "type": "boolean",
+          "default": true,
+          "description": "하루에 한 번 GitHub 릴리스를 확인해 새 버전이 있으면 알립니다. 조회에 실패하면 아무 것도 표시하지 않습니다."
         }
       }
     },
