@@ -5,6 +5,7 @@ import { StringIndexStore } from './infrastructure/lang/string-index-store';
 import { TreeSitterPhpSyntax } from './infrastructure/php/php-syntax';
 import { CachedPhpSyntax } from './infrastructure/php/facts-cache';
 import { pluginTypeDirsAsync, clearPluginTypeCache } from './infrastructure/workspace/plugin-type-map';
+import { registerUpdateCheck } from './presentation/update-notifier';
 import { findMoodleRoot, componentOfLangFile, componentOfTemplateFile, componentOfInstallXmlFile, componentOfAmdFile, langFileMetaOf } from './infrastructure/workspace/moodle-root-resolver';
 import { RecordTypeInference } from './domain/code-analysis/record-type-inference';
 import { ValidateRecordColumns } from './application/validate-record-columns';
@@ -86,6 +87,8 @@ import { JsDefinitionProvider } from './presentation/providers/js-definition-pro
 import { JsHoverProvider } from './presentation/providers/js-hover-provider';
 
 export async function activate(ctx: vscode.ExtensionContext) {
+  registerUpdateCheck(ctx);
+
   const folder = vscode.workspace.workspaceFolders?.[0];
   if (!folder) return;
   const subs = vscode.workspace.getConfiguration('csmscode').get<string[]>('detectInSubfolders', ['moodle']);
