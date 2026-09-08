@@ -8,25 +8,34 @@ export interface UpdateCheckState {
   skippedVersion?: string;
 }
 
-export interface UpdateCheckResult {
-  /** 조회를 실제로 시도했는가 — 호출부가 마지막 확인 시각을 갱신할지 정한다. */
-  checked: boolean;
-  notify?: ReleaseInfo;
+/** 자동 확인은 available만 보여 주고 나머지는 침묵한다. 수동 확인은 전부 답으로 쓴다. */
+export type UpdateCheckResult =
+  | { kind: 'throttled' }
+  | { kind: 'failed' }
+  | { kind: 'upToDate' }
+  | { kind: 'skipped'; release: ReleaseInfo }
+  | { kind: 'available'; release: ReleaseInfo };
+
+export interface UpdateCheckOptions {
+  /** 하루 제한을 적용할지. 수동 호출은 false — 눌렀으면 지금 확인해야 한다. */
+  throttle: boolean;
 }
 
 export class CheckForUpdate {
   constructor(private readonly source: ReleaseSource, private readonly current: string) {}
 
-  async run(state: UpdateCheckState, now: number): Promise<UpdateCheckResult> {
-    if (state.lastCheckedAt !== undefined && now - state.lastCheckedAt < CHECK_INTERVAL_MS) {
-      return { checked: false };
+  async run(state: UpdateCheckState, now: number, opts: UpdateCheckOptions): Promise<UpdateCheckResult> {
+    if (opts.throttle && state.lastCheckedAt !== undefined && now - state.lastCheckedAt < CHECK_INTERVAL_MS) {
+      return { kind: 'throttled' };
     }
-    // 조회 실패는 알림도 오류도 만들지 않는다 — 오프라인·사내망에서 조용해야 한다.
     let latest: ReleaseInfo | undefined;
-    try { latest = await this.source.latest(); } catch { return { checked: true }; }
-    if (!latest) return { checked: true };
-    if (!isNewerVersion(latest.version, this.current)) return { checked: true };
-    if (state.skippedVersion && !isNewerVersion(latest.version, state.skippedVersion)) return { checked: true };
-    return { checked: true, notify: latest };
+    try { latest = await this.source.latest(); } catch { return { kind: 'failed' }; }
+    // 릴리스를 못 읽은 것은 최신이라는 근거가 아니다.
+    if (!latest) return { kind: 'failed' };
+    if (!isNewerVersion(latest.version, this.current)) return { kind: 'upToDate' };
+    if (opts.throttle && state.skippedVersion && !isNewerVersion(latest.version, state.skippedVersion)) {
+      return { kind: 'skipped', release: latest };
+    }
+    return { kind: 'available', release: latest };
   }
 }

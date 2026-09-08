@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { CheckForUpdate, UpdateCheckState } from '../application/check-for-update';
+import { CheckForUpdate, UpdateCheckResult, UpdateCheckState } from '../application/check-for-update';
 import { ReleaseInfo } from '../domain/updates/release';
 import { GitHubReleaseSource, repoSlugOf } from '../infrastructure/updates/github-release-source';
 
@@ -10,21 +10,44 @@ const STATE_KEY = 'csmscode.updateCheck';
 const INSTALL_COMMAND = 'workbench.extensions.installExtension';
 const NOTES = '릴리스 노트', INSTALL = '지금 설치', OPEN = '릴리스 페이지 열기', SKIP = '이 버전 건너뛰기';
 
-/** 시작을 막지 않도록 기다리지 않는다. 조회 실패는 CheckForUpdate가 침묵으로 흡수한다. */
 export function registerUpdateCheck(ctx: vscode.ExtensionContext): void {
+  ctx.subscriptions.push(vscode.commands.registerCommand('csmscode.checkForUpdatesNow', () => manual(ctx)));
   if (!vscode.workspace.getConfiguration('csmscode').get<boolean>('checkForUpdates', true)) return;
-  void check(ctx).catch(() => undefined);
+  // 시작을 막지 않는다. 자동 확인은 available 말고는 아무 것도 표시하지 않는다.
+  void automatic(ctx).catch(() => undefined);
 }
 
-async function check(ctx: vscode.ExtensionContext): Promise<void> {
+async function automatic(ctx: vscode.ExtensionContext): Promise<void> {
+  const outcome = await check(ctx, { throttle: true });
+  if (outcome?.result.kind === 'available') await present(ctx, outcome.state, outcome.result.release);
+}
+
+async function manual(ctx: vscode.ExtensionContext): Promise<void> {
+  const outcome = await vscode.window.withProgress(
+    { location: vscode.ProgressLocation.Window, title: 'CSMS Code 업데이트 확인 중' },
+    () => check(ctx, { throttle: false }));
+
+  if (!outcome) {
+    vscode.window.showWarningMessage('CSMS Code: 저장소 정보를 읽을 수 없어 업데이트를 확인하지 못했습니다.');
+    return;
+  }
+  const { state, result, current } = outcome;
+  if (result.kind === 'available') await present(ctx, state, result.release);
+  else if (result.kind === 'upToDate') vscode.window.showInformationMessage(`CSMS Code ${current}이 최신 버전입니다.`);
+  else vscode.window.showWarningMessage('CSMS Code: 업데이트를 확인할 수 없습니다. 네트워크를 확인해 주세요.');
+}
+
+interface Outcome { state: UpdateCheckState; result: UpdateCheckResult; current: string }
+
+async function check(ctx: vscode.ExtensionContext, opts: { throttle: boolean }): Promise<Outcome | undefined> {
   const pkg = ctx.extension?.packageJSON as { version?: string; repository?: { url?: string } } | undefined;
   const slug = repoSlugOf(pkg?.repository?.url);
-  if (!slug || !pkg?.version) return;
+  if (!slug || !pkg?.version) return undefined;
 
   const state = ctx.globalState.get<UpdateCheckState>(STATE_KEY, {});
-  const result = await new CheckForUpdate(new GitHubReleaseSource(slug), pkg.version).run(state, Date.now());
-  if (result.checked) await ctx.globalState.update(STATE_KEY, { ...state, lastCheckedAt: Date.now() });
-  if (result.notify) await present(ctx, state, result.notify);
+  const result = await new CheckForUpdate(new GitHubReleaseSource(slug), pkg.version).run(state, Date.now(), opts);
+  if (result.kind !== 'throttled') await ctx.globalState.update(STATE_KEY, { ...state, lastCheckedAt: Date.now() });
+  return { state, result, current: pkg.version };
 }
 
 async function present(ctx: vscode.ExtensionContext, state: UpdateCheckState, release: ReleaseInfo): Promise<void> {
