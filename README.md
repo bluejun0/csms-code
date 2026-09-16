@@ -93,15 +93,19 @@ CSMS/Moodle(코스모스, `*lxp`/`*lms` 계열) 개발을 위한 VSCode 확장�
 
 - **7. 플러그인 탐색기**
 
-  왼쪽 액티비티 바의 CSMS 아이콘을 누르면 플러그인(컴포넌트)마다 네 가지를 목록으로 볼 수 있습니다.
+  왼쪽 액티비티 바의 CSMS 아이콘을 누르면 **테이블·문자열·API·템플릿** 뷰 넷이 있습니다.
+  보고 싶은 것만 펼치면 됩니다.
 
   ```
-  local_ubattend
-  ├─ 테이블 (16)        → install.xml의 <TABLE> 줄로 이동
-  ├─ 문자열 (487)       → lang 파일의 $string 줄로 이동
-  ├─ API (0)            → db/services.php의 선언 줄로 이동
-  └─ 템플릿 (53)        → .mustache 파일로 이동
+  ▾ 테이블
+     ├─ local_ubattend                16
+     │    ├─ local_ubattend_classperiod   컬럼 17
+     │    └─ …                                  → install.xml의 <TABLE> 줄로 이동
+     └─ local_coursemos               1
+  ▸ 문자열      → lang 파일의 $string 줄로 이동 (한국어가 있으면 한국어 값을 함께 표시)
+  ▸ API         → db/services.php의 선언 줄로 이동 (read/write와 설명을 함께 표시)
+  ▸ 템플릿      → .mustache 파일로 이동
   ```
 
-  API는 `db/services.php`의 `$functions` 선언에서 읽고, 함수 이름 옆에 `read`/`write`와 설명을 함께 보여줍니다.
+  각 뷰에는 **그 카테고리에 항목이 있는 플러그인만** 나오고, 이름 옆에 개수가 붙습니다.
   코어(`core`, `core_*`)는 목록 뒤로 밀려 커스텀 플러그인이 먼저 보입니다.

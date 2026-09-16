@@ -6,16 +6,10 @@ import { TemplateCatalog } from '../domain/template-model/ports/template-catalog
 
 export type PluginCategory = 'tables' | 'strings' | 'api' | 'templates';
 
-export interface CategoryNode { category: PluginCategory; title: string; count: number; }
+export interface ComponentNode { component: string; count: number; }
 export interface PluginItem { label: string; detail: string; location: SourceLocation; }
 
-const TITLES: Record<PluginCategory, string> = {
-  tables: '테이블', strings: '문자열', api: 'API', templates: '템플릿',
-};
-const ORDER: PluginCategory[] = ['tables', 'strings', 'api', 'templates'];
-
-/** 플러그인 탐색기의 세 단계(컴포넌트 → 카테고리 → 항목)를 조립한다.
- *  단계마다 물어본 것만 계산한다 — 컴포넌트 400개를 미리 펼치면 활성화가 멈춘다. */
+/** 카테고리 뷰 네 개(테이블·문자열·API·템플릿)의 두 단계(컴포넌트 → 항목)를 조립한다. */
 export class ListPluginTree {
   constructor(
     private tables: TableCatalog,
@@ -24,23 +18,23 @@ export class ListPluginTree {
     private templates: TemplateCatalog,
   ) {}
 
-  /** 네 색인의 합집합. 코어는 뒤로 민다 — 찾는 쪽은 거의 언제나 커스텀 플러그인이다. */
-  components(): string[] {
-    const all = new Set([
+  /** 그 카테고리에 **항목이 있는** 컴포넌트만. 뷰 하나가 카테고리 하나이므로 0건은 소음이다 —
+   *  테이블 뷰에 테이블 없는 플러그인 수백 개를 늘어놓을 이유가 없다.
+   *  코어는 뒤로 민다 — 찾는 쪽은 거의 언제나 커스텀 플러그인이다.
+   *  개수는 항목을 실제로 만들어 센다. 실측(컴포넌트 591개) 최악 24ms(템플릿)라 따로 싼 경로를
+   *  두면 표시와 개수가 어긋날 위험만 생긴다. */
+  componentsIn(category: PluginCategory): ComponentNode[] {
+    const sorted = [...this.allComponents()].sort();
+    return [...sorted.filter(c => !isCore(c)), ...sorted.filter(isCore)]
+      .map(component => ({ component, count: this.items(component, category).length }))
+      .filter(c => c.count > 0);
+  }
+
+  private allComponents(): Set<string> {
+    return new Set([
       ...this.tables.components(), ...this.strings.components(),
       ...this.services.components(), ...this.templates.components(),
     ]);
-    const sorted = [...all].sort();
-    return [...sorted.filter(c => !isCore(c)), ...sorted.filter(isCore)];
-  }
-
-  /** 넷을 항상 같은 순서로 준다. 0건도 적는다 — 빼면 없는 건지 아직 안 읽은 건지 구분되지 않는다. */
-  categories(component: string): CategoryNode[] {
-    return ORDER.map(category => ({
-      category,
-      title: TITLES[category],
-      count: this.items(component, category).length,
-    }));
   }
 
   items(component: string, category: PluginCategory): PluginItem[] {

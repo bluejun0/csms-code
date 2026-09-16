@@ -85,13 +85,14 @@
 74. **`install.xml`을 열어 둔 채로 창을 새로 열어** 확인한다(선언 색인이 비동기라 이 순서가 중요하다). `local/ubattend/db/install.xml`의 `<TABLE NAME="local_ubattend_config">` 줄에서 Shift+F12 → 그 테이블을 쓰는 SQL `{local_ubattend_config}`과 `$DB->` 호출이 모두 나온다. 그 줄 위 "사용 N건" 버튼도 같은 목록을 연다. `<FIELD>` 줄에서는 아무 일도 없어야 함(테이블 이름만)
 75. `install.xml`에 `<TABLE>`을 새로 추가해 저장 → 그 줄에 버튼이 바로 붙고, 이미 그 이름을 쓰는 SQL이 있으면 개수가 잡힌다. `csmscode.tables.codeLens=false`로 버튼이 사라진다
 
-76. 왼쪽 액티비티 바에 CSMS 아이콘이 보인다. 누르면 "플러그인" 뷰가 열리고 컴포넌트 목록이 나온다. 목록 **뒤쪽**에 `core`·`core_*`가 모여 있고 앞쪽은 `local_*`·`mod_*`·`theme_*`다
-77. `local_ubattend`를 펼치면 테이블·문자열·API·템플릿 넷이 **항상** 보이고, 없는 것은 `API (0)`처럼 0으로 적히며 펼침 화살표가 없다
-78. 테이블 항목 클릭 → 그 플러그인 `install.xml`의 `<TABLE>` 줄로 이동. 문자열 항목 클릭 → `lang/ko`(없으면 `lang/en`)의 `$string` 줄로 이동. 템플릿 항목 클릭 → `.mustache` 파일이 열린다
-79. `db/services.php`가 있는 플러그인(예: `local_coursemos`)의 API를 펼치면 함수 이름 옆에 `read`/`write`와 한국어 설명이 붙고, **선언 순서 그대로** 나온다. 항목 클릭 → `services.php`의 그 선언 줄로 이동
-80. `db/services.php`만 있고 테이블도 문자열도 없는 플러그인이 컴포넌트 목록에 나타난다
-81. `db/services.php`에 함수를 추가하고 저장 → 잠시 뒤 트리의 API 개수가 늘어난다. 파일을 지우면 그 컴포넌트의 API가 0이 된다
-82. 컴포넌트가 수백 개인 저장소에서 뷰를 열어도 편집이 멈추지 않는다(펼치기 전에는 항목을 계산하지 않음). 뷰에 포커스를 두고 타이핑하면 VS Code 기본 찾기로 컴포넌트를 걸러낼 수 있다
+76. 왼쪽 액티비티 바에 CSMS 아이콘이 보인다. 누르면 **테이블·문자열·API·템플릿** 뷰 넷이 세로로 놓여 있다. 하나만 펼치고 나머지를 접어 두면 그 상태가 창을 다시 열어도 유지된다
+77. 테이블 뷰를 펼치면 **테이블이 있는 플러그인만** 나오고 이름 옆에 개수가 붙는다(예: `local_ubattend  16개`). 테이블이 없는 플러그인(`local_ubllmapi` 등)은 이 뷰에 아예 없다
+78. 각 뷰 목록의 **뒤쪽**에 `core`·`core_*`가 모여 있고 앞쪽은 `local_*`·`mod_*`·`theme_*`다
+79. 항목 클릭 → 테이블은 `install.xml`의 `<TABLE>` 줄, 문자열은 `lang/ko`(없으면 `lang/en`)의 `$string` 줄, 템플릿은 `.mustache` 파일이 열린다
+80. 문자열 뷰에서 `local_ubattend`를 펼치면 키 옆에 **한국어 값**이 붙는다(예: `activity_cmsid  학습활동 고유번호`). 코어 컴포넌트는 저장소에 `lang/ko`가 없어 영어로 나온다
+81. API 뷰에 `db/services.php`가 있는 플러그인만 나온다(`local_coursemos`·`local_ubllmapi` 등). 펼치면 함수 이름 옆에 `read`/`write`와 한국어 설명이 붙고 **선언 순서 그대로**다. 클릭 → `services.php`의 그 선언 줄
+82. `db/services.php`에 함수를 추가하고 저장 → 잠시 뒤 API 뷰의 개수가 늘어난다. 파일을 지우면 그 플러그인이 API 뷰에서 사라진다
+83. 컴포넌트가 수백 개인 저장소에서 네 뷰를 모두 펼쳐도 편집이 멈추지 않는다. 뷰에 포커스를 두고 타이핑하면 VS Code 기본 찾기로 컴포넌트를 걸러낼 수 있다
 
 ## 알려진 제한 (Known limitations)
 

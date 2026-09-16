@@ -86,7 +86,7 @@ import { ListResolvedJsCalls } from './application/list-resolved-js-calls';
 import { JsDefinitionProvider } from './presentation/providers/js-definition-provider';
 import { JsHoverProvider } from './presentation/providers/js-hover-provider';
 import { ServiceIndex } from './infrastructure/services/service-index';
-import { ListPluginTree } from './application/list-plugin-tree';
+import { ListPluginTree, PluginCategory } from './application/list-plugin-tree';
 import { PluginExplorerProvider } from './presentation/providers/plugin-explorer-provider';
 
 export async function activate(ctx: vscode.ExtensionContext) {
@@ -375,13 +375,18 @@ export async function activate(ctx: vscode.ExtensionContext) {
     tables: store.allTableNames().length, strings: strings.size(),
     templates: templates.size(), amd: amd.size(),
   });
-  // 액티비티 바의 플러그인 탐색기 — 네 색인을 컴포넌트별로 열거한다
-  const explorer = new PluginExplorerProvider(new ListPluginTree(store, strings, services, templates));
-  ctx.subscriptions.push(explorer, vscode.window.registerTreeDataProvider('csmscode.pluginExplorer', explorer));
+  // 액티비티 바의 카테고리 뷰 넷 — 같은 조립기를 카테고리만 바꿔 등록한다.
+  // 뷰 id는 카테고리 이름 그대로다(package.json의 `csmscode.tables` 등).
+  const pluginTree = new ListPluginTree(store, strings, services, templates);
+  const explorers = (['tables', 'strings', 'api', 'templates'] as PluginCategory[]).map(category => {
+    const explorer = new PluginExplorerProvider(pluginTree, category);
+    ctx.subscriptions.push(explorer, vscode.window.registerTreeDataProvider(`csmscode.${category}`, explorer));
+    return explorer;
+  });
 
   // 렌즈도 함께 — install.xml 버튼은 대상 자체가 비동기로 만들어지는 선언 색인에서 나오므로
   // 빌드가 끝난 뒤 다시 그려주지 않으면 버튼이 아예 뜨지 않는다.
-  const refreshAll = () => { diagnostics.refreshAll(); highlight.refreshAll(); refreshLenses(); explorer.refresh(); };
+  const refreshAll = () => { diagnostics.refreshAll(); highlight.refreshAll(); refreshLenses(); for (const e of explorers) e.refresh(); };
   // 증분 갱신도 숫자에 반영한다 — 멈춰 있는 숫자는 확장이 죽은 것처럼 보인다.
   // 실패 상태를 덮지 않도록 재빌드 경로에서는 성공했을 때만 부른다.
   const refreshAllWithCounts = () => { showIndexCounts(); refreshAll(); };
