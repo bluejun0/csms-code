@@ -2,7 +2,7 @@
   "name": "csms-code",
   "displayName": "CSMS Code",
   "description": "CSMS/Moodle 개발 지원 — DB 컬럼·언어 문자열·템플릿·AMD 모듈·SQL 테이블·전역 인텔리전스",
-  "version": "0.27.0",
+  "version": "0.28.0",
   "publisher": "bluesoft",
   "license": "MIT",
   "repository": {
@@ -143,6 +143,10 @@
       ]
     },
     "commands": [
+      {
+        "command": "csmscode.search",
+        "title": "CSMS Code: 찾기"
+      },
       {
         "command": "csmscode.rebuildUsageIndex",
         "title": "CSMS Code: 사용처 색인 다시 만들기"

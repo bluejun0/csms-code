@@ -144,3 +144,32 @@ describe('ListPluginTree — 항목', () => {
   it('비어 있는 카테고리는 빈 배열', () =>
     assert.deepEqual(build({ tables: { local_a: [] } }).items('local_a', 'api'), []));
 });
+
+describe('ListPluginTree — 검색 대상(match)', () => {
+  it('테이블: 이름만 — 부제의 컬럼 수는 검색 대상이 아니다', () => {
+    const tree = build({ tables: { local_a: [table('local_a_log', 'local_a', ['id', 'courseid'])] } });
+    assert.equal(tree.items('local_a', 'tables')[0].match, 'local_a_log');
+  });
+
+  it('문자열: 키와 한국어 값 둘 다', () => {
+    const tree = build({ strings: { local_a: [
+      { key: 'attendance_book', ko: { value: '출석부', location: at('ko.php') }, en: { value: 'Attendance', location: at('en.php') } },
+    ] } });
+    assert.equal(tree.items('local_a', 'strings')[0].match, 'attendance_book 출석부');
+  });
+
+  it('문자열: 한국어가 없으면 영어 값', () => {
+    const tree = build({ strings: { local_a: [{ key: 'zeta', en: { value: 'Zeta', location: at('en.php') } }] } });
+    assert.equal(tree.items('local_a', 'strings')[0].match, 'zeta Zeta');
+  });
+
+  it('API: 함수명과 설명 — read/write는 검색 대상이 아니다', () => {
+    const tree = build({ services: { local_a: [fn('local_a_get', 'local_a', { type: 'read', description: '출석을 읽는다' })] } });
+    assert.equal(tree.items('local_a', 'api')[0].match, 'local_a_get 출석을 읽는다');
+  });
+
+  it('템플릿: 이름만', () => {
+    const tree = build({ templates: { local_a: ['card'] } });
+    assert.equal(tree.items('local_a', 'templates')[0].match, 'card');
+  });
+});

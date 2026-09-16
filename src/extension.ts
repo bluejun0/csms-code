@@ -88,6 +88,8 @@ import { JsHoverProvider } from './presentation/providers/js-hover-provider';
 import { ServiceIndex } from './infrastructure/services/service-index';
 import { ListPluginTree, PluginCategory } from './application/list-plugin-tree';
 import { PluginExplorerProvider } from './presentation/providers/plugin-explorer-provider';
+import { SearchPluginItems } from './application/search-plugin-items';
+import { registerSearch } from './presentation/search-quick-pick';
 
 export async function activate(ctx: vscode.ExtensionContext) {
   registerUpdateCheck(ctx);
@@ -383,10 +385,13 @@ export async function activate(ctx: vscode.ExtensionContext) {
     ctx.subscriptions.push(explorer, vscode.window.registerTreeDataProvider(`csmscode.${category}`, explorer));
     return explorer;
   });
+  // 네 카테고리를 가로지르는 찾기 — 트리의 기본 찾기는 이미 펼친 노드만 훑는다
+  const pluginSearch = new SearchPluginItems(pluginTree);
+  registerSearch(ctx, 'csmscode.search', pluginSearch);
 
   // 렌즈도 함께 — install.xml 버튼은 대상 자체가 비동기로 만들어지는 선언 색인에서 나오므로
   // 빌드가 끝난 뒤 다시 그려주지 않으면 버튼이 아예 뜨지 않는다.
-  const refreshAll = () => { diagnostics.refreshAll(); highlight.refreshAll(); refreshLenses(); for (const e of explorers) e.refresh(); };
+  const refreshAll = () => { diagnostics.refreshAll(); highlight.refreshAll(); refreshLenses(); for (const e of explorers) e.refresh(); pluginSearch.release(); };
   // 증분 갱신도 숫자에 반영한다 — 멈춰 있는 숫자는 확장이 죽은 것처럼 보인다.
   // 실패 상태를 덮지 않도록 재빌드 경로에서는 성공했을 때만 부른다.
   const refreshAllWithCounts = () => { showIndexCounts(); refreshAll(); };
