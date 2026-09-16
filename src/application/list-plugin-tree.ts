@@ -7,7 +7,14 @@ import { TemplateCatalog } from '../domain/template-model/ports/template-catalog
 export type PluginCategory = 'tables' | 'strings' | 'api' | 'templates';
 
 export interface ComponentNode { component: string; count: number; }
-export interface PluginItem { label: string; detail: string; location: SourceLocation; }
+export interface PluginItem {
+  label: string;
+  /** 트리에 보일 부제 */
+  detail: string;
+  /** 검색이 훑는 텍스트. 표시용 `detail`과 나눈다 — 테이블 부제 `컬럼 12`의 숫자가 걸리면 안 된다. */
+  match: string;
+  location: SourceLocation;
+}
 
 /** 카테고리 뷰 네 개(테이블·문자열·API·템플릿)의 두 단계(컴포넌트 → 항목)를 조립한다. */
 export class ListPluginTree {
@@ -46,7 +53,7 @@ export class ListPluginTree {
 
   private tableItems(component: string): PluginItem[] {
     return this.tables.tablesOf(component)
-      .map(t => ({ label: t.name, detail: `컬럼 ${t.fields.length}`, location: t.location }))
+      .map(t => ({ label: t.name, detail: `컬럼 ${t.fields.length}`, match: t.name, location: t.location }))
       .sort(byLabel);
   }
 
@@ -55,7 +62,7 @@ export class ListPluginTree {
     const out: PluginItem[] = [];
     for (const s of this.strings.keysOf(component)) {
       const entry = s.ko ?? s.en;
-      if (entry) out.push({ label: s.key, detail: entry.value, location: entry.location });
+      if (entry) out.push({ label: s.key, detail: entry.value, match: `${s.key} ${entry.value}`, location: entry.location });
     }
     return out.sort(byLabel);
   }
@@ -65,6 +72,7 @@ export class ListPluginTree {
     return this.services.functionsOf(component).map(f => ({
       label: f.name,
       detail: [f.type, f.description].filter(Boolean).join(' · '),
+      match: `${f.name} ${f.description}`.trim(),
       location: f.location,
     }));
   }
@@ -73,7 +81,7 @@ export class ListPluginTree {
     const out: PluginItem[] = [];
     for (const name of this.templates.namesOf(component)) {
       const location = this.templates.locationsOf(component, name)[0];
-      if (location) out.push({ label: name, detail: '', location });
+      if (location) out.push({ label: name, detail: '', match: name, location });
     }
     return out.sort(byLabel);
   }

@@ -109,3 +109,19 @@ CSMS/Moodle(코스모스, `*lxp`/`*lms` 계열) 개발을 위한 VSCode 확장�
 
   각 뷰에는 **그 카테고리에 항목이 있는 플러그인만** 나오고, 이름 옆에 개수가 붙습니다.
   코어(`core`, `core_*`)는 목록 뒤로 밀려 커스텀 플러그인이 먼저 보입니다.
+
+- **8. 찾기**
+
+  `Ctrl + Shift + P` → `CSMS Code: 찾기`. 테이블·문자열·API·템플릿을 한 번에 검색합니다.
+  **이름뿐 아니라 한국어 값·설명으로도** 찾습니다.
+
+  ```
+  출석부
+  ─────────────────────────────────────────
+  🔤 attendance_book          출석부 · local_ubattend
+  🔤 attendance_book_download 출석부 내려받기 · local_ubattend
+  🔌 coursemos_attend_get     read · 출석부를 가져옵니다 · local_coursemos
+  ```
+
+  엔터를 누르면 그 선언 위치로 이동합니다. 트리에서 클릭했을 때와 같은 자리입니다.
+
