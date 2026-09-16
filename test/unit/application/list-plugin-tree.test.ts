@@ -43,50 +43,49 @@ function build(parts: {
   return new ListPluginTree(tables, strings, services, templates);
 }
 
-describe('ListPluginTree — 컴포넌트 목록', () => {
-  it('네 색인의 컴포넌트를 합집합으로 모은다', () => {
+describe('ListPluginTree — 뷰별 컴포넌트 목록', () => {
+  it('그 카테고리에 항목이 있는 컴포넌트만 준다', () => {
     const tree = build({
-      tables: { local_a: [] },
-      strings: { local_b: [] },
-      services: { local_c: [] },
-      templates: { local_d: [] },
+      tables: { local_withtable: [table('local_withtable_log', 'local_withtable', ['id'])] },
+      strings: { local_withtable: [], local_stringsonly: [{ key: 'a', en: { value: 'A', location: at('en.php') } }] },
     });
-    assert.deepEqual(tree.components(), ['local_a', 'local_b', 'local_c', 'local_d']);
+    assert.deepEqual(tree.componentsIn('tables').map(c => c.component), ['local_withtable']);
   });
 
-  it('같은 컴포넌트가 여러 색인에 있어도 한 번만 나온다', () => {
-    const tree = build({ tables: { local_a: [] }, strings: { local_a: [] }, templates: { local_a: [] } });
-    assert.deepEqual(tree.components(), ['local_a']);
+  it('개수는 그 카테고리의 항목 수다', () => {
+    const tree = build({ tables: { local_a: [
+      table('local_a_x', 'local_a', ['id']), table('local_a_y', 'local_a', ['id']),
+    ] } });
+    assert.deepEqual(tree.componentsIn('tables'), [{ component: 'local_a', count: 2 }]);
   });
 
-  it('services.php만 있는 플러그인도 목록에 나온다', () => {
-    const tree = build({ services: { local_onlyapi: [fn('ping', 'local_onlyapi')] } });
-    assert.deepEqual(tree.components(), ['local_onlyapi']);
+  it('코어는 이름순 뒤로 밀린다', () => {
+    const tree = build({ strings: {
+      core_grades: [{ key: 'a', en: { value: 'A', location: at('en.php') } }],
+      local_z: [{ key: 'a', en: { value: 'A', location: at('en.php') } }],
+      core: [{ key: 'a', en: { value: 'A', location: at('en.php') } }],
+      block_a: [{ key: 'a', en: { value: 'A', location: at('en.php') } }],
+    } });
+    assert.deepEqual(tree.componentsIn('strings').map(c => c.component),
+      ['block_a', 'local_z', 'core', 'core_grades']);
   });
 
-  it('코어는 이름순 뒤로 밀린다 — 커스텀 플러그인을 먼저 본다', () => {
-    const tree = build({ strings: { core_grades: [], local_z: [], core: [], block_a: [] } });
-    assert.deepEqual(tree.components(), ['block_a', 'local_z', 'core', 'core_grades']);
+  it('카테고리마다 목록이 다르다', () => {
+    const tree = build({
+      tables: { local_a: [table('local_a_log', 'local_a', ['id'])] },
+      services: { local_b: [fn('local_b_ping', 'local_b')] },
+      templates: { local_c: ['card'] },
+    });
+    assert.deepEqual(tree.componentsIn('tables').map(c => c.component), ['local_a']);
+    assert.deepEqual(tree.componentsIn('api').map(c => c.component), ['local_b']);
+    assert.deepEqual(tree.componentsIn('templates').map(c => c.component), ['local_c']);
   });
 
-  it('theme_·mod_는 코어가 아니다', () => {
-    const tree = build({ strings: { theme_coursemos: [], core: [], mod_quiz: [] } });
-    assert.deepEqual(tree.components(), ['mod_quiz', 'theme_coursemos', 'core']);
-  });
-});
+  it('아무 컴포넌트도 없는 카테고리는 빈 배열', () =>
+    assert.deepEqual(build({ tables: { local_a: [table('local_a_log', 'local_a', ['id'])] } }).componentsIn('api'), []));
 
-describe('ListPluginTree — 카테고리', () => {
-  const tree = build({
-    tables: { local_a: [table('local_a_log', 'local_a', ['id'])] },
-    templates: { local_a: ['card', 'row'] },
-  });
-
-  it('없는 카테고리도 0으로 항상 넷을 준다 — 없는 건지 안 만든 건지 구분되게', () =>
-    assert.deepEqual(tree.categories('local_a').map(c => `${c.title} ${c.count}`),
-      ['테이블 1', '문자열 0', 'API 0', '템플릿 2']));
-
-  it('순서는 테이블·문자열·API·템플릿으로 고정', () =>
-    assert.deepEqual(tree.categories('local_a').map(c => c.category), ['tables', 'strings', 'api', 'templates']));
+  it('색인에 이름만 있고 항목이 없는 컴포넌트는 세지 않는다', () =>
+    assert.deepEqual(build({ tables: { local_empty: [] } }).componentsIn('tables'), []));
 });
 
 describe('ListPluginTree — 항목', () => {
