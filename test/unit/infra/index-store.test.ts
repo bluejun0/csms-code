@@ -83,3 +83,14 @@ describe('IndexStore — 파일별 테이블 조회', () => {
     assert.equal(s.tablesIn(file)[0].location.line, 2, 'TABLE 줄(0-based)');
   });
 });
+
+describe('IndexStore — 컴포넌트 열거', () => {
+  const store = new IndexStore();
+  store.buildFromRoot(root);
+  it('테이블을 가진 컴포넌트만 이름순으로 준다', () =>
+    assert.deepEqual(store.components(), ['block_testblock', 'core', 'local_ubattend']));
+  it('컴포넌트의 테이블을 이름순으로 준다', () =>
+    assert.deepEqual(store.tablesOf('local_ubattend').map(t => t.name), ['local_ubattend_config']));
+  it('테이블이 없는 컴포넌트는 빈 배열', () =>
+    assert.deepEqual(store.tablesOf('local_nothing'), []));
+});

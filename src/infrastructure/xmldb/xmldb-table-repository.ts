@@ -1,5 +1,6 @@
 import { Table, Field } from '../../domain/moodle-model/table';
 import { TableRepository } from '../../domain/moodle-model/ports/table-repository';
+import { TableCatalog } from '../../domain/moodle-model/ports/table-catalog';
 
 function attr(tag: string, name: string): string | null {
   const m = tag.match(new RegExp(`${name}="([^"]*)"`, 'i'));
@@ -45,7 +46,7 @@ export function parseInstallXml(xmlText: string, uri: string, component: string)
 }
 
 /** 색인된 Table[]을 담는 단순 리포지토리 */
-export class InMemoryTableRepository implements TableRepository {
+export class InMemoryTableRepository implements TableRepository, TableCatalog {
   private byName = new Map<string, Table>();
   constructor(tables: Table[] = []) { this.replaceAll(tables); }
   replaceAll(tables: Table[]) { this.byName.clear(); for (const t of tables) this.byName.set(t.name, t); }
@@ -54,4 +55,8 @@ export class InMemoryTableRepository implements TableRepository {
   getTable(name: string): Table | undefined { return this.byName.get(name); }
   allTableNames(): string[] { return [...this.byName.keys()]; }
   tablesIn(file: string): Table[] { return [...this.byName.values()].filter(t => t.location.uri === file); }
+  components(): string[] { return [...new Set([...this.byName.values()].map(t => t.component))].sort(); }
+  tablesOf(component: string): Table[] {
+    return [...this.byName.values()].filter(t => t.component === component).sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+  }
 }

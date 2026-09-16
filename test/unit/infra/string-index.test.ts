@@ -82,3 +82,11 @@ describe('StringIndexStore — 비동기 빌드·증분', () => {
     assert.deepEqual(dump(s), dump(full));
   });
 });
+
+describe('StringIndexStore — 컴포넌트 열거', () => {
+  const s = new StringIndexStore();
+  s.buildFromRoot(root);
+  it('문자열을 가진 컴포넌트를 이름순으로 준다', () =>
+    assert.deepEqual(s.components(),
+      ['block_testblock', 'core', 'core_error', 'core_grades', 'local_ubattend', 'mod_testmod', 'tool_testtool']));
+});

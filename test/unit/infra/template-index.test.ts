@@ -99,3 +99,16 @@ describe('TemplateIndex — 비동기 빌드·증분', () => {
     assert.ok(s.locationsOf('local_ubattend', 'renamed').some(l => l.uri === originalFile), '새 키에 등록');
   });
 });
+
+describe('TemplateIndex — 컴포넌트 열거', () => {
+  const s = new TemplateIndex();
+  s.buildFromRoot(root);
+  it('템플릿을 가진 컴포넌트를 이름순으로 준다', () =>
+    assert.deepEqual(s.components(), ['core', 'core_form', 'local_ubattend', 'theme_coursemos']));
+  it('컴포넌트의 템플릿 이름을 이름순으로 준다', () =>
+    assert.deepEqual(s.namesOf('local_ubattend'), ['setting', 'svg/icon/hyflex']));
+  it('테마 오버라이드가 있어도 이름은 한 번만 나온다', () =>
+    assert.equal(s.namesOf('local_ubattend').filter(n => n === 'setting').length, 1));
+  it('템플릿이 없는 컴포넌트는 빈 배열', () =>
+    assert.deepEqual(s.namesOf('local_nothing'), []));
+});

@@ -6,7 +6,7 @@ import { TreeSitterPhpSyntax } from './infrastructure/php/php-syntax';
 import { CachedPhpSyntax } from './infrastructure/php/facts-cache';
 import { pluginTypeDirsAsync, clearPluginTypeCache } from './infrastructure/workspace/plugin-type-map';
 import { registerUpdateCheck } from './presentation/update-notifier';
-import { findMoodleRoot, componentOfLangFile, componentOfTemplateFile, componentOfInstallXmlFile, componentOfAmdFile, langFileMetaOf } from './infrastructure/workspace/moodle-root-resolver';
+import { findMoodleRoot, componentOfLangFile, componentOfTemplateFile, componentOfInstallXmlFile, componentOfAmdFile, componentOfServicesFile, langFileMetaOf } from './infrastructure/workspace/moodle-root-resolver';
 import { RecordTypeInference } from './domain/code-analysis/record-type-inference';
 import { ValidateRecordColumns } from './application/validate-record-columns';
 import { CompleteRecordColumns } from './application/complete-record-columns';
@@ -85,6 +85,9 @@ import { DescribeJsSymbol } from './application/describe-js-symbol';
 import { ListResolvedJsCalls } from './application/list-resolved-js-calls';
 import { JsDefinitionProvider } from './presentation/providers/js-definition-provider';
 import { JsHoverProvider } from './presentation/providers/js-hover-provider';
+import { ServiceIndex } from './infrastructure/services/service-index';
+import { ListPluginTree } from './application/list-plugin-tree';
+import { PluginExplorerProvider } from './presentation/providers/plugin-explorer-provider';
 
 export async function activate(ctx: vscode.ExtensionContext) {
   registerUpdateCheck(ctx);
@@ -105,6 +108,7 @@ export async function activate(ctx: vscode.ExtensionContext) {
   const strings = new StringIndexStore();
   const templates = new TemplateIndex();
   const amd = new AmdIndex();
+  const services = new ServiceIndex();
 
   // 번들 시 dist에 파서 런타임·PHP 문법 wasm 두 개가 복사됨
   let syntax: CachedPhpSyntax;
@@ -371,9 +375,13 @@ export async function activate(ctx: vscode.ExtensionContext) {
     tables: store.allTableNames().length, strings: strings.size(),
     templates: templates.size(), amd: amd.size(),
   });
+  // 액티비티 바의 플러그인 탐색기 — 네 색인을 컴포넌트별로 열거한다
+  const explorer = new PluginExplorerProvider(new ListPluginTree(store, strings, services, templates));
+  ctx.subscriptions.push(explorer, vscode.window.registerTreeDataProvider('csmscode.pluginExplorer', explorer));
+
   // 렌즈도 함께 — install.xml 버튼은 대상 자체가 비동기로 만들어지는 선언 색인에서 나오므로
   // 빌드가 끝난 뒤 다시 그려주지 않으면 버튼이 아예 뜨지 않는다.
-  const refreshAll = () => { diagnostics.refreshAll(); highlight.refreshAll(); refreshLenses(); };
+  const refreshAll = () => { diagnostics.refreshAll(); highlight.refreshAll(); refreshLenses(); explorer.refresh(); };
   // 증분 갱신도 숫자에 반영한다 — 멈춰 있는 숫자는 확장이 죽은 것처럼 보인다.
   // 실패 상태를 덮지 않도록 재빌드 경로에서는 성공했을 때만 부른다.
   const refreshAllWithCounts = () => { showIndexCounts(); refreshAll(); };
@@ -395,6 +403,7 @@ export async function activate(ctx: vscode.ExtensionContext) {
     await strings.buildFromRootAsync(root);
     await templates.buildFromRootAsync(root);
     await amd.buildFromRootAsync(root);
+    await services.buildFromRootAsync(root);
   };
 
   /** 전체 재빌드는 항상 이 게이트를 통과한다.
@@ -493,6 +502,19 @@ export async function activate(ctx: vscode.ExtensionContext) {
     amdWatcher.onDidChange(u => onAmd(u, false)),
     amdWatcher.onDidCreate(u => onAmd(u, false)),
     amdWatcher.onDidDelete(u => onAmd(u, true)));
+
+  // db/services.php 변경 → 그 파일만 갱신
+  const servicesWatcher = vscode.workspace.createFileSystemWatcher('**/db/services.php');
+  const onServices = (uri: vscode.Uri, removed: boolean) => applyIncremental(() => {
+    const component = componentOfServicesFile(root, uri.fsPath);
+    if (!component) return false; // 규칙 밖 — 침묵(재빌드도 담을 수 없다)
+    if (removed) services.removeFile(uri.fsPath); else services.updateFile(uri.fsPath, component);
+    return true;
+  });
+  ctx.subscriptions.push(servicesWatcher,
+    servicesWatcher.onDidChange(u => onServices(u, false)),
+    servicesWatcher.onDidCreate(u => onServices(u, false)),
+    servicesWatcher.onDidDelete(u => onServices(u, true)));
 
   // 플러그인 타입 선언이 바뀌면 맵 자체가 달라져 파일 단위 증분이 불가능하다 — 전체를 다시 만든다.
   const typeDeclWatcher = vscode.workspace.createFileSystemWatcher('**/db/subplugins.{json,php}');
