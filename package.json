@@ -2,7 +2,7 @@
   "name": "csms-code",
   "displayName": "CSMS Code",
   "description": "CSMS/Moodle 개발 지원 — DB 컬럼·언어 문자열·템플릿·AMD 모듈·SQL 테이블·전역 인텔리전스",
-  "version": "0.25.0",
+  "version": "0.26.0",
   "publisher": "bluesoft",
   "license": "MIT",
   "repository": {
@@ -112,6 +112,23 @@
           "description": "하루에 한 번 GitHub 릴리스를 확인해 새 버전이 있으면 알립니다. 조회에 실패하면 아무 것도 표시하지 않습니다."
         }
       }
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "csmscode",
+          "title": "CSMS Code",
+          "icon": "media/csms.svg"
+        }
+      ]
+    },
+    "views": {
+      "csmscode": [
+        {
+          "id": "csmscode.pluginExplorer",
+          "name": "플러그인"
+        }
+      ]
     },
     "commands": [
       {

@@ -1,13 +1,14 @@
 import * as fs from 'fs';
 import { LangEntry, LangString } from '../../domain/lang-model/lang-string';
 import { StringRepository } from '../../domain/lang-model/ports/string-repository';
+import { StringCatalog } from '../../domain/lang-model/ports/string-catalog';
 import { parseLangFile } from './lang-file-parser';
 import { listLangFiles, listLangFilesAsync, yieldNow, INDEX_YIELD_EVERY } from '../workspace/moodle-root-resolver';
 import { normalizeComponent } from '../../domain/lang-model/services/component-normalizer';
 
 type CompMap = Map<string, Map<string, LangString>>;
 
-export class StringIndexStore implements StringRepository {
+export class StringIndexStore implements StringRepository, StringCatalog {
   private byComponent: CompMap = new Map();
 
   buildFromRoot(root: string): void {
@@ -66,6 +67,7 @@ export class StringIndexStore implements StringRepository {
     return c ? [...c.values()] : [];
   }
   hasComponent(component: string): boolean { return this.byComponent.has(this.normalize(component)); }
+  components(): string[] { return [...this.byComponent.keys()].sort(); }
 
   private normalize(raw: string): string {
     return normalizeComponent(raw, c => this.byComponent.has(c));

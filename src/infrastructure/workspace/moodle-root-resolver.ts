@@ -22,21 +22,26 @@ function isMoodleRoot(dir: string): boolean {
          fs.existsSync(path.join(dir, 'lib', 'db', 'install.xml'));
 }
 
-/** 코어 + 모든 플러그인의 db/install.xml 경로와 frankenstyle 컴포넌트명 */
-export function listInstallXmlFiles(root: string): { file: string; component: string }[] {
-  const out: { file: string; component: string }[] = [];
-  const core = path.join(root, 'lib', 'db', 'install.xml');
+export interface DbFileRef { file: string; component: string; }
+
+/** 코어 + 모든 플러그인의 `db/<basename>` 경로와 frankenstyle 컴포넌트명 */
+function listDbFiles(root: string, basename: string): DbFileRef[] {
+  const out: DbFileRef[] = [];
+  const core = path.join(root, 'lib', 'db', basename);
   if (fs.existsSync(core)) out.push({ file: core, component: 'core' });
   for (const [type, relDir] of pluginTypeDirs(root)) {
     const typeDir = path.join(root, relDir);
     if (!fs.existsSync(typeDir)) continue;
     for (const name of safeReaddir(typeDir)) {
-      const f = path.join(typeDir, name, 'db', 'install.xml');
+      const f = path.join(typeDir, name, 'db', basename);
       if (fs.existsSync(f)) out.push({ file: f, component: `${type}_${name}` });
     }
   }
   return out;
 }
+
+export function listInstallXmlFiles(root: string): DbFileRef[] { return listDbFiles(root, 'install.xml'); }
+export function listServicesFiles(root: string): DbFileRef[] { return listDbFiles(root, 'services.php'); }
 
 function safeReaddir(dir: string): string[] {
   try {
@@ -106,15 +111,23 @@ export function pluginTypeOfRel(root: string, rel: string): { type: string; name
   return best ? { type: best.type, name: best.name, rest: best.rest } : null;
 }
 
-/** install.xml 경로 → component (listInstallXmlFiles 규칙의 역함수). 규칙 밖은 null. */
-export function componentOfInstallXmlFile(root: string, file: string): string | null {
+/** `db/<basename>` 경로 → component (listDbFiles 규칙의 역함수). 규칙 밖은 null. */
+function componentOfDbFile(root: string, file: string, basename: string): string | null {
   const rel = path.relative(root, file);
   if (rel.startsWith('..') || path.isAbsolute(rel)) return null;
   const parts = rel.split(path.sep);
-  if (parts.length === 3 && parts[0] === 'lib' && parts[1] === 'db' && parts[2] === 'install.xml') return 'core';
+  if (parts.length === 3 && parts[0] === 'lib' && parts[1] === 'db' && parts[2] === basename) return 'core';
   const hit = pluginTypeOfRel(root, rel);
   if (!hit) return null;
-  return hit.rest === 'db/install.xml' ? `${hit.type}_${hit.name}` : null;
+  return hit.rest === `db/${basename}` ? `${hit.type}_${hit.name}` : null;
+}
+
+export function componentOfInstallXmlFile(root: string, file: string): string | null {
+  return componentOfDbFile(root, file, 'install.xml');
+}
+
+export function componentOfServicesFile(root: string, file: string): string | null {
+  return componentOfDbFile(root, file, 'services.php');
 }
 
 /** lang 파일 경로 → { component, locale }. 규칙 밖은 null. */
@@ -317,23 +330,26 @@ async function safeReaddirFilesAsync(dir: string): Promise<string[]> {
 
 /** listInstallXmlFiles의 비동기 판 — 열거 방향(타입 맵 순회)·컴포넌트 조합 규칙은 동기판과 동일하고,
  *  등가성은 resolver.test.ts의 sync/async 비교 테스트가 고정한다. */
-export async function listInstallXmlFilesAsync(root: string): Promise<{ file: string; component: string }[]> {
-  const out: { file: string; component: string }[] = [];
+async function listDbFilesAsync(root: string, basename: string): Promise<DbFileRef[]> {
+  const out: DbFileRef[] = [];
   const typeDirs = await pluginTypeDirsAsync(root);
-  const core = path.join(root, 'lib', 'db', 'install.xml');
+  const core = path.join(root, 'lib', 'db', basename);
   if (await existsAsync(core)) out.push({ file: core, component: 'core' });
   let n = 0;
   for (const [type, relDir] of typeDirs) {
     const typeDir = path.join(root, relDir);
     if (!await existsAsync(typeDir)) continue;
     for (const name of await safeReaddirAsync(typeDir)) {
-      const f = path.join(typeDir, name, 'db', 'install.xml');
+      const f = path.join(typeDir, name, 'db', basename);
       if (await existsAsync(f)) out.push({ file: f, component: `${type}_${name}` });
       if (++n % INDEX_YIELD_EVERY === 0) await yieldNow();
     }
   }
   return out;
 }
+
+export function listInstallXmlFilesAsync(root: string): Promise<DbFileRef[]> { return listDbFilesAsync(root, 'install.xml'); }
+export function listServicesFilesAsync(root: string): Promise<DbFileRef[]> { return listDbFilesAsync(root, 'services.php'); }
 
 /** listLangFiles의 비동기 판 — 파일명 규칙은 langFileNameFor를 공유한다. */
 export async function listLangFilesAsync(root: string): Promise<LangFileRef[]> {

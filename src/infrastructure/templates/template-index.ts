@@ -1,11 +1,12 @@
 import { SourceLocation } from '../../domain/shared/value-objects';
 import { TemplateRepository } from '../../domain/template-model/ports/template-repository';
+import { TemplateCatalog } from '../../domain/template-model/ports/template-catalog';
 import { listTemplateFiles, listTemplateFilesAsync, yieldNow, INDEX_YIELD_EVERY } from '../workspace/moodle-root-resolver';
 
 type RefMap = Map<string, SourceLocation[]>;
 
 /** `component/name` → 템플릿 파일 위치. 원본과 테마 오버라이드가 함께 잡히면 둘 다 보관한다. */
-export class TemplateIndex implements TemplateRepository {
+export class TemplateIndex implements TemplateRepository, TemplateCatalog {
   private byRef: RefMap = new Map();
 
   buildFromRoot(root: string): void {
@@ -54,6 +55,15 @@ export class TemplateIndex implements TemplateRepository {
     return this.byRef.get(`${component}/${name}`) ?? [];
   }
   has(component: string, name: string): boolean { return this.byRef.has(`${component}/${name}`); }
+
+  /** 키는 `component/name`이고 이름 쪽에만 `/`가 더 올 수 있다 — 첫 `/`가 경계다. */
+  components(): string[] {
+    return [...new Set([...this.byRef.keys()].map(k => k.slice(0, k.indexOf('/'))))].sort();
+  }
+  namesOf(component: string): string[] {
+    const prefix = `${component}/`;
+    return [...this.byRef.keys()].filter(k => k.startsWith(prefix)).map(k => k.slice(prefix.length)).sort();
+  }
 }
 
 /** 조립 단일 지점 — 동기·비동기·증분 세 경로가 모두 이 함수만 쓴다. */

@@ -1,10 +1,11 @@
 import * as fs from 'fs';
 import { Table } from '../../domain/moodle-model/table';
 import { TableRepository } from '../../domain/moodle-model/ports/table-repository';
+import { TableCatalog } from '../../domain/moodle-model/ports/table-catalog';
 import { parseInstallXml, InMemoryTableRepository } from '../xmldb/xmldb-table-repository';
 import { listInstallXmlFiles, listInstallXmlFilesAsync, yieldNow, INDEX_YIELD_EVERY } from '../workspace/moodle-root-resolver';
 
-export class IndexStore implements TableRepository {
+export class IndexStore implements TableRepository, TableCatalog {
   private repo = new InMemoryTableRepository();
 
   buildFromRoot(root: string): void {
@@ -40,6 +41,8 @@ export class IndexStore implements TableRepository {
   getTable(name: string) { return this.repo.getTable(name); }
   allTableNames() { return this.repo.allTableNames(); }
   tablesIn(file: string) { return this.repo.tablesIn(file); }
+  components() { return this.repo.components(); }
+  tablesOf(component: string) { return this.repo.tablesOf(component); }
 }
 
 function safeParse(file: string, component: string): Table[] {

@@ -37,6 +37,7 @@ Moodle 코드는 DB 레코드를 대부분 `stdClass`로 다루고, 언어 문�
 | 언어 문자열 | `lang/en`, `lang/ko`(코어) + 플러그인의 `lang/{en,ko}/<component>.php` |
 | 템플릿 | `**/templates/**/*.mustache` |
 | AMD 모듈 | `**/amd/src/**/*.js` (`amd/build`·`.min.js`는 생성물이라 제외) |
+| 외부 함수(API) | `lib/db/services.php` + 모든 플러그인의 `db/services.php` |
 
 **색인 대상 (첫 요청 시 지연 생성)**
 
@@ -46,7 +47,7 @@ Moodle 코드는 DB 레코드를 대부분 `stdClass`로 다루고, 언어 문�
 | 설정 키 선언 | 모든 `settings.php`, `admin/settings/*.php` |
 | 사용처 색인 | 루트 전체의 PHP·JS·mustache (§11) |
 
-**증분 갱신** — 파일 워처가 `db/install.xml`, `lang/*/*.php`, `templates/**/*.mustache`,
+**증분 갱신** — 파일 워처가 `db/install.xml`, `db/services.php`, `lang/*/*.php`, `templates/**/*.mustache`,
 `amd/src/**/*.js`, `settings.php`, `admin/settings/*.php`를 감시해 **바뀐 파일만** 다시 읽습니다.
 `db/subplugins.{json,php}`·`lib/components.json`이 바뀌면 타입 맵을 버리고 전체를 다시 색인합니다.
 색인이 도는 중에 들어온 변경은 빌드가 끝난 뒤 이어서 적용됩니다.
@@ -368,8 +369,40 @@ Moodle 페이지처럼 `?>` HTML `<?php`로 여러 번 끊겨 있어도 파일 �
 | `csmscode.config.highlightResolved` | `boolean` | `true` | 해석되는 `get_config`·`set_config` 키 하이라이팅 |
 | `csmscode.config.codeLens` | `boolean` | `true` | `settings.php` `admin_setting` 선언 줄 위 "사용 N건" 버튼 |
 
-## 16. 비목표
+## 16. 플러그인 탐색기 (액티비티 바)
+
+왼쪽 액티비티 바의 CSMS 아이콘 → "플러그인" 뷰. 컴포넌트마다 네 가지를 개수와 함께 보여주고,
+항목을 클릭하면 선언 위치로 이동합니다.
+
+| 카테고리 | 항목 | 부제 | 클릭하면 |
+|---|---|---|---|
+| 테이블 | 테이블 이름(이름순) | `컬럼 N` | `install.xml`의 `<TABLE>` 줄 |
+| 문자열 | 키(키순) | 한국어 값(없으면 영어) | `lang/ko`의 `$string` 줄(없으면 `lang/en`) |
+| API | 함수 이름(**선언 순서**) | `read · 설명` | `db/services.php`의 선언 줄 |
+| 템플릿 | 템플릿 이름(이름순) | — | `.mustache` 파일 |
+
+**컴포넌트 목록은 네 색인의 합집합입니다** — `db/services.php`만 있는 플러그인도 나타납니다.
+**코어(`core`·`core_*`)는 뒤로 밉니다** — 찾는 쪽은 거의 언제나 커스텀 플러그인입니다
+(`mod_*`·`theme_*`는 코어로 보지 않습니다).
+
+**0건도 적습니다** — `API (0)`. 카테고리를 빼면 그 플러그인에 없는 것인지 아직 색인되지 않은
+것인지 구분되지 않습니다(§12의 "사용 0건"과 같은 이유).
+
+**API만 정렬하지 않습니다** — `services.php`는 주석으로 API 묶음을 나누는 일이 많아 선언 순서
+자체가 정보입니다.
+
+**단계마다 물어본 것만 계산합니다** — 컴포넌트 목록 → 카테고리 → 항목. 펼치기 전에는 항목을
+만들지 않으므로 컴포넌트가 수백 개여도 비용이 없습니다. 실측(컴포넌트 591개): 목록 1ms.
+
+**services.php 파싱** — `$functions` 배열에서 함수명·`classname`·`methodname`·`description`·
+`type`을 정규식이 아니라 배열 깊이로 읽습니다. 깊이 2를 여는 키가 함수 이름이므로
+`'capabilities' => [...]` 같은 중첩을 함수로 오인하지 않습니다. `[...]`·`array(...)` 두 문법을
+받고, 주석은 줄 수를 보존한 채 지우며, PHP를 실행하지 않습니다. 필드가 빠진 선언도 이름은
+잃지 않습니다 — 목록에서 빠지면 그 API가 없는 것처럼 보입니다.
+
+## 17. 비목표
 
 - PHPStorm 지원
 - 완전한 PHP 타입 추론 / 파일을 넘는 전역 데이터플로우
 - Moodle 코어 자체 수정, 린터·포매터 대체
+- 플러그인 탐색기의 AMD 모듈 카테고리, API 함수 → `classname::methodname` 구현으로 이동
