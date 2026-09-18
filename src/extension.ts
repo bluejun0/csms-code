@@ -379,15 +379,25 @@ export async function activate(ctx: vscode.ExtensionContext) {
   });
   // 액티비티 바의 카테고리 뷰 넷 — 같은 조립기를 카테고리만 바꿔 등록한다.
   // 뷰 id는 카테고리 이름 그대로다(package.json의 `csmscode.tables` 등).
-  const pluginTree = new ListPluginTree(store, strings, services, templates);
-  const explorers = (['tables', 'strings', 'api', 'templates'] as PluginCategory[]).map(category => {
-    const explorer = new PluginExplorerProvider(pluginTree, category);
+  const pluginTree = new ListPluginTree(store, strings, services, templates, configKeys);
+  // 설정 색인만 지연 생성이다 — 뷰를 펼치거나 그 뷰에서 찾기를 열 때 만든다(실측 웜 ~400ms, 콜드 최대 19초).
+  // 다 만들어지면 그 뷰를 다시 그린다. 뷰를 안 열면 지금까지와 같이 비용이 0이다.
+  const prepareConfig = () => { if (!configReady) void ensureConfig(); };
+  const explorers = (['tables', 'strings', 'api', 'templates', 'config'] as PluginCategory[]).map(category => {
+    const explorer = new PluginExplorerProvider(pluginTree, category,
+      category === 'config' ? prepareConfig : undefined);
     ctx.subscriptions.push(explorer, vscode.window.registerTreeDataProvider(`csmscode.${category}`, explorer));
     return explorer;
   });
-  // 네 카테고리를 가로지르는 찾기 — 트리의 기본 찾기는 이미 펼친 노드만 훑는다
+  // 카테고리를 가로지르는 찾기 — 트리의 기본 찾기는 이미 펼친 노드만 훑는다.
+  // 뷰 제목줄의 돋보기는 그 뷰의 카테고리만 본다.
   const pluginSearch = new SearchPluginItems(pluginTree);
+  configReadyListeners.push(() => { for (const e of explorers) e.refresh(); pluginSearch.release(); });
   registerSearch(ctx, 'csmscode.search', pluginSearch);
+  for (const category of ['tables', 'strings', 'api', 'templates', 'config'] as PluginCategory[]) {
+    registerSearch(ctx, `csmscode.search.${category}`, pluginSearch,
+      { category, prepare: category === 'config' ? prepareConfig : undefined });
+  }
 
   // 렌즈도 함께 — install.xml 버튼은 대상 자체가 비동기로 만들어지는 선언 색인에서 나오므로
   // 빌드가 끝난 뒤 다시 그려주지 않으면 버튼이 아예 뜨지 않는다.

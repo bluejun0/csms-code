@@ -12,14 +12,20 @@ export class PluginExplorerProvider implements vscode.TreeDataProvider<ExplorerN
   private changed = new vscode.EventEmitter<void>();
   readonly onDidChangeTreeData = this.changed.event;
 
-  constructor(private tree: ListPluginTree, private category: PluginCategory) {}
+  /** prepare — 이 카테고리의 색인이 지연 생성이면, 뷰를 처음 펼칠 때 만들라고 부른다.
+   *  만드는 동안은 빈 목록이고, 끝나면 호출자가 refresh()로 다시 그린다. */
+  constructor(private tree: ListPluginTree, private category: PluginCategory,
+              private prepare?: () => void) {}
 
   refresh(): void { this.changed.fire(); }
   dispose(): void { this.changed.dispose(); }
 
   /** 펼친 컴포넌트의 항목만 만든다 — 뷰를 열었다고 전부 펼치지 않는다. */
   getChildren(node?: ExplorerNode): ExplorerNode[] {
-    if (!node) return this.tree.componentsIn(this.category).map(c => ({ kind: 'component', ...c }));
+    if (!node) {
+      this.prepare?.();
+      return this.tree.componentsIn(this.category).map(c => ({ kind: 'component', ...c }));
+    }
     if (node.kind === 'component') {
       return this.tree.items(node.component, this.category).map(item => ({ kind: 'item', item }));
     }

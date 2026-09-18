@@ -5,6 +5,8 @@ import { TableCatalog } from '../../../src/domain/moodle-model/ports/table-catal
 import { StringCatalog } from '../../../src/domain/lang-model/ports/string-catalog';
 import { ServiceCatalog } from '../../../src/domain/service-model/ports/service-catalog';
 import { TemplateCatalog } from '../../../src/domain/template-model/ports/template-catalog';
+import { ConfigCatalog } from '../../../src/domain/moodle-model/ports/config-catalog';
+import { ConfigDeclaration } from '../../../src/domain/moodle-model/ports/config-key-repository';
 import { LangString } from '../../../src/domain/lang-model/lang-string';
 import { ServiceFunction } from '../../../src/domain/service-model/service-function';
 import { SourceLocation } from '../../../src/domain/shared/value-objects';
@@ -25,13 +27,19 @@ function fn(name: string, component: string, extra: Partial<ServiceFunction> = {
   };
 }
 
+const decl = (plugin: string, key: string, settingClass = 'admin_setting_configtext', line = 7): ConfigDeclaration =>
+  ({ plugin, key, settingClass, location: at(`${plugin}/settings.php`, line) });
+
 function build(parts: {
   tables?: Record<string, Table[]>;
   strings?: Record<string, LangString[]>;
   services?: Record<string, ServiceFunction[]>;
   templates?: Record<string, string[]>;
+  config?: Record<string, ConfigDeclaration[]>;
 }): ListPluginTree {
   const t = parts.tables ?? {}, s = parts.strings ?? {}, a = parts.services ?? {}, m = parts.templates ?? {};
+  const g = parts.config ?? {};
+  const config: ConfigCatalog = { components: () => Object.keys(g), keysOfPlugin: c => g[c] ?? [] };
   const tables: TableCatalog = { components: () => Object.keys(t), tablesOf: c => t[c] ?? [] };
   const strings: StringCatalog = { components: () => Object.keys(s), keysOf: c => s[c] ?? [] };
   const services: ServiceCatalog = { components: () => Object.keys(a), functionsOf: c => a[c] ?? [] };
@@ -40,7 +48,7 @@ function build(parts: {
     namesOf: c => m[c] ?? [],
     locationsOf: (c, n) => (m[c] ?? []).includes(n) ? [at(`${c}/${n}.mustache`)] : [],
   };
-  return new ListPluginTree(tables, strings, services, templates);
+  return new ListPluginTree(tables, strings, services, templates, config);
 }
 
 describe('ListPluginTree — 뷰별 컴포넌트 목록', () => {
@@ -143,6 +151,35 @@ describe('ListPluginTree — 항목', () => {
 
   it('비어 있는 카테고리는 빈 배열', () =>
     assert.deepEqual(build({ tables: { local_a: [] } }).items('local_a', 'api'), []));
+});
+
+describe('ListPluginTree — 설정 항목', () => {
+  it('키순, 설정 종류를 부제로 — admin_setting_ 접두는 뗀다', () => {
+    const tree = build({ config: { local_a: [
+      decl('local_a', 'zeta', 'admin_setting_configselect'),
+      decl('local_a', 'alpha', 'admin_setting_configcheckbox'),
+    ] } });
+    assert.deepEqual(tree.items('local_a', 'config').map(i => `${i.label}|${i.detail}`),
+      ['alpha|configcheckbox', 'zeta|configselect']);
+  });
+
+  it('선언 줄로 간다', () =>
+    assert.deepEqual(build({ config: { local_a: [decl('local_a', 'k', 'admin_setting_configtext', 12)] } })
+      .items('local_a', 'config')[0].location, at('local_a/settings.php', 12)));
+
+  it('검색은 키만 훑는다 — 설정 종류로 걸리면 안 된다', () =>
+    assert.equal(build({ config: { local_a: [decl('local_a', 'apikey')] } }).items('local_a', 'config')[0].match, 'apikey'));
+
+  it('설정이 있는 컴포넌트만 뷰에 나온다', () => {
+    const tree = build({
+      config: { local_a: [decl('local_a', 'k')] },
+      tables: { local_b: [table('local_b_log', 'local_b', ['id'])] },
+    });
+    assert.deepEqual(tree.componentsIn('config'), [{ component: 'local_a', count: 1 }]);
+  });
+
+  it('색인이 아직 없으면 뷰가 빈다 — 지연 생성 상태', () =>
+    assert.deepEqual(build({ tables: { local_a: [table('local_a_log', 'local_a', ['id'])] } }).componentsIn('config'), []));
 });
 
 describe('ListPluginTree — 검색 대상(match)', () => {

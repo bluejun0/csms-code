@@ -1,12 +1,17 @@
 import { ListPluginTree, PluginCategory, PluginItem } from './list-plugin-tree';
 
+export interface SearchOptions {
+  limit?: number;
+  category?: PluginCategory;
+}
+
 export interface SearchHit {
   category: PluginCategory;
   component: string;
   item: PluginItem;
 }
 
-const CATEGORIES: PluginCategory[] = ['tables', 'strings', 'api', 'templates'];
+const CATEGORIES: PluginCategory[] = ['tables', 'strings', 'api', 'templates', 'config'];
 const DEFAULT_LIMIT = 200;
 
 /** 이름 접두 → 이름 포함 → 값·설명에만 포함. 이름으로 아는 것을 먼저 보여준다. */
@@ -25,11 +30,14 @@ export class SearchPluginItems {
   /** 색인이 바뀌었거나 검색이 끝났을 때 — 다음 질의가 다시 만든다. */
   release(): void { this.flat = null; }
 
-  run(query: string, limit = DEFAULT_LIMIT): SearchHit[] {
+  /** category를 주면 그 카테고리만 — 뷰 제목줄의 돋보기가 쓴다. */
+  run(query: string, options: SearchOptions = {}): SearchHit[] {
+    const { limit = DEFAULT_LIMIT, category } = options;
     const q = query.trim().toLowerCase();
     if (!q) return []; // 빈 질의에 4만 건을 늘어놓지 않는다
     const scored: { entry: Entry; rank: Rank }[] = [];
     for (const entry of this.entries()) {
+      if (category && entry.category !== category) continue;
       const rank = rankOf(entry, q);
       if (rank !== undefined) scored.push({ entry, rank });
     }
