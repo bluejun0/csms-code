@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { ConfigDeclaration, ConfigKey, ConfigKeyRepository } from '../../domain/moodle-model/ports/config-key-repository';
+import { ConfigCatalog } from '../../domain/moodle-model/ports/config-catalog';
 import { configKeyId, configPlugin } from '../../domain/moodle-model/services/config-plugin';
 import { pluginTypeDirsAsync } from '../workspace/plugin-type-map';
 import { yieldNow, INDEX_YIELD_EVERY, pluginTypeOfRel } from '../workspace/moodle-root-resolver';
@@ -23,7 +24,7 @@ const emptyMaps = (): Maps => ({ byName: new Map(), byId: new Map(), byFile: new
  *  런타임에 `set_config`로만 만들어지는 키는 어디에도 선언되지 않아 담기지 않는다.
  *  선언 맵들은 조립 함수 두 개(mergeFile·removeFileFrom)로만 바뀐다 — 전체 빌드와 파일 단위 증분이 갈라질 수 없다
  *  (config-dist.php는 선언이 아니라 납작한 이름에만 들어가며 전체 빌드에서만 읽는다). */
-export class ConfigKeyIndex implements ConfigKeyRepository {
+export class ConfigKeyIndex implements ConfigKeyRepository, ConfigCatalog {
   private maps = emptyMaps();
 
   async buildFromRootAsync(root: string): Promise<void> {
@@ -50,6 +51,7 @@ export class ConfigKeyIndex implements ConfigKeyRepository {
   declaration(plugin: string, key: string): ConfigDeclaration | undefined { return this.maps.byId.get(configKeyId(plugin, key)); }
   declarationsIn(file: string): ConfigDeclaration[] { return this.maps.byFile.get(file) ?? []; }
   keysOfPlugin(plugin: string): ConfigDeclaration[] { return this.maps.byPlugin.get(configPlugin(plugin)) ?? []; }
+  components(): string[] { return [...this.maps.byPlugin.keys()].sort(); }
 }
 
 /** 선언 색인이 열거하는 파일인가 — 워처가 색인 규칙 밖의 `settings.php`(클래스 파일 등)로 증분을 넣지 않게 한다. */

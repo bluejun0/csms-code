@@ -6,6 +6,8 @@ import { TableCatalog } from '../../../src/domain/moodle-model/ports/table-catal
 import { StringCatalog } from '../../../src/domain/lang-model/ports/string-catalog';
 import { ServiceCatalog } from '../../../src/domain/service-model/ports/service-catalog';
 import { TemplateCatalog } from '../../../src/domain/template-model/ports/template-catalog';
+import { ConfigCatalog } from '../../../src/domain/moodle-model/ports/config-catalog';
+import { ConfigDeclaration } from '../../../src/domain/moodle-model/ports/config-key-repository';
 import { LangString } from '../../../src/domain/lang-model/lang-string';
 import { ServiceFunction } from '../../../src/domain/service-model/service-function';
 import { SourceLocation } from '../../../src/domain/shared/value-objects';
@@ -21,6 +23,9 @@ const str = (key: string, ko?: string, en?: string): LangString => ({
   ...(en ? { en: { value: en, location: at('en.php', 1) } } : {}),
 });
 
+const decl = (plugin: string, key: string): ConfigDeclaration =>
+  ({ plugin, key, settingClass: 'admin_setting_configtext', location: at(`${plugin}/settings.php`, 3) });
+
 const fn = (name: string, component: string, description = ''): ServiceFunction => ({
   name, component, classname: 'x', methodname: 'run', description, type: 'read',
   location: at(`${component}/services.php`),
@@ -31,8 +36,11 @@ function search(parts: {
   strings?: Record<string, LangString[]>;
   services?: Record<string, ServiceFunction[]>;
   templates?: Record<string, string[]>;
+  config?: Record<string, ConfigDeclaration[]>;
 }): SearchPluginItems {
   const t = parts.tables ?? {}, s = parts.strings ?? {}, a = parts.services ?? {}, m = parts.templates ?? {};
+  const g = parts.config ?? {};
+  const config: ConfigCatalog = { components: () => Object.keys(g), keysOfPlugin: c => g[c] ?? [] };
   const tables: TableCatalog = { components: () => Object.keys(t), tablesOf: c => t[c] ?? [] };
   const strings: StringCatalog = { components: () => Object.keys(s), keysOf: c => s[c] ?? [] };
   const services: ServiceCatalog = { components: () => Object.keys(a), functionsOf: c => a[c] ?? [] };
@@ -41,7 +49,7 @@ function search(parts: {
     namesOf: c => m[c] ?? [],
     locationsOf: (c, n) => (m[c] ?? []).includes(n) ? [at(`${c}/${n}.mustache`)] : [],
   };
-  return new SearchPluginItems(new ListPluginTree(tables, strings, services, templates));
+  return new SearchPluginItems(new ListPluginTree(tables, strings, services, templates, config));
 }
 
 describe('SearchPluginItems — 무엇이 걸리나', () => {
@@ -116,10 +124,10 @@ describe('SearchPluginItems — 상한과 캐시', () => {
 
   it('기본 상한은 200건', () => assert.equal(search({ tables: many }).run('local_a').length, 200));
 
-  it('상한을 넘겨 줄 수 있다', () => assert.equal(search({ tables: many }).run('local_a', 5).length, 5));
+  it('상한을 넘겨 줄 수 있다', () => assert.equal(search({ tables: many }).run('local_a', { limit: 5 }).length, 5));
 
   it('상한은 순위가 높은 쪽부터 자른다', () =>
-    assert.deepEqual(search({ tables: many }).run('local_a', 2).map(h => h.item.label),
+    assert.deepEqual(search({ tables: many }).run('local_a', { limit: 2 }).map(h => h.item.label),
       ['local_a_t000', 'local_a_t001']));
 
   it('release 뒤에도 같은 결과를 준다 — 평면 목록을 다시 만든다', () => {
@@ -128,4 +136,27 @@ describe('SearchPluginItems — 상한과 캐시', () => {
     s.release();
     assert.deepEqual(s.run('log').map(h => h.item.label), before);
   });
+});
+
+describe('SearchPluginItems — 카테고리 한정', () => {
+  const s = () => search({
+    tables: { local_a: [table('local_a_log', 'local_a')] },
+    strings: { local_a: [str('log_label', '로그')] },
+    config: { local_a: [decl('local_a', 'logmode')] },
+  });
+
+  it('그 카테고리만 준다', () =>
+    assert.deepEqual(s().run('log', { category: 'tables' }).map(h => h.item.label), ['local_a_log']));
+
+  it('설정만 준다', () =>
+    assert.deepEqual(s().run('log', { category: 'config' }).map(h => h.item.label), ['logmode']));
+
+  it('한정하지 않으면 셋 다 나온다', () =>
+    assert.equal(s().run('log').length, 3));
+
+  it('그 카테고리에 없으면 빈 배열', () =>
+    assert.deepEqual(s().run('log', { category: 'api' }), []));
+
+  it('한정과 상한을 함께 준다', () =>
+    assert.equal(s().run('log', { category: 'tables', limit: 0 }).length, 0));
 });

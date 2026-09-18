@@ -73,3 +73,18 @@ describe('ConfigKeyIndex', () => {
     assert.equal(new Set(names).size, names.length, '중복 없음');
   });
 });
+
+describe('ConfigKeyIndex — 컴포넌트 열거', () => {
+  let idx: ConfigKeyIndex;
+  before(async () => {
+    clearPluginTypeCache();
+    idx = new ConfigKeyIndex();
+    await idx.buildFromRootAsync(root);
+  });
+
+  it('설정 선언이 있는 플러그인을 이름순으로 준다', () =>
+    assert.deepEqual(idx.components(), ['core', 'local_ubattend']));
+
+  it('색인 전에는 빈 배열 — 지연 생성이라 뷰가 이 상태를 본다', () =>
+    assert.deepEqual(new ConfigKeyIndex().components(), []));
+});

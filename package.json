@@ -2,7 +2,7 @@
   "name": "csms-code",
   "displayName": "CSMS Code",
   "description": "CSMS/Moodle 개발 지원 — DB 컬럼·언어 문자열·템플릿·AMD 모듈·SQL 테이블·전역 인텔리전스",
-  "version": "0.28.0",
+  "version": "0.29.0",
   "publisher": "bluesoft",
   "license": "MIT",
   "repository": {
@@ -139,13 +139,43 @@
         {
           "id": "csmscode.templates",
           "name": "템플릿"
+        },
+        {
+          "id": "csmscode.config",
+          "name": "설정"
         }
       ]
     },
     "commands": [
       {
         "command": "csmscode.search",
-        "title": "CSMS Code: 찾기"
+        "title": "CSMS Code: 찾기",
+        "icon": "$(search)"
+      },
+      {
+        "command": "csmscode.search.tables",
+        "title": "CSMS Code: 테이블 찾기",
+        "icon": "$(search)"
+      },
+      {
+        "command": "csmscode.search.strings",
+        "title": "CSMS Code: 문자열 찾기",
+        "icon": "$(search)"
+      },
+      {
+        "command": "csmscode.search.api",
+        "title": "CSMS Code: API 찾기",
+        "icon": "$(search)"
+      },
+      {
+        "command": "csmscode.search.templates",
+        "title": "CSMS Code: 템플릿 찾기",
+        "icon": "$(search)"
+      },
+      {
+        "command": "csmscode.search.config",
+        "title": "CSMS Code: 설정 찾기",
+        "icon": "$(search)"
       },
       {
         "command": "csmscode.rebuildUsageIndex",
@@ -155,7 +185,58 @@
         "command": "csmscode.checkForUpdatesNow",
         "title": "CSMS Code: 업데이트 확인"
       }
-    ]
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "csmscode.search.tables",
+          "when": "view == csmscode.tables",
+          "group": "navigation"
+        },
+        {
+          "command": "csmscode.search.strings",
+          "when": "view == csmscode.strings",
+          "group": "navigation"
+        },
+        {
+          "command": "csmscode.search.api",
+          "when": "view == csmscode.api",
+          "group": "navigation"
+        },
+        {
+          "command": "csmscode.search.templates",
+          "when": "view == csmscode.templates",
+          "group": "navigation"
+        },
+        {
+          "command": "csmscode.search.config",
+          "when": "view == csmscode.config",
+          "group": "navigation"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "csmscode.search.tables",
+          "when": "false"
+        },
+        {
+          "command": "csmscode.search.strings",
+          "when": "false"
+        },
+        {
+          "command": "csmscode.search.api",
+          "when": "false"
+        },
+        {
+          "command": "csmscode.search.templates",
+          "when": "false"
+        },
+        {
+          "command": "csmscode.search.config",
+          "when": "false"
+        }
+      ]
+    }
   },
   "scripts": {
     "compile": "tsc -noEmit && node esbuild.mjs",

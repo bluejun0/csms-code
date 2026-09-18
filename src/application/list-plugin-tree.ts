@@ -3,8 +3,9 @@ import { TableCatalog } from '../domain/moodle-model/ports/table-catalog';
 import { StringCatalog } from '../domain/lang-model/ports/string-catalog';
 import { ServiceCatalog } from '../domain/service-model/ports/service-catalog';
 import { TemplateCatalog } from '../domain/template-model/ports/template-catalog';
+import { ConfigCatalog } from '../domain/moodle-model/ports/config-catalog';
 
-export type PluginCategory = 'tables' | 'strings' | 'api' | 'templates';
+export type PluginCategory = 'tables' | 'strings' | 'api' | 'templates' | 'config';
 
 export interface ComponentNode { component: string; count: number; }
 export interface PluginItem {
@@ -23,6 +24,7 @@ export class ListPluginTree {
     private strings: StringCatalog,
     private services: ServiceCatalog,
     private templates: TemplateCatalog,
+    private config: ConfigCatalog,
   ) {}
 
   /** 그 카테고리에 **항목이 있는** 컴포넌트만. 뷰 하나가 카테고리 하나이므로 0건은 소음이다 —
@@ -41,6 +43,7 @@ export class ListPluginTree {
     return new Set([
       ...this.tables.components(), ...this.strings.components(),
       ...this.services.components(), ...this.templates.components(),
+      ...this.config.components(),
     ]);
   }
 
@@ -48,6 +51,7 @@ export class ListPluginTree {
     if (category === 'tables') return this.tableItems(component);
     if (category === 'strings') return this.stringItems(component);
     if (category === 'api') return this.apiItems(component);
+    if (category === 'config') return this.configItems(component);
     return this.templateItems(component);
   }
 
@@ -75,6 +79,19 @@ export class ListPluginTree {
       match: `${f.name} ${f.description}`.trim(),
       location: f.location,
     }));
+  }
+
+  /** 설정 이름은 한국어로 보여줄 수 없다 — 설정 키와 lang 키가 같을 것 같지만
+   *  실측(603개) 14개만 일치한다. 대신 어떤 종류의 설정인지를 보인다. */
+  private configItems(component: string): PluginItem[] {
+    return this.config.keysOfPlugin(component)
+      .map(d => ({
+        label: d.key,
+        detail: d.settingClass.replace(/^admin_setting_/, ''),
+        match: d.key,
+        location: d.location,
+      }))
+      .sort(byLabel);
   }
 
   private templateItems(component: string): PluginItem[] {
