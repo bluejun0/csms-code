@@ -1,5 +1,7 @@
 import { DocumentFacts, RecordAssignment, emptyFacts } from '../../domain/code-analysis/facts';
 import { PhpSyntax, RawClassMember } from '../../domain/code-analysis/ports/php-syntax';
+import { LangLayout, LangLayoutReader } from '../../domain/lang-model/ports/lang-layout-reader';
+import { readLangLayout } from './lang-layout';
 import { readClassMembers } from './class-members';
 import { FragmentSet } from './fragment-set';
 import { accessFragments } from './fragments/access';
@@ -23,7 +25,7 @@ export const ALL_FRAGMENTS: readonly QueryFragment[] = [
   ...configFragments, ...tableFragments, ...templateFragments,
 ];
 
-export class TreeSitterPhpSyntax implements PhpSyntax {
+export class TreeSitterPhpSyntax implements PhpSyntax, LangLayoutReader {
   private constructor(
     private readonly runtime: PhpRuntime,
     private readonly fragments: FragmentSet,
@@ -65,6 +67,16 @@ export class TreeSitterPhpSyntax implements PhpSyntax {
     try {
       const body = doc.classBody(className);
       return body ? readClassMembers(body) : [];
+    } finally {
+      doc.dispose();
+    }
+  }
+
+  langLayout(text: string): LangLayout | null {
+    const doc = this.runtime.parse(text);
+    if (!doc) return null;
+    try {
+      return readLangLayout(doc.root);
     } finally {
       doc.dispose();
     }
