@@ -1,7 +1,8 @@
-/** `(key, component)`로 lang 문자열을 가리키는 PHP 호출 형태 — 함수 호출(`name(...)`)과 생성(`new name(...)`).
+/** `(key, component)`로 lang 문자열을 가리키는 PHP 호출 형태 — 함수 호출(`name(...)`), 생성(`new name(...)`),
+ *  메서드 호출(`->name(...)`), 키 배열을 받는 메서드 호출(`->name([key, …], component)`).
  *  팩트 추출·사용처 색인·완성 트리거가 모두 이 표만 보므로 한 곳만 인식하고 다른 곳은 못 하는 비대칭이 생기지 않는다. */
 export interface StringCallForm {
-  kind: 'function' | 'class';
+  kind: 'function' | 'class' | 'method' | 'keyListMethod';
   name: string;
   /** 컴포넌트를 생략했을 때 찾는 곳. error 계열은 `moodle`·`core`를 적어도 error로 간다(moodle_exception의 규칙). */
   defaultComponent: 'core' | 'error';
@@ -14,13 +15,21 @@ export const STRING_CALL_FORMS: readonly StringCallForm[] = [
   { kind: 'class', name: 'moodle_exception', defaultComponent: 'error' },
   { kind: 'class', name: 'lang_string', defaultComponent: 'core' },
   { kind: 'class', name: 'help_icon', defaultComponent: 'core' },
+  { kind: 'method', name: 'string_for_js', defaultComponent: 'core' },
+  { kind: 'keyListMethod', name: 'strings_for_js', defaultComponent: 'core' },
 ];
 
-const functions = new Map(STRING_CALL_FORMS.filter(f => f.kind === 'function').map(f => [f.name, f] as const));
-const classes = new Map(STRING_CALL_FORMS.filter(f => f.kind === 'class').map(f => [f.name, f] as const));
+const formsOf = (kind: StringCallForm['kind']) =>
+  new Map(STRING_CALL_FORMS.filter(f => f.kind === kind).map(f => [f.name, f] as const));
+const functions = formsOf('function');
+const classes = formsOf('class');
+const methods = formsOf('method');
+const keyListMethods = formsOf('keyListMethod');
 
 export function stringFunctionForm(name: string): StringCallForm | undefined { return functions.get(name); }
 export function stringClassForm(name: string): StringCallForm | undefined { return classes.get(name); }
+export function stringMethodForm(name: string): StringCallForm | undefined { return methods.get(name); }
+export function stringKeyListMethodForm(name: string): StringCallForm | undefined { return keyListMethods.get(name); }
 
 /** 호출에 적힌 컴포넌트(생략은 '')를 그 형태의 규칙으로 — 생략·`moodle`·`core`는 기본 컴포넌트,
  *  나머지는 그대로 둔다(canonical 정규화는 색인이 한다). */
@@ -28,6 +37,8 @@ export function effectiveComponent(form: StringCallForm, rawComponent: string): 
   return rawComponent === '' || rawComponent === 'moodle' || rawComponent === 'core' ? form.defaultComponent : rawComponent;
 }
 
-/** 정규식 기반 스캐너용 대안 조각 — `get_string|print_string|print_error`, `moodle_exception|lang_string|help_icon`. */
+/** 정규식 기반 스캐너용 대안 조각 — `get_string|print_string|print_error`, `moodle_exception|lang_string|help_icon` 등. */
 export const STRING_FUNCTION_ALTERNATION = [...functions.keys()].join('|');
 export const STRING_CLASS_ALTERNATION = [...classes.keys()].join('|');
+export const STRING_METHOD_ALTERNATION = [...methods.keys()].join('|');
+export const STRING_KEY_LIST_METHOD_ALTERNATION = [...keyListMethods.keys()].join('|');

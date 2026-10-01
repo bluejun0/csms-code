@@ -11,9 +11,10 @@ export interface MustacheRefs {
 
 // partial `{{> comp/name}}`과 parent `{{< comp/name}}`. Moodle은 항상 컴포넌트를 붙여 쓴다.
 const TEMPLATE_RE = /\{\{[><]\s*([\w.-]+\/[\w.\-/]+)\s*\}\}/g;
-// `{{#str}}key, component{{/str}}`과 `{{#cleanstr}}`. 닫는 태그는 요구하지 않는다 —
-// 여는 태그와 두 인자만으로 충분하고 여러 줄 형태도 잡힌다. 인자가 변수면 매칭되지 않는다.
-const STRING_RE = /\{\{#(?:clean)?str\}\}\s*([\w:.\-/]+)\s*,\s*(\w+)/g;
+// `{{#str}}key, component{{/str}}`과 `{{#cleanstr}}`. 여러 줄 형태도 잡힌다. 인자가 변수면 매칭되지 않는다.
+// 컴포넌트를 생략하면(키 바로 뒤가 닫는 태그) Moodle은 core로 본다 — 그때만 닫는 태그를 요구해
+// `key, {{comp}}`처럼 컴포넌트가 변수인 꼴을 core로 오귀속하지 않는다.
+const STRING_RE = /\{\{#(?:clean)?str\}\}\s*([\w:.\-/]+)\s*(?:,\s*(\w+)|\{\{\/(?:clean)?str\}\})/g;
 
 export function scanMustache(text: string): MustacheRefs {
   return {
@@ -21,7 +22,7 @@ export function scanMustache(text: string): MustacheRefs {
       ref: h.captured, line: h.line, column: h.column, index: h.index,
     })),
     stringRefs: matchAll(text, STRING_RE).map(h => ({
-      key: h.captured, component: h.match[2],
+      key: h.captured, component: h.match[2] ?? 'core',
       keyLine: h.line, keyColumn: h.column, keyIndex: h.index,
     })),
   };

@@ -51,11 +51,43 @@ echo get_string('k', 'local_x');
   });
 });
 
+describe('extractUsages — string_for_js·strings_for_js', () => {
+  const SRC = `<?php
+$PAGE->requires->string_for_js('loginas', 'core');
+$PAGE->requires->strings_for_js([
+    'reason_menuname_member',
+    "other",
+], 'local_manager');
+$PAGE->requires->strings_for_js(array('a', 'b'), 'moodle');
+$PAGE->requires->strings_for_js($keys, 'local_manager');
+`;
+
+  it('메서드 호출과 배열 원소마다 담는다', () => {
+    const { pool, out } = extract('/a/b.php', SRC);
+    assert.deepEqual(out.strings.map(e => `${pool.text(e.component)}/${pool.text(e.key)}`),
+      ['core/loginas', 'local_manager/reason_menuname_member', 'local_manager/other', 'core/a', 'core/b']);
+  });
+
+  it('배열 원소의 위치는 그 키 리터럴의 내용 시작', () => {
+    const { out } = extract('/a/b.php', SRC);
+    const lines = SRC.split('\n');
+    const e = out.strings[2];
+    assert.equal(e.line, 4);
+    assert.equal(e.column, lines[4].indexOf('other'));
+  });
+});
+
 describe('extractUsages — 확장자별', () => {
   it('mustache의 partial과 {{#str}}를 담는다', () => {
     const { pool, out } = extract('/a/t.mustache', `{{> local_x/inner}}\n{{#str}}greet, local_x{{/str}}\n`);
     assert.equal(pool.text(out.templates[0].ref), 'local_x/inner');
     assert.equal(pool.text(out.strings[0].key), 'greet');
+  });
+
+  it('mustache의 컴포넌트 생략 {{#str}}는 core', () => {
+    const { pool, out } = extract('/a/t.mustache', `{{#str}}department{{/str}}\n`);
+    assert.equal(pool.text(out.strings[0].component), 'core');
+    assert.equal(pool.text(out.strings[0].key), 'department');
   });
 
   it('JS의 get_string과 Templates.render를 담는다', () => {

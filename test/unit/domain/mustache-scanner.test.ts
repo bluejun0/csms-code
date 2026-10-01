@@ -12,6 +12,8 @@ const TEXT = [
   '    multiline_key, local_ubattend',
   '  {{/str}}',
   '  {{#str}}{{dynamickey}}, local_ubattend{{/str}}',
+  '  {{#str}}department{{/str}} {{#cleanstr}} plain {{/cleanstr}}',
+  '  {{#str}}withvar, {{comp}}{{/str}}',
   '  {{> {{dynamic}} }}',
   '  {{name}}',
   '</div>',
@@ -27,7 +29,12 @@ describe('scanMustache', () => {
 
   it('{{#str}}·{{#cleanstr}}의 키와 컴포넌트를 잡는다(여러 줄 포함)', () => {
     assert.deepEqual(refs.stringRefs.map(r => `${r.component}/${r.key}`),
-      ['local_ubattend/attendance_book', 'core/welcome', 'local_ubattend/multiline_key']);
+      ['local_ubattend/attendance_book', 'core/welcome', 'local_ubattend/multiline_key', 'core/department', 'core/plain']);
+  });
+
+  it('컴포넌트를 생략하면 core — 변수 컴포넌트는 core로 오귀속하지 않는다', () => {
+    assert.ok(refs.stringRefs.some(r => r.key === 'department' && r.component === 'core'));
+    assert.ok(!refs.stringRefs.some(r => r.key === 'withvar'));
   });
 
   it('변수 인자는 잡지 않는다', () => {
