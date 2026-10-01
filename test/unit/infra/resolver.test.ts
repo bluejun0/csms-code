@@ -2,7 +2,7 @@ import { strict as assert } from 'assert';
 import { join } from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
-import { findMoodleRoot, listInstallXmlFiles, listLangFiles, componentOfLangFile, componentOfInstallXmlFile, listInstallXmlFilesAsync, listLangFilesAsync, listTemplateFilesAsync, listTemplateFiles, langFileMetaOf, listAmdFiles, listAmdFilesAsync, componentOfAmdFile, componentOfTemplateFile } from '../../../src/infrastructure/workspace/moodle-root-resolver';
+import { findMoodleRoot, listInstallXmlFiles, listLangFiles, componentOfLangFile, componentOfInstallXmlFile, listInstallXmlFilesAsync, listLangFilesAsync, listTemplateFilesAsync, listTemplateFiles, langFileMetaOf, listAmdFiles, listAmdFilesAsync, componentOfAmdFile, componentOfTemplateFile, isLangFileOfAnyLocale } from '../../../src/infrastructure/workspace/moodle-root-resolver';
 import { clearPluginTypeCache } from '../../../src/infrastructure/workspace/plugin-type-map';
 import { LangFileRef, TemplateFileRef, AmdFileRef } from '../../../src/infrastructure/workspace/moodle-root-resolver';
 
@@ -125,6 +125,19 @@ describe('MoodleRootResolver — componentOfLangFile (경로 역산)', () => {
     assert.equal(componentOfLangFile(root, join(root, 'local/ubattend/lang/ko/wrong.php')), null));
   it('루트 밖 경로 → null', () =>
     assert.equal(componentOfLangFile(root, '/etc/passwd'), null));
+});
+
+describe('MoodleRootResolver — isLangFileOfAnyLocale', () => {
+  it('색인 밖 언어도 lang 파일이다', () => {
+    assert.ok(isLangFileOfAnyLocale(root, join(root, 'local/ubattend/lang/de/local_ubattend.php')));
+    assert.ok(isLangFileOfAnyLocale(root, join(root, 'lang/ko/moodle.php')));
+    assert.ok(isLangFileOfAnyLocale(root, join(root, 'mod/testmod/lang/fr/testmod.php')));
+  });
+  it('플러그인 파일명 규칙 밖·루트 밖은 아니다', () => {
+    assert.ok(!isLangFileOfAnyLocale(root, join(root, 'local/ubattend/lang/de/wrong.php')));
+    assert.ok(!isLangFileOfAnyLocale(root, join(root, 'local/ubattend/lang/de/sub/local_ubattend.php')));
+    assert.ok(!isLangFileOfAnyLocale(root, '/etc/lang/en/x.php'));
+  });
 });
 
 describe('MoodleRootResolver — 비동기 열거는 동기와 동일 결과', () => {

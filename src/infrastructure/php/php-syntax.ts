@@ -76,7 +76,7 @@ export class TreeSitterPhpSyntax implements PhpSyntax, LangLayoutReader {
     const doc = this.runtime.parse(text);
     if (!doc) return null;
     try {
-      return readLangLayout(doc.root);
+      return readLangLayout(doc.root, text);
     } finally {
       doc.dispose();
     }
