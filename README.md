@@ -44,6 +44,8 @@ CSMS/Moodle(코스모스, `*lxp`/`*lms` 계열) 개발을 위한 VSCode 확장�
   new moodle_exception('hello', 'local_ubion')
   new lang_string('hello', 'local_ubion')
   new help_icon('hello', 'local_ubion')
+  $PAGE->requires->string_for_js('hello', 'local_ubion')
+  $PAGE->requires->strings_for_js(['hello', 'bye'], 'local_ubion')
   ```
 
 - **3. Mustache 템플릿 참조**
@@ -62,6 +64,7 @@ CSMS/Moodle(코스모스, `*lxp`/`*lms` 계열) 개발을 위한 VSCode 확장�
   {{> local_ubion/user_row}}
   {{< local_ubion/base}}
   {{#str}}hello, local_ubion{{/str}}
+  {{#str}}department{{/str}}  // 컴포넌트를 생략하면 core
   {{#cleanstr}}hello, local_ubion{{/cleanstr}}
   ```
 

@@ -8,11 +8,11 @@ import { ALL_FRAGMENTS as FRAGMENTS } from '../../../src/infrastructure/php/php-
 
 // 조각이 늘거나 줄면 곧바로 실패시켜 커버리지 전제도 다시 살펴보게 만든다 — 조각
 // 배열이 비어도(또는 일부가 늘어도) 초록불이 나오는 일을 막는다.
-const EXPECTED_FRAGMENT_COUNT = 29;
+const EXPECTED_FRAGMENT_COUNT = 33;
 
 // 픽스처 트리에는 없는 구성만 모았다 — $DB 대입 두 형태(테이블 인자 있음/없음), foreach
 // 네 형태, new 한 인자 문자열 호출, 동적 컴포넌트 세 형태(변수·$this 프로퍼티·클래스 상수),
-// 문자열 기본값을 가진 프로퍼티·const 선언, 리터럴/동적 플러그인 set_config, {table} 참조가
+// 문자열 기본값을 가진 프로퍼티·const 선언, string_for_js·strings_for_js 메서드 호출(리터럴·동적 컴포넌트), 리터럴/동적 플러그인 set_config, {table} 참조가
 // 있는 nowdoc. 공유 픽스처 트리에 넣으면 다른 테스트의 매치 수가 흔들리므로 여기 인라인으로 둔다.
 const SUPPLEMENTAL_PHP_SOURCE = `<?php
 function f() {
@@ -26,6 +26,10 @@ function f() {
   echo get_string('dynkey1', $component);
   set_config('setkey1', 1, 'local_plugin');
   set_config('setkey2', 1, $plugin);
+  $PAGE->requires->string_for_js('jskey', 'core');
+  $PAGE->requires->strings_for_js(['jskey1', 'jskey2'], 'local_plugin');
+  $PAGE->requires->string_for_js('jskey3', $plugin);
+  $PAGE->requires->strings_for_js(['jskey4'], $plugin);
 }
 
 class SampleFixture {

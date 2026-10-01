@@ -1,6 +1,8 @@
 import { literalString } from './literal-string';
 import { ComponentRef } from '../../../domain/code-analysis/facts';
-import { StringCallForm, effectiveComponent, stringClassForm, stringFunctionForm } from '../../../domain/code-analysis/string-functions';
+import {
+  StringCallForm, effectiveComponent, stringClassForm, stringFunctionForm, stringKeyListMethodForm, stringMethodForm,
+} from '../../../domain/code-analysis/string-functions';
 import { Captures, QueryFragment } from '../query-fragment';
 
 // get_config/set_config의 플러그인 인자도 컴포넌트가 리터럴이 아닐 때 같은 세 형태(변수·$this프로퍼티·클래스 상수)를 받으므로 여기서 내보내 공유한다.
@@ -22,8 +24,8 @@ export function componentRefOf(at: Captures): ComponentRef | null {
   return null;
 }
 
-// 컴포넌트가 리터럴인 문자열 호출 — 함수(get_string 등)·클래스(moodle_exception 등) 두 형태, 각각
-// 컴포넌트 인자 유무로 둘씩 — 총 네 조각. 함수/클래스 이름 필터는 술어가 아니라 collect()에서 한다.
+// 컴포넌트가 리터럴인 문자열 호출 — 함수(get_string 등)·클래스(moodle_exception 등)는 컴포넌트 인자 유무로 둘씩,
+// 메서드(string_for_js)·키 배열 메서드(strings_for_js)는 컴포넌트가 필수라 하나씩. 이름 필터는 술어가 아니라 collect()에서 한다.
 function literalCall(pattern: string, formOf: (name: string) => StringCallForm | undefined,
                      nameCapture: string, hasComponent: boolean): QueryFragment {
   return {
@@ -42,19 +44,21 @@ function literalCall(pattern: string, formOf: (name: string) => StringCallForm |
   };
 }
 
-// 컴포넌트가 리터럴이 아닌 세 형태 — 표현식 종류가 달라 패턴을 따로 둔다.
-function dynamicCall(pattern: string): QueryFragment {
+// 컴포넌트가 리터럴이 아닌 세 형태. get_string 꼴은 표현식 종류마다 패턴을 따로 두고,
+// 메서드 꼴은 DYNAMIC_COMPONENT_ARG 대안 하나로 묶는다.
+function dynamicCall(pattern: string, formOf: (name: string) => StringCallForm | undefined = stringFunctionForm,
+                     nameCapture = 'fn'): QueryFragment {
   return {
     produces: ['dynamicStringCalls'],
     pattern,
     collect: (at, into) => {
-      if (!stringFunctionForm(at.text('fn'))) return;
+      if (!formOf(at.text(nameCapture))) return;
       const comp = componentRefOf(at);
       if (!comp) return;
       into.add('dynamicStringCalls', {
         key: at.text('key'), comp,
         keyLine: at.line('key'), keyColumn: at.column('key'), keyIndex: at.index('key'),
-        index: at.index('fn'), scope: at.scope('fn'),
+        index: at.index(nameCapture), scope: at.scope(nameCapture),
       });
     },
   };
@@ -104,6 +108,17 @@ export const stringFragments: readonly QueryFragment[] = [
   literalCall(`(object_creation_expression
     [(name) @cls (qualified_name (name) @cls)]
     (arguments . (argument ${literalString('key')}) .))`, stringClassForm, 'cls', false),
+  literalCall(`(member_call_expression
+    name: (name) @meth
+    arguments: (arguments
+      . (argument ${literalString('key')})
+      . (argument ${literalString('component')})))`, stringMethodForm, 'meth', true),
+  // 원소마다 매치가 하나씩 생긴다. 원소 안의 앵커는 `'k' => 'v'` 꼴을 거른다 — 키 배열이 아니다.
+  literalCall(`(member_call_expression
+    name: (name) @meth
+    arguments: (arguments
+      . (argument (array_creation_expression (array_element_initializer . ${literalString('key')} .)))
+      . (argument ${literalString('component')})))`, stringKeyListMethodForm, 'meth', true),
   dynamicCall(`(function_call_expression function: (name) @fn arguments: (arguments
     . (argument ${literalString('key')}) . (argument (variable_name (name) @dynvar))))`),
   dynamicCall(`(function_call_expression function: (name) @fn arguments: (arguments
@@ -111,6 +126,11 @@ export const stringFragments: readonly QueryFragment[] = [
     . (argument (member_access_expression object: (variable_name) @dynrecv name: (name) @dynprop))))`),
   dynamicCall(`(function_call_expression function: (name) @fn arguments: (arguments
     . (argument ${literalString('key')}) . (argument (class_constant_access_expression) @dynconst)))`),
+  dynamicCall(`(member_call_expression name: (name) @meth arguments: (arguments
+    . (argument ${literalString('key')}) . (argument ${DYNAMIC_COMPONENT_ARG})))`, stringMethodForm, 'meth'),
+  dynamicCall(`(member_call_expression name: (name) @meth arguments: (arguments
+    . (argument (array_creation_expression (array_element_initializer . ${literalString('key')} .)))
+    . (argument ${DYNAMIC_COMPONENT_ARG})))`, stringKeyListMethodForm, 'meth'),
   literalAssignment,
   propertyLiteral,
   constLiteral,

@@ -3,13 +3,17 @@ import { CompleteStringKeys } from '../../application/complete-string-keys';
 import { sourceLabelEnabled, withSource } from '../source-label';
 import { stringKeyCompletionComponent } from '../string-call-prefix';
 
+const CONTEXT_WINDOW = 2000;
+
 export class StringKeyCompletionProvider implements vscode.CompletionItemProvider {
   constructor(private uc: CompleteStringKeys) {}
   provideCompletionItems(doc: vscode.TextDocument, pos: vscode.Position): vscode.CompletionItem[] {
-    const line = doc.lineAt(pos.line).text;
-    const before = line.slice(0, pos.character);
+    // 여러 줄에 걸친 호출(키 배열 등)도 읽도록 커서 앞뒤로 창을 둔다
+    const offset = doc.offsetAt(pos);
+    const before = doc.getText(new vscode.Range(doc.positionAt(Math.max(0, offset - CONTEXT_WINDOW)), pos));
+    const after = doc.getText(new vscode.Range(pos, doc.positionAt(offset + CONTEXT_WINDOW)));
     // component는 커서 뒤에서 읽는다 — 아직 모르면 완성 불가(키 목록을 알 수 없음)
-    const component = stringKeyCompletionComponent(before, line.slice(pos.character));
+    const component = stringKeyCompletionComponent(before, after);
     if (!component) return [];
     const labelled = sourceLabelEnabled();
     return this.uc.run(component).map(s => {

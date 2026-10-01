@@ -2,14 +2,21 @@ import * as path from 'path';
 import { StringId, StringPool } from './string-pool';
 import { UsageExtract, emptyExtract } from './usage-entries';
 import { normalizeComponent } from '../../domain/lang-model/services/component-normalizer';
-import { STRING_FUNCTION_ALTERNATION, STRING_CLASS_ALTERNATION, stringFunctionForm, stringClassForm, effectiveComponent } from '../../domain/code-analysis/string-functions';
+import {
+  STRING_FUNCTION_ALTERNATION, STRING_CLASS_ALTERNATION, STRING_METHOD_ALTERNATION, STRING_KEY_LIST_METHOD_ALTERNATION,
+  StringCallForm, stringFunctionForm, stringClassForm, stringMethodForm, stringKeyListMethodForm, effectiveComponent,
+} from '../../domain/code-analysis/string-functions';
 import { configKeyId } from '../../domain/moodle-model/services/config-plugin';
 import { scanJsCalls } from '../../domain/code-analysis/js-call-scanner';
 import { scanMustache } from '../../domain/code-analysis/mustache-scanner';
 
 // 리터럴 key + (닫힘 | 리터럴 component). 컴포넌트가 변수·보간이면 통째로 비매칭 — 기본 컴포넌트로 오귀속하지 않는다(침묵 원칙).
-// 1=함수 이름 2=클래스 이름(`new` 꼴) 3=key 4=component(생략이면 undefined)
-const USAGE_RE = new RegExp(String.raw`(?:\b(${STRING_FUNCTION_ALTERNATION})|new\s+\\?(${STRING_CLASS_ALTERNATION}))\(\s*['"]([\w:./-]+)['"]\s*(?:\)|,\s*['"](\w*)['"])`, 'g');
+// 1=함수 이름 2=클래스 이름(`new` 꼴) 3=메서드 이름(`->` 꼴) 4=key 5=component(생략이면 undefined)
+const USAGE_RE = new RegExp(String.raw`(?:\b(${STRING_FUNCTION_ALTERNATION})|new\s+\\?(${STRING_CLASS_ALTERNATION})|->(${STRING_METHOD_ALTERNATION}))\(\s*['"]([\w:./-]+)['"]\s*(?:\)|,\s*['"](\w*)['"])`, 'g');
+// 키 배열 + 리터럴 component. 1=메서드 이름 2=배열 내용 3=component. 내용에 괄호·대괄호가 있으면 끝을 알 수 없어 비매칭.
+const KEY_LIST_USAGE_RE = new RegExp(String.raw`->(${STRING_KEY_LIST_METHOD_ALTERNATION})\(\s*(?:\[|array\()([^\[\]()]*)[\])]\s*,\s*['"](\w*)['"]`, 'g');
+// 배열 내용 속 리터럴 하나뿐인 원소 — `'k' => 'v'`·변수 원소는 건너뛴다(팩트 쪽 앵커와 같은 규칙).
+const KEY_LIST_ELEMENT_RE = /(?:^|,)\s*['"]([\w:./-]+)['"]\s*(?=,|$)/g;
 // 템플릿 사용처 — 같은 스캔에서 함께 수집한다(23초 스캔을 두 번 돌리지 않기 위해)
 const TEMPLATE_USAGE_RE = /render_from_template\(\s*['"]([\w:./-]+)['"]/g;
 // AMD 모듈 사용처 — 같은 스캔에서 함께 수집한다
@@ -44,16 +51,31 @@ function extractPhp(text: string, ctx: ExtractContext): UsageExtract {
   const out = emptyExtract();
   // 키 리터럴 내용 시작 = 매치 안 첫 따옴표 다음
   const firstLiteralColumn = (m: RegExpExecArray, lineStart: number) => m.index - lineStart + m[0].search(/['"]/) + 1;
+  const componentId = (form: StringCallForm, raw: string) =>
+    ctx.pool.id(normalizeComponent(effectiveComponent(form, raw), ctx.hasCanonical));
   forEachMatch(text, USAGE_RE, (m, line, lineStart) => {
-    const form = m[1] ? stringFunctionForm(m[1]) : stringClassForm(m[2]);
+    const form = m[1] ? stringFunctionForm(m[1]) : m[2] ? stringClassForm(m[2]) : stringMethodForm(m[3]);
     if (!form) return;
-    const component = normalizeComponent(effectiveComponent(form, m[4] ?? ''), ctx.hasCanonical);
+    if (form.kind === 'method' && m[5] === undefined) return; // 팩트 쪽과 같이 컴포넌트가 필수인 꼴
     out.strings.push({
-      component: ctx.pool.id(component),
-      key: ctx.pool.id(m[3]),
+      component: componentId(form, m[5] ?? ''),
+      key: ctx.pool.id(m[4]),
       file: ctx.file,
       line,
       column: firstLiteralColumn(m, lineStart),
+    });
+  });
+  forEachMatch(text, KEY_LIST_USAGE_RE, (m, line, lineStart) => {
+    const form = stringKeyListMethodForm(m[1]);
+    if (!form) return;
+    const component = componentId(form, m[3]);
+    const bodyStart = m.index + m[0].indexOf(m[2], m[1].length + 2);
+    // 원소 매치는 앞 원소의 쉼표·줄바꿈부터 시작하므로 줄은 키 위치까지 직접 센다
+    let keyLine = line, keyLineStart = lineStart, scanned = m.index;
+    forEachMatch(m[2], KEY_LIST_ELEMENT_RE, e => {
+      const keyStart = bodyStart + e.index + e[0].indexOf(e[1]);
+      for (; scanned < keyStart; scanned++) if (text.charCodeAt(scanned) === 10) { keyLine++; keyLineStart = scanned + 1; }
+      out.strings.push({ component, key: ctx.pool.id(e[1]), file: ctx.file, line: keyLine, column: keyStart - keyLineStart });
     });
   });
   forEachMatch(text, TEMPLATE_USAGE_RE, (m, line, lineStart) => {
