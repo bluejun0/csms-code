@@ -64,9 +64,11 @@ CSMS/Moodle(코스모스, `*lxp`/`*lms` 계열) 개발을 위한 VSCode 확장�
   {{> local_ubion/user_row}}
   {{< local_ubion/base}}
   {{#str}}hello, local_ubion{{/str}}
-  {{#str}}department{{/str}}  // 컴포넌트를 생략하면 core
+  {{#str}}department{{/str}}
   {{#cleanstr}}hello, local_ubion{{/cleanstr}}
   ```
+
+  `{{#str}}`의 컴포넌트를 생략하면 core 문자열로 찾습니다.
 
 - **4. AMD/JS 참조**
 
