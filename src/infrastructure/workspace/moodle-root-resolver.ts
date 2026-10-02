@@ -147,6 +147,18 @@ export function langFileMetaOf(root: string, file: string): { component: string;
   return restParts[2] === expected ? { component: `${hit.type}_${hit.name}`, locale: restParts[1] } : null;
 }
 
+/** 색인과 달리 언어를 가리지 않는다 — 코어는 `lang/<언어>/*.php`, 플러그인은 `lang/<언어>/<파일명 규칙>`. */
+export function isLangFileOfAnyLocale(root: string, file: string): boolean {
+  const rel = path.relative(root, file);
+  if (rel.startsWith('..') || path.isAbsolute(rel) || !rel.endsWith('.php')) return false;
+  const parts = rel.split(path.sep);
+  if (parts.length === 3 && parts[0] === 'lang') return true;
+  const hit = pluginTypeOfRel(root, rel);
+  if (!hit) return false;
+  const restParts = hit.rest.split('/');
+  return restParts.length === 3 && restParts[0] === 'lang' && restParts[2] === langFileNameFor(hit.type, hit.name);
+}
+
 /** lang 파일 경로 → component (listLangFiles 규칙의 역함수 — 순수 경로 로직). 규칙 밖은 null. */
 export function componentOfLangFile(root: string, file: string): string | null {
   return langFileMetaOf(root, file)?.component ?? null;

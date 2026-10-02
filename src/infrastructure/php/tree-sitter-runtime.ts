@@ -61,6 +61,8 @@ export class ParsedDocument {
 
   get endIndex(): number { return this.tree.rootNode.endIndex; }
 
+  get root(): Node { return this.tree.rootNode; }
+
   scopeRanges(): Scope[] {
     const out: Scope[] = [];
     const stack: Node[] = [this.tree.rootNode];

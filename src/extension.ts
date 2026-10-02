@@ -6,7 +6,7 @@ import { TreeSitterPhpSyntax } from './infrastructure/php/php-syntax';
 import { CachedPhpSyntax } from './infrastructure/php/facts-cache';
 import { pluginTypeDirsAsync, clearPluginTypeCache } from './infrastructure/workspace/plugin-type-map';
 import { registerUpdateCheck } from './presentation/update-notifier';
-import { findMoodleRoot, componentOfLangFile, componentOfTemplateFile, componentOfInstallXmlFile, componentOfAmdFile, componentOfServicesFile, langFileMetaOf } from './infrastructure/workspace/moodle-root-resolver';
+import { findMoodleRoot, componentOfLangFile, componentOfTemplateFile, componentOfInstallXmlFile, componentOfAmdFile, componentOfServicesFile, langFileMetaOf, isLangFileOfAnyLocale } from './infrastructure/workspace/moodle-root-resolver';
 import { RecordTypeInference } from './domain/code-analysis/record-type-inference';
 import { ValidateRecordColumns } from './application/validate-record-columns';
 import { CompleteRecordColumns } from './application/complete-record-columns';
@@ -90,6 +90,8 @@ import { ListPluginTree, PluginCategory } from './application/list-plugin-tree';
 import { PluginExplorerProvider } from './presentation/providers/plugin-explorer-provider';
 import { SearchPluginItems } from './application/search-plugin-items';
 import { registerSearch } from './presentation/search-quick-pick';
+import { LangLayoutReader } from './domain/lang-model/ports/lang-layout-reader';
+import { LangStringCommandsProvider, registerLangStringCommands } from './presentation/sort-lang-strings';
 
 export async function activate(ctx: vscode.ExtensionContext) {
   registerUpdateCheck(ctx);
@@ -114,8 +116,11 @@ export async function activate(ctx: vscode.ExtensionContext) {
 
   // 번들 시 dist에 파서 런타임·PHP 문법 wasm 두 개가 복사됨
   let syntax: CachedPhpSyntax;
+  let langLayouts: LangLayoutReader;
   try {
-    syntax = new CachedPhpSyntax(await TreeSitterPhpSyntax.create(path.join(ctx.extensionPath, 'dist')), 8);
+    const treeSitter = await TreeSitterPhpSyntax.create(path.join(ctx.extensionPath, 'dist'));
+    syntax = new CachedPhpSyntax(treeSitter, 8);
+    langLayouts = treeSitter;
   } catch (err) {
     console.error('CSMS Code: tree-sitter WASM 로드에 실패하여 확장을 활성화할 수 없습니다.', err);
     vscode.window.showErrorMessage('CSMS Code: tree-sitter WASM 로드에 실패했습니다. 확장 기능이 비활성화됩니다.');
@@ -153,6 +158,11 @@ export async function activate(ctx: vscode.ExtensionContext) {
   }, () => vscode.workspace.getConfiguration('csmscode').get<boolean>('strings.codeLens', true));
   ctx.subscriptions.push(langLens);
   lenses.push(langLens);
+  const isAnyLangFile = (file: string) => isLangFileOfAnyLocale(root, file);
+  registerLangStringCommands(ctx, langLayouts, isAnyLangFile);
+  const langCommands = new LangStringCommandsProvider(langLayouts, isAnyLangFile,
+    () => vscode.workspace.getConfiguration('csmscode').get<boolean>('strings.sortCodeLens', true));
+  ctx.subscriptions.push(langCommands);
   // 사용처 색인은 첫 참조 요청(또는 버튼 클릭)에 만든다 — 활성화 비용 0. 참조 프로바이더 여덟 개와 명령 둘이 이 핸들 하나를 공유한다.
   // 색인을 디스크에 저장해 다음 세션에는 스캔 없이 불러온다 — 스캔은 실측 웜 4.5초, 로드는 0.5초.
   const extensionVersion = String((ctx.extension.packageJSON as { version?: string }).version ?? '0');
@@ -328,6 +338,10 @@ export async function activate(ctx: vscode.ExtensionContext) {
     vscode.workspace.onDidChangeConfiguration(e => { if (e.affectsConfiguration('csmscode.amd.codeLens')) amdLens.refresh(); }),
     vscode.languages.registerCodeLensProvider({ language: 'php', scheme: 'file', pattern: '**/lang/*/*.php' }, langLens),
     vscode.workspace.onDidChangeConfiguration(e => { if (e.affectsConfiguration('csmscode.strings.codeLens')) langLens.refresh(); }),
+    vscode.languages.registerCodeLensProvider({ language: 'php', scheme: 'file', pattern: '**/lang/*/*.php' }, langCommands),
+    vscode.languages.registerCodeActionsProvider({ language: 'php', scheme: 'file', pattern: '**/lang/*/*.php' }, langCommands,
+      { providedCodeActionKinds: LangStringCommandsProvider.actionKinds }),
+    vscode.workspace.onDidChangeConfiguration(e => { if (e.affectsConfiguration('csmscode.strings.sortCodeLens')) langCommands.refresh(); }),
     vscode.languages.registerDefinitionProvider(php, new TemplateDefinitionProvider(resolveTpl)),
     vscode.languages.registerReferenceProvider(
       { scheme: 'file', pattern: '**/templates/**/*.mustache' },

@@ -16,3 +16,27 @@ suite('DB 인텔리전스 통합', () => {
     assert.ok(diags.some(d => /coursid/.test(d.message)), '오타 진단이 있어야 함');
   });
 });
+
+suite('lang 문자열 정렬 통합', () => {
+  test('버튼이 첫 $string 줄에 있고, 알파벳순 정렬 명령이 키 순으로 정렬해 저장한다', async () => {
+    const uri = vscode.Uri.file(path.join(root, 'local/ubattend/lang/ko/local_ubattend.php'));
+    const original = await vscode.workspace.fs.readFile(uri);
+    try {
+      const unsorted = "<?php\n\n$string['b'] = 'B';\n// a 설명\n$string['a'] = 'A';\n";
+      await vscode.workspace.fs.writeFile(uri, Buffer.from(unsorted));
+      const doc = await vscode.workspace.openTextDocument(uri);
+      await vscode.window.showTextDocument(doc);
+      const lenses = await vscode.commands.executeCommand<vscode.CodeLens[]>('vscode.executeCodeLensProvider', uri);
+      const sortLens = lenses.find(l => l.command?.command === 'csmscode.sortLangStrings');
+      assert.equal(sortLens?.range.start.line, 2);
+      for (const command of ['csmscode.addMissingTranslations', 'csmscode.sortLangStringsAsEnglish']) {
+        assert.ok(lenses.some(l => l.command?.command === command), `영어가 아닌 파일에는 ${command} 버튼도 있어야 함`);
+      }
+      await vscode.commands.executeCommand('csmscode.sortLangStrings', uri);
+      const saved = Buffer.from(await vscode.workspace.fs.readFile(uri)).toString('utf8');
+      assert.equal(saved, "<?php\n\n// a 설명\n$string['a'] = 'A';\n$string['b'] = 'B';\n");
+    } finally {
+      await vscode.workspace.fs.writeFile(uri, original);
+    }
+  });
+});
