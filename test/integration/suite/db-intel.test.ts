@@ -40,3 +40,28 @@ suite('lang 문자열 정렬 통합', () => {
     }
   });
 });
+
+suite('services.php 구현 링크 통합', () => {
+  test('classname·methodname에서 정의 이동이 구현 메서드로 간다', async () => {
+    const services = vscode.Uri.file(path.join(root, 'local/ubattend/db/services.php'));
+    const classesDir = vscode.Uri.file(path.join(root, 'local/ubattend/classes'));
+    const impl = vscode.Uri.joinPath(classesDir, 'external/probe_api.php');
+    const original = await vscode.workspace.fs.readFile(services);
+    try {
+      await vscode.workspace.fs.writeFile(impl, Buffer.from(
+        "<?php\nnamespace local_ubattend\\external;\n\nclass probe_api {\n    public static function execute() {}\n}\n"));
+      await vscode.workspace.fs.writeFile(services, Buffer.from(
+        "<?php\n$functions = [\n    'local_ubattend_probe' => [\n        'classname' => 'local_ubattend\\external\\probe_api',\n        'methodname' => 'execute',\n    ],\n];\n"));
+      const doc = await vscode.workspace.openTextDocument(services);
+      await vscode.window.showTextDocument(doc);
+      const methodLinks = await vscode.commands.executeCommand<(vscode.Location | vscode.LocationLink)[]>(
+        'vscode.executeDefinitionProvider', services, new vscode.Position(4, 27));
+      const target = methodLinks.map(l => 'targetUri' in l ? l : { targetUri: l.uri, targetRange: l.range })
+        .find(l => l.targetUri.fsPath === impl.fsPath);
+      assert.equal(target?.targetRange.start.line, 4);
+    } finally {
+      await vscode.workspace.fs.writeFile(services, original);
+      await vscode.workspace.fs.delete(classesDir, { recursive: true });
+    }
+  });
+});

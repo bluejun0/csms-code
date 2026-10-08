@@ -90,8 +90,11 @@ import { ListPluginTree, PluginCategory } from './application/list-plugin-tree';
 import { PluginExplorerProvider } from './presentation/providers/plugin-explorer-provider';
 import { SearchPluginItems } from './application/search-plugin-items';
 import { registerSearch } from './presentation/search-quick-pick';
-import { LangLayoutReader } from './domain/lang-model/ports/lang-layout-reader';
 import { LangStringCommandsProvider, registerLangStringCommands } from './presentation/sort-lang-strings';
+import { ResolveServiceImplementation } from './application/resolve-service-implementation';
+import { ExternalImplementationFinder } from './infrastructure/services/external-implementation-finder';
+import { parseServiceImplementations } from './infrastructure/services/services-declaration-parser';
+import { SERVICES_SELECTOR, ServiceImplementationDefinitionProvider, registerOpenServiceImplementation } from './presentation/providers/service-implementation-provider';
 
 export async function activate(ctx: vscode.ExtensionContext) {
   registerUpdateCheck(ctx);
@@ -116,11 +119,10 @@ export async function activate(ctx: vscode.ExtensionContext) {
 
   // 번들 시 dist에 파서 런타임·PHP 문법 wasm 두 개가 복사됨
   let syntax: CachedPhpSyntax;
-  let langLayouts: LangLayoutReader;
+  let treeSitter: TreeSitterPhpSyntax;
   try {
-    const treeSitter = await TreeSitterPhpSyntax.create(path.join(ctx.extensionPath, 'dist'));
+    treeSitter = await TreeSitterPhpSyntax.create(path.join(ctx.extensionPath, 'dist'));
     syntax = new CachedPhpSyntax(treeSitter, 8);
-    langLayouts = treeSitter;
   } catch (err) {
     console.error('CSMS Code: tree-sitter WASM 로드에 실패하여 확장을 활성화할 수 없습니다.', err);
     vscode.window.showErrorMessage('CSMS Code: tree-sitter WASM 로드에 실패했습니다. 확장 기능이 비활성화됩니다.');
@@ -159,8 +161,8 @@ export async function activate(ctx: vscode.ExtensionContext) {
   ctx.subscriptions.push(langLens);
   lenses.push(langLens);
   const isAnyLangFile = (file: string) => isLangFileOfAnyLocale(root, file);
-  registerLangStringCommands(ctx, langLayouts, isAnyLangFile);
-  const langCommands = new LangStringCommandsProvider(langLayouts, isAnyLangFile,
+  registerLangStringCommands(ctx, treeSitter, isAnyLangFile);
+  const langCommands = new LangStringCommandsProvider(treeSitter, isAnyLangFile,
     () => vscode.workspace.getConfiguration('csmscode').get<boolean>('strings.sortCodeLens', true));
   ctx.subscriptions.push(langCommands);
   // 사용처 색인은 첫 참조 요청(또는 버튼 클릭)에 만든다 — 활성화 비용 0. 참조 프로바이더 여덟 개와 명령 둘이 이 핸들 하나를 공유한다.
@@ -370,8 +372,18 @@ export async function activate(ctx: vscode.ExtensionContext) {
     vscode.workspace.onDidChangeConfiguration(e => { if (e.affectsConfiguration('csmscode.config.codeLens')) settingsLens.refresh(); }),
   );
   const diagnostics = registerDiagnostics(ctx, validate, validateStr);
+  const resolveService = new ResolveServiceImplementation(
+    { implementationsIn: parseServiceImplementations }, new ExternalImplementationFinder(root, treeSitter));
+  const servicesComponentOf = (file: string) => componentOfServicesFile(root, file);
+  registerOpenServiceImplementation(ctx, resolveService);
+  ctx.subscriptions.push(vscode.languages.registerDefinitionProvider(SERVICES_SELECTOR,
+    new ServiceImplementationDefinitionProvider(resolveService, servicesComponentOf)));
   const highlight = registerResolvedHighlight(ctx, [
     { setting: 'strings.highlightResolved', languages: ['php'], run: t => listResolved.run(t) },
+    { setting: 'api.highlightResolved', languages: ['php'], run: (t, file) => {
+      const component = servicesComponentOf(file);
+      return component ? resolveService.resolvedRanges(t, component) : [];
+    } },
     { setting: 'templates.highlightResolved', languages: ['php'], run: t => listResolvedTpl.run(t) },
     { setting: 'tables.highlightResolved', languages: ['php'], run: t => listResolvedTbl.run(t) },
     { setting: 'amd.highlightResolved', languages: ['php'], run: t => listResolvedAmd.run(t) },

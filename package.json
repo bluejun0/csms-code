@@ -2,7 +2,7 @@
   "name": "csms-code",
   "displayName": "CSMS Code",
   "description": "CSMS/Moodle 개발 지원 — DB 컬럼·언어 문자열·템플릿·AMD 모듈·SQL 테이블·전역 인텔리전스",
-  "version": "0.31.0",
+  "version": "0.32.0",
   "publisher": "bluesoft",
   "license": "MIT",
   "repository": {
@@ -111,6 +111,11 @@
           "default": true,
           "description": "install.xml의 <TABLE> 선언 줄 위에 \"사용 N건\" 버튼(CodeLens)을 표시합니다. 클릭하면 그 자리에서 그 테이블을 쓰는 SQL·$DB 호출 목록이 열립니다."
         },
+        "csmscode.api.highlightResolved": {
+          "type": "boolean",
+          "default": true,
+          "description": "db/services.php에서 구현을 찾은 classname·methodname 값을 링크 색상(textLink.foreground)으로 하이라이팅합니다. Ctrl+클릭(F12)하면 구현 클래스·메서드로 이동합니다."
+        },
         "csmscode.checkForUpdates": {
           "type": "boolean",
           "default": true,
@@ -195,6 +200,11 @@
         "title": "CSMS Code: 누락 번역 추가"
       },
       {
+        "command": "csmscode.openServiceImplementation",
+        "title": "구현으로 이동",
+        "icon": "$(go-to-file)"
+      },
+      {
         "command": "csmscode.rebuildUsageIndex",
         "title": "CSMS Code: 사용처 색인 다시 만들기"
       },
@@ -204,6 +214,13 @@
       }
     ],
     "menus": {
+      "view/item/context": [
+        {
+          "command": "csmscode.openServiceImplementation",
+          "when": "view == csmscode.api && viewItem == csmscode.apiItem",
+          "group": "inline"
+        }
+      ],
       "view/title": [
         {
           "command": "csmscode.search.tables",
@@ -232,6 +249,10 @@
         }
       ],
       "commandPalette": [
+        {
+          "command": "csmscode.openServiceImplementation",
+          "when": "false"
+        },
         {
           "command": "csmscode.sortLangStrings",
           "when": "resourceExtname == .php && resourceDirname =~ /\\Wlang\\W[a-zA-Z_]+$/"

@@ -1,6 +1,8 @@
 import { DocumentFacts, RecordAssignment, emptyFacts } from '../../domain/code-analysis/facts';
 import { PhpSyntax, RawClassMember } from '../../domain/code-analysis/ports/php-syntax';
 import { LangLayout, LangLayoutReader } from '../../domain/lang-model/ports/lang-layout-reader';
+import { ClassOutline, ClassOutlineReader } from '../../domain/code-analysis/ports/class-outline-reader';
+import { readClassOutlines } from './class-outline';
 import { readLangLayout } from './lang-layout';
 import { readClassMembers } from './class-members';
 import { FragmentSet } from './fragment-set';
@@ -25,7 +27,7 @@ export const ALL_FRAGMENTS: readonly QueryFragment[] = [
   ...configFragments, ...tableFragments, ...templateFragments,
 ];
 
-export class TreeSitterPhpSyntax implements PhpSyntax, LangLayoutReader {
+export class TreeSitterPhpSyntax implements PhpSyntax, LangLayoutReader, ClassOutlineReader {
   private constructor(
     private readonly runtime: PhpRuntime,
     private readonly fragments: FragmentSet,
@@ -77,6 +79,16 @@ export class TreeSitterPhpSyntax implements PhpSyntax, LangLayoutReader {
     if (!doc) return null;
     try {
       return readLangLayout(doc.root, text);
+    } finally {
+      doc.dispose();
+    }
+  }
+
+  classOutlines(text: string): ClassOutline[] {
+    const doc = this.runtime.parse(text);
+    if (!doc) return [];
+    try {
+      return readClassOutlines(doc.root);
     } finally {
       doc.dispose();
     }
