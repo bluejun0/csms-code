@@ -4,7 +4,7 @@ import { SourceLocation } from '../../domain/shared/value-objects';
 
 export type ExplorerNode =
   | { kind: 'component'; component: string; count: number }
-  | { kind: 'item'; item: PluginItem };
+  | { kind: 'item'; item: PluginItem; component: string; category: PluginCategory };
 
 /** 카테고리 뷰 하나(테이블·문자열·API·템플릿 중 하나). 조립은 ListPluginTree가 하고
  *  여기서는 VSCode 표현만 만든다. 같은 클래스를 카테고리만 바꿔 네 번 등록한다. */
@@ -27,13 +27,14 @@ export class PluginExplorerProvider implements vscode.TreeDataProvider<ExplorerN
       return this.tree.componentsIn(this.category).map(c => ({ kind: 'component', ...c }));
     }
     if (node.kind === 'component') {
-      return this.tree.items(node.component, this.category).map(item => ({ kind: 'item', item }));
+      return this.tree.items(node.component, this.category)
+        .map(item => ({ kind: 'item', item, component: node.component, category: this.category }));
     }
     return [];
   }
 
   getTreeItem(node: ExplorerNode): vscode.TreeItem {
-    return node.kind === 'component' ? componentItem(node) : itemNode(node.item);
+    return node.kind === 'component' ? componentItem(node) : itemNode(node.item, node.category);
   }
 }
 
@@ -45,12 +46,13 @@ function componentItem(node: { component: string; count: number }): vscode.TreeI
   return item;
 }
 
-function itemNode(entry: PluginItem): vscode.TreeItem {
+function itemNode(entry: PluginItem, category: PluginCategory): vscode.TreeItem {
   const item = new vscode.TreeItem(entry.label, vscode.TreeItemCollapsibleState.None);
   item.description = entry.detail;
   item.tooltip = entry.detail ? `${entry.label}\n${entry.detail}` : entry.label;
   item.command = openAt(entry.location);
-  item.contextValue = 'csmscode.item';
+  // API 항목만 inline "구현으로 이동" 버튼을 단다(package.json의 view/item/context).
+  item.contextValue = category === 'api' ? 'csmscode.apiItem' : 'csmscode.item';
   return item;
 }
 

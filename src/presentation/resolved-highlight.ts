@@ -22,7 +22,7 @@ export function registerResolvedHighlight(ctx: vscode.ExtensionContext, sources:
     const text = doc.getText();
     const ranges = forLang
       .filter(s => cfg.get(s.setting, true))
-      .flatMap(s => s.run(text))
+      .flatMap(s => s.run(text, doc.uri.fsPath))
       .map(r => new vscode.Range(r.line, r.column0, r.line, r.column0 + r.length));
     editor.setDecorations(deco, ranges);
   };
