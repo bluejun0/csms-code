@@ -20,7 +20,7 @@
   - 실측: `dghulxp` 838건·`csms45` 845건의 선언 전부에서 클래스와 메서드를 찾았고, 저장소 전체의 클래스 선언으로 만든 정답 맵과 고른 파일이 모두 일치합니다. `lib/db/services.php`(593개 링크) 하이라이트는 처음 한 번 약 340ms, 이후 10~25ms입니다.
 
 ### 수정
-- services.php에서 `'ajax' => true,`처럼 리터럴이 아닌 값 바로 뒤에 오는 필드를 그 값으로 오인해 빠뜨리던 문제를 고쳤습니다.
+- services.php에서 `'ajax' => true,`처럼 리터럴이 아닌 값 바로 뒤에 오는 필드를 그 값으로 오인하던 문제를 고쳤습니다. API 뷰에 `classname`이 `methodname`으로, 설명이 빈칸으로 잡히던 선언이 바로잡힙니다(실측 `dghulxp`·`csms45` 각 7개 파일, 예: `enrol_meta_add_instances`, `core_ai_get_policy_status`).
 
 ## [0.31.0] — 2026-10-01
 
