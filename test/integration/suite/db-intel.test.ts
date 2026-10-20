@@ -47,9 +47,13 @@ suite('선택한 lang 문자열 정렬 통합', () => {
     const original = await vscode.workspace.fs.readFile(uri);
     try {
       const text = "<?php\n// 출석\n$string['b'] = 'B';\n$string['a'] = 'A';\n// 성적\n$string['d'] = 'D';\n$string['c'] = 'C';\n";
-      await vscode.workspace.fs.writeFile(uri, Buffer.from(text));
+      // 앞 테스트가 같은 파일을 열어 두었다 — 디스크에 쓰면 열린 문서가 다시 읽히기 전에 명령이 돌 수 있어 문서를 직접 고친다.
       const doc = await vscode.workspace.openTextDocument(uri);
       await vscode.window.showTextDocument(doc);
+      const edit = new vscode.WorkspaceEdit();
+      edit.replace(uri, new vscode.Range(0, 0, doc.lineCount, 0), text);
+      await vscode.workspace.applyEdit(edit);
+      await doc.save();
       await vscode.commands.executeCommand('csmscode.sortSelectedLangStrings', uri, new vscode.Range(5, 0, 7, 0));
       const saved = Buffer.from(await vscode.workspace.fs.readFile(uri)).toString('utf8');
       assert.equal(saved, "<?php\n// 출석\n$string['b'] = 'B';\n$string['a'] = 'A';\n// 성적\n$string['c'] = 'C';\n$string['d'] = 'D';\n");
