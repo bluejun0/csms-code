@@ -2,9 +2,10 @@ import { strict as assert } from 'assert';
 import * as fs from 'fs';
 import * as path from 'path';
 import { langLensLine } from '../../../src/domain/lang-model/services/lang-lens-line';
-import { compareLangKeys, missingTranslations, sortAlphabetically, sortInEnglishOrder, TextReplacement } from '../../../src/domain/lang-model/services/lang-string-sorter';
+import { compareLangKeys, missingTranslations, sortAlphabetically, sortAlphabeticallyWithin, sortInEnglishOrder, TextReplacement } from '../../../src/domain/lang-model/services/lang-string-sorter';
 import { parseLangFile } from '../../../src/infrastructure/lang/lang-file-parser';
 import { TreeSitterPhpSyntax } from '../../../src/infrastructure/php/php-syntax';
+import { selectedLines } from '../../../src/presentation/selected-lines';
 
 const HEADER = `<?php
 // This file is part of Moodle.
@@ -112,6 +113,38 @@ describe('lang 문자열 명령', () => {
     it('문자열이 없거나 문법 오류가 있으면 아무것도 하지 않는다', () => {
       assert.equal(alpha(HEADER), null);
       assert.equal(alpha(HEADER + "$string['b'] = 'B';\n$string['a'] = ;\n"), null);
+    });
+  });
+
+  describe('선택한 줄만 알파벳순 정렬', () => {
+    const SECTIONS = HEADER
+      + "// 출석\n$string['b_att'] = 'B';\n$string['a_att'] = 'A';\n\n"
+      + "// 성적\n$string['d_grade'] = 'D';\n$string['c_grade'] = 'C';\n";
+    const within = (text: string, first: number, last: number) =>
+      applied(text, sortAlphabeticallyWithin(text, layoutOf(text), first, last));
+
+    it('고른 묶음만 정렬하고 묶음 제목 주석과 다른 묶음은 그대로 둔다', () =>
+      assert.equal(within(SECTIONS, 10, 11), HEADER
+        + "// 출석\n$string['b_att'] = 'B';\n$string['a_att'] = 'A';\n\n"
+        + "// 성적\n$string['c_grade'] = 'C';\n$string['d_grade'] = 'D';\n"));
+
+    it('제목 주석까지 골라도 주석은 첫 문자열 위에 남는다', () =>
+      assert.equal(within(SECTIONS, 5, 7), HEADER
+        + "// 출석\n$string['a_att'] = 'A';\n$string['b_att'] = 'B';\n\n"
+        + "// 성적\n$string['d_grade'] = 'D';\n$string['c_grade'] = 'C';\n"));
+
+    it('일부만 걸친 여러 줄 문자열은 빼고, deprecated 뒤라도 고르면 정렬한다', () => {
+      const text = HEADER + "$string['c'] = 'C';\n$string['b'] = 'B1' .\n    'B2';\n// Deprecated\n$string['z'] = 'Z';\n$string['y'] = 'Y';\n";
+      assert.equal(within(text, 5, 6), text);
+      assert.equal(within(text, 9, 10), HEADER + "$string['c'] = 'C';\n$string['b'] = 'B1' .\n    'B2';\n// Deprecated\n$string['y'] = 'Y';\n$string['z'] = 'Z';\n");
+    });
+
+    it('고른 줄에 통째로 든 문자열이 없으면 null', () => assert.equal(within(SECTIONS, 0, 4), null));
+
+    it('다음 줄 첫머리에서 끝난 선택은 그 줄을 빼고 센다', () => {
+      assert.deepEqual(selectedLines({ start: { line: 5, character: 0 }, end: { line: 8, character: 0 } }), { first: 5, last: 7 });
+      assert.deepEqual(selectedLines({ start: { line: 5, character: 3 }, end: { line: 7, character: 4 } }), { first: 5, last: 7 });
+      assert.deepEqual(selectedLines({ start: { line: 5, character: 0 }, end: { line: 5, character: 0 } }), { first: 5, last: 5 });
     });
   });
 

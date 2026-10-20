@@ -16,7 +16,20 @@ export function sortAlphabetically(text: string, layout: LangLayout): TextReplac
   const cutoff = chunks.findIndex(c => c.statement.followsDeprecatedMarker);
   const movable = cutoff < 0 ? chunks : chunks.slice(0, cutoff);
   if (!movable.length) return null;
-  return rearrange(lines, movable, [...movable].sort((a, b) => compareLangKeys(a.statement.key, b.statement.key)));
+  return rearrange(lines, movable, byKey(movable));
+}
+
+/** 줄 범위(양끝 포함) 안에 통째로 든 문자열만 키 순으로. 주석으로 나눈 묶음 하나만 고를 때 쓴다 —
+ *  범위 첫 문자열 위의 주석은 묶음 제목이라 제자리에 남는다. 문자열이 없으면 null. */
+export function sortAlphabeticallyWithin(text: string, layout: LangLayout, firstLine: number, lastLine: number): TextReplacement | null {
+  const lines = new TextLines(text);
+  const chunks = chunksOf(lines, statementsWithin(layout, firstLine, lastLine));
+  if (!chunks.length) return null;
+  return rearrange(lines, chunks, byKey(chunks));
+}
+
+export function statementsWithin(layout: LangLayout, firstLine: number, lastLine: number): LangStatement[] {
+  return layout.statements.filter(s => s.start.line >= firstLine && s.end.line <= lastLine);
 }
 
 /** 모든 문자열을 영어 파일의 키 순서로. 영어 파일에 없는 키는 원래 순서대로 맨 뒤. 문자열이 없으면 null. */
@@ -49,6 +62,10 @@ export function missingTranslations(text: string, layout: LangLayout, englishTex
 }
 
 interface Chunk { statement: LangStatement; start: LinePosition; end: LinePosition; endsWithoutNewline: boolean; }
+
+function byKey(chunks: Chunk[]): Chunk[] {
+  return [...chunks].sort((a, b) => compareLangKeys(a.statement.key, b.statement.key));
+}
 
 /** 문장마다 옮길 구간: 다음 코드나 다음 문자열이 아래 줄에 있으면 줄 끝(꼬리 주석 포함)까지, 줄 첫머리에서
  *  시작하면 직전 구간 끝부터(위쪽 주석·빈 줄 포함). 다음 코드와 줄을 나눠 쓰거나 파일 끝이면 문장 끝에서
