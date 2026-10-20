@@ -41,6 +41,31 @@ suite('lang 문자열 정렬 통합', () => {
   });
 });
 
+suite('선택한 lang 문자열 정렬 통합', () => {
+  test('고른 묶음만 정렬해 저장한다', async () => {
+    const uri = vscode.Uri.file(path.join(root, 'local/ubattend/lang/ko/local_ubattend.php'));
+    const original = Buffer.from(await vscode.workspace.fs.readFile(uri)).toString('utf8');
+    const doc = await vscode.workspace.openTextDocument(uri);
+    await vscode.window.showTextDocument(doc);
+    // 앞 테스트가 같은 파일을 디스크로 되돌려 썼다 — 열린 문서가 그 내용을 다시 읽기 전에 저장하면 충돌한다.
+    for (let i = 0; i < 50 && doc.getText() !== original; i++) await new Promise(r => setTimeout(r, 100));
+    const setText = async (text: string) => {
+      const edit = new vscode.WorkspaceEdit();
+      edit.replace(uri, new vscode.Range(0, 0, doc.lineCount, 0), text);
+      await vscode.workspace.applyEdit(edit);
+      await doc.save();
+    };
+    try {
+      await setText("<?php\n// 출석\n$string['b'] = 'B';\n$string['a'] = 'A';\n// 성적\n$string['d'] = 'D';\n$string['c'] = 'C';\n");
+      await vscode.commands.executeCommand('csmscode.sortSelectedLangStrings', uri, new vscode.Range(5, 0, 7, 0));
+      const saved = Buffer.from(await vscode.workspace.fs.readFile(uri)).toString('utf8');
+      assert.equal(saved, "<?php\n// 출석\n$string['b'] = 'B';\n$string['a'] = 'A';\n// 성적\n$string['c'] = 'C';\n$string['d'] = 'D';\n");
+    } finally {
+      await setText(original);
+    }
+  });
+});
+
 suite('services.php 구현 링크 통합', () => {
   test('classname·methodname에서 정의 이동이 구현 메서드로 간다', async () => {
     const services = vscode.Uri.file(path.join(root, 'local/ubattend/db/services.php'));

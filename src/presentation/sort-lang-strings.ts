@@ -2,11 +2,13 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { LangLayout, LangLayoutReader } from '../domain/lang-model/ports/lang-layout-reader';
 import { langLensLine } from '../domain/lang-model/services/lang-lens-line';
-import { missingTranslations, sortAlphabetically, sortInEnglishOrder, TextReplacement } from '../domain/lang-model/services/lang-string-sorter';
+import { missingTranslations, sortAlphabetically, sortAlphabeticallyWithin, sortInEnglishOrder, statementsWithin, TextReplacement } from '../domain/lang-model/services/lang-string-sorter';
+import { selectedLines } from './selected-lines';
 
 export const SORT_LANG_STRINGS_COMMAND = 'csmscode.sortLangStrings';
 export const SORT_LANG_STRINGS_AS_ENGLISH_COMMAND = 'csmscode.sortLangStringsAsEnglish';
 export const ADD_MISSING_TRANSLATIONS_COMMAND = 'csmscode.addMissingTranslations';
+export const SORT_SELECTED_LANG_STRINGS_COMMAND = 'csmscode.sortSelectedLangStrings';
 
 interface LangCommand { command: string; title: string; }
 
@@ -62,6 +64,26 @@ export function registerLangStringCommands(ctx: vscode.ExtensionContext, reader:
       const doc = await targetDocument(uri);
       if (doc) await replaceAndSave(doc, sortAlphabetically(doc.getText(), layoutOf(doc)));
     }),
+    vscode.commands.registerCommand(SORT_SELECTED_LANG_STRINGS_COMMAND, async (uri?: vscode.Uri, range?: vscode.Range) => {
+      const editor = vscode.window.activeTextEditor;
+      const doc = await targetDocument(uri ?? editor?.document.uri);
+      const selection = range ?? (editor?.document === doc ? editor?.selection : undefined);
+      if (!doc || !selection || selection.isEmpty) {
+        if (doc) vscode.window.showInformationMessage('CSMS Code: 정렬할 줄을 먼저 선택하세요.');
+        return;
+      }
+      const { first, last } = selectedLines(selection);
+      const change = sortAlphabeticallyWithin(doc.getText(), layoutOf(doc), first, last);
+      if (!change) {
+        vscode.window.showInformationMessage('CSMS Code: 선택한 줄에 통째로 든 $string이 없습니다.');
+        return;
+      }
+      const start = doc.positionAt(change.start);
+      await replaceAndSave(doc, change);
+      const end = doc.positionAt(change.start + change.replacement.length);
+      const shown = vscode.window.visibleTextEditors.find(e => e.document === doc);
+      if (shown) shown.selection = new vscode.Selection(start, end);
+    }),
     vscode.commands.registerCommand(SORT_LANG_STRINGS_AS_ENGLISH_COMMAND, async (uri?: vscode.Uri) => {
       const doc = await targetDocument(uri);
       const english = doc && await englishDocument(doc);
@@ -108,12 +130,29 @@ export class LangStringCommandsProvider implements vscode.CodeLensProvider, vsco
       new vscode.CodeLens(new vscode.Range(line, 0, line, 0), { ...c, arguments: [doc.uri] }));
   }
 
-  provideCodeActions(doc: vscode.TextDocument): vscode.CodeAction[] {
+  provideCodeActions(doc: vscode.TextDocument, range: vscode.Range): vscode.CodeAction[] {
     if (!this.isLangFile(doc.uri.fsPath)) return [];
-    return commandsFor(doc.uri).map(c => {
-      const action = new vscode.CodeAction(c.title, vscode.CodeActionKind.Refactor);
-      action.command = { ...c, arguments: [doc.uri] };
-      return action;
-    });
+    const actions = commandsFor(doc.uri).map(c => refactor(c.title, { ...c, arguments: [doc.uri] }));
+    if (this.selectsSeveralStrings(doc, range)) {
+      actions.unshift(refactor(SORT_SELECTED_TITLE,
+        { command: SORT_SELECTED_LANG_STRINGS_COMMAND, title: SORT_SELECTED_TITLE, arguments: [doc.uri, range] }));
+    }
+    return actions;
   }
+
+  /** 커서만 옮겨도 전구가 다시 물어 오므로 선택이 있을 때만 파싱한다. */
+  private selectsSeveralStrings(doc: vscode.TextDocument, range: vscode.Range): boolean {
+    if (range.isEmpty) return false;
+    const layout = this.reader.langLayout(doc.getText());
+    const { first, last } = selectedLines(range);
+    return !!layout && statementsWithin(layout, first, last).length > 1;
+  }
+}
+
+const SORT_SELECTED_TITLE = '선택한 문자열 알파벳순 정렬';
+
+function refactor(title: string, command: vscode.Command): vscode.CodeAction {
+  const action = new vscode.CodeAction(title, vscode.CodeActionKind.Refactor);
+  action.command = command;
+  return action;
 }

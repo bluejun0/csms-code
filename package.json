@@ -2,7 +2,7 @@
   "name": "csms-code",
   "displayName": "CSMS Code",
   "description": "CSMS/Moodle 개발 지원 — DB 컬럼·언어 문자열·템플릿·AMD 모듈·SQL 테이블·전역 인텔리전스",
-  "version": "0.32.0",
+  "version": "0.33.0",
   "publisher": "bluesoft",
   "license": "MIT",
   "repository": {
@@ -192,6 +192,10 @@
         "title": "CSMS Code: lang 문자열 알파벳순 정렬"
       },
       {
+        "command": "csmscode.sortSelectedLangStrings",
+        "title": "CSMS Code: 선택한 lang 문자열 알파벳순 정렬"
+      },
+      {
         "command": "csmscode.sortLangStringsAsEnglish",
         "title": "CSMS Code: lang 문자열을 영어 파일 순서로 정렬"
       },
@@ -214,6 +218,13 @@
       }
     ],
     "menus": {
+      "editor/context": [
+        {
+          "command": "csmscode.sortSelectedLangStrings",
+          "when": "editorHasSelection && resourceExtname == .php && resourceDirname =~ /\\Wlang\\W[a-zA-Z_]+$/",
+          "group": "1_modification"
+        }
+      ],
       "view/item/context": [
         {
           "command": "csmscode.openServiceImplementation",
@@ -249,6 +260,10 @@
         }
       ],
       "commandPalette": [
+        {
+          "command": "csmscode.sortSelectedLangStrings",
+          "when": "editorHasSelection && resourceExtname == .php && resourceDirname =~ /\\Wlang\\W[a-zA-Z_]+$/"
+        },
         {
           "command": "csmscode.openServiceImplementation",
           "when": "false"
