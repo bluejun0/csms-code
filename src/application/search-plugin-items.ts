@@ -11,7 +11,7 @@ export interface SearchHit {
   item: PluginItem;
 }
 
-const CATEGORIES: PluginCategory[] = ['tables', 'strings', 'api', 'templates', 'config'];
+const CATEGORIES: PluginCategory[] = ['tables', 'strings', 'api', 'templates', 'config', 'events'];
 const DEFAULT_LIMIT = 200;
 
 /** 이름 접두 → 이름 포함 → 값·설명에만 포함. 이름으로 아는 것을 먼저 보여준다. */

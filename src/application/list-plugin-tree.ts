@@ -4,8 +4,11 @@ import { StringCatalog } from '../domain/lang-model/ports/string-catalog';
 import { ServiceCatalog } from '../domain/service-model/ports/service-catalog';
 import { TemplateCatalog } from '../domain/template-model/ports/template-catalog';
 import { ConfigCatalog } from '../domain/moodle-model/ports/config-catalog';
+import { EventCatalog } from '../domain/event-model/ports/event-catalog';
+import { EventDefinition } from '../domain/event-model/event-definition';
+import { normalizeComponent } from '../domain/lang-model/services/component-normalizer';
 
-export type PluginCategory = 'tables' | 'strings' | 'api' | 'templates' | 'config';
+export type PluginCategory = 'tables' | 'strings' | 'api' | 'templates' | 'config' | 'events';
 
 export interface ComponentNode { component: string; count: number; }
 export interface PluginItem {
@@ -25,6 +28,7 @@ export class ListPluginTree {
     private services: ServiceCatalog,
     private templates: TemplateCatalog,
     private config: ConfigCatalog,
+    private events: EventCatalog = { components: () => [], eventsOf: () => [] },
   ) {}
 
   /** 그 카테고리에 **항목이 있는** 컴포넌트만. 뷰 하나가 카테고리 하나이므로 0건은 소음이다 —
@@ -43,7 +47,7 @@ export class ListPluginTree {
     return new Set([
       ...this.tables.components(), ...this.strings.components(),
       ...this.services.components(), ...this.templates.components(),
-      ...this.config.components(),
+      ...this.config.components(), ...this.events.components(),
     ]);
   }
 
@@ -52,6 +56,7 @@ export class ListPluginTree {
     if (category === 'strings') return this.stringItems(component);
     if (category === 'api') return this.apiItems(component);
     if (category === 'config') return this.configItems(component);
+    if (category === 'events') return this.eventItems(component);
     return this.templateItems(component);
   }
 
@@ -69,6 +74,41 @@ export class ListPluginTree {
       if (entry) out.push({ label: s.key, detail: entry.value, match: `${s.key} ${entry.value}`, location: entry.location });
     }
     return out.sort(byLabel);
+  }
+
+  /** 부제는 crud와 `get_name()`의 한국어 이름 — 이벤트 이름만으로는 무엇을 기록하는지 알기 어렵다. */
+  private eventItems(component: string): PluginItem[] {
+    const titleOf = this.eventTitles();
+    return this.events.eventsOf(component).map(e => {
+      const title = titleOf(e);
+      return {
+        label: e.shortName,
+        detail: [CRUD_NAMES[e.crud], title].filter(Boolean).join(' · '),
+        match: `${e.name} ${title ?? ''}`.trim(),
+        location: e.location,
+      };
+    }).sort(byLabel);
+  }
+
+  /** 한 번 펼칠 때 같은 lang 컴포넌트를 거듭 훑지 않게 키 맵을 컴포넌트별로 한 번만 만든다. */
+  private eventTitles(): (e: EventDefinition) => string | null {
+    const known = new Set(this.strings.components());
+    const values = new Map<string, Map<string, string>>();
+    return e => {
+      if (!e.title) return null;
+      if ('text' in e.title) return e.title.text;
+      const component = normalizeComponent(e.title.component, c => known.has(c));
+      let keys = values.get(component);
+      if (!keys) {
+        keys = new Map();
+        for (const s of this.strings.keysOf(component)) {
+          const value = (s.ko ?? s.en)?.value;
+          if (value !== undefined) keys.set(s.key, value);
+        }
+        values.set(component, keys);
+      }
+      return keys.get(e.title.key) ?? null;
+    };
   }
 
   /** 정렬하지 않는다 — services.php는 주석으로 API를 묶어 두어 선언 순서 자체가 정보다. */
@@ -111,3 +151,5 @@ function isCore(component: string): boolean {
 function byLabel(a: PluginItem, b: PluginItem): number {
   return a.label < b.label ? -1 : a.label > b.label ? 1 : 0;
 }
+
+const CRUD_NAMES: Record<string, string> = { c: '생성', r: '조회', u: '수정', d: '삭제' };

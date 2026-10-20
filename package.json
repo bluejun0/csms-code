@@ -2,7 +2,7 @@
   "name": "csms-code",
   "displayName": "CSMS Code",
   "description": "CSMS/Moodle 개발 지원 — DB 컬럼·언어 문자열·템플릿·AMD 모듈·SQL 테이블·전역 인텔리전스",
-  "version": "0.33.0",
+  "version": "0.34.0",
   "publisher": "bluesoft",
   "license": "MIT",
   "repository": {
@@ -153,6 +153,10 @@
         {
           "id": "csmscode.config",
           "name": "설정"
+        },
+        {
+          "id": "csmscode.events",
+          "name": "이벤트"
         }
       ]
     },
@@ -185,6 +189,11 @@
       {
         "command": "csmscode.search.config",
         "title": "CSMS Code: 설정 찾기",
+        "icon": "$(search)"
+      },
+      {
+        "command": "csmscode.search.events",
+        "title": "CSMS Code: 이벤트 찾기",
         "icon": "$(search)"
       },
       {
@@ -257,6 +266,11 @@
           "command": "csmscode.search.config",
           "when": "view == csmscode.config",
           "group": "navigation"
+        },
+        {
+          "command": "csmscode.search.events",
+          "when": "view == csmscode.events",
+          "group": "navigation"
         }
       ],
       "commandPalette": [
@@ -298,6 +312,10 @@
         },
         {
           "command": "csmscode.search.config",
+          "when": "false"
+        },
+        {
+          "command": "csmscode.search.events",
           "when": "false"
         }
       ]
