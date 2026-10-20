@@ -10,6 +10,8 @@ import { ConfigDeclaration } from '../../../src/domain/moodle-model/ports/config
 import { LangString } from '../../../src/domain/lang-model/lang-string';
 import { ServiceFunction } from '../../../src/domain/service-model/service-function';
 import { SourceLocation } from '../../../src/domain/shared/value-objects';
+import { EventDefinition } from '../../../src/domain/event-model/event-definition';
+import { EventCatalog } from '../../../src/domain/event-model/ports/event-catalog';
 
 const at = (uri: string, line = 0): SourceLocation => ({ uri, line, column: 0 });
 
@@ -36,6 +38,7 @@ function build(parts: {
   services?: Record<string, ServiceFunction[]>;
   templates?: Record<string, string[]>;
   config?: Record<string, ConfigDeclaration[]>;
+  events?: Record<string, EventDefinition[]>;
 }): ListPluginTree {
   const t = parts.tables ?? {}, s = parts.strings ?? {}, a = parts.services ?? {}, m = parts.templates ?? {};
   const g = parts.config ?? {};
@@ -48,7 +51,16 @@ function build(parts: {
     namesOf: c => m[c] ?? [],
     locationsOf: (c, n) => (m[c] ?? []).includes(n) ? [at(`${c}/${n}.mustache`)] : [],
   };
-  return new ListPluginTree(tables, strings, services, templates, config);
+  const e = parts.events ?? {};
+  const events: EventCatalog = { components: () => Object.keys(e), eventsOf: c => e[c] ?? [] };
+  return new ListPluginTree(tables, strings, services, templates, config, events);
+}
+
+function event(shortName: string, component: string, extra: Partial<EventDefinition> = {}): EventDefinition {
+  return {
+    name: `\\${component}\\event\\${shortName}`, shortName, component, crud: '', title: null,
+    location: at(`${component}/classes/event/${shortName}.php`, 4), ...extra,
+  };
 }
 
 describe('ListPluginTree — 뷰별 컴포넌트 목록', () => {
@@ -210,3 +222,38 @@ describe('ListPluginTree — 검색 대상(match)', () => {
     assert.equal(tree.items('local_a', 'templates')[0].match, 'card');
   });
 });
+
+describe('ListPluginTree — 이벤트 항목', () => {
+  const strings = {
+    local_a: [{ key: 'event_b', ko: { value: '나 이벤트', location: at('ko.php') }, en: { value: 'B event', location: at('en.php') } }],
+    core: [{ key: 'eventcoursecreated', en: { value: 'Course created', location: at('moodle.php') } }],
+  };
+
+  it('이름순, crud와 get_name()의 한국어 이름을 부제로', () => {
+    const tree = build({ strings, events: { local_a: [
+      event('thing_viewed', 'local_a', { crud: 'r', title: { text: '직접 쓴 이름' } }),
+      event('b_created', 'local_a', { crud: 'c', title: { key: 'event_b', component: 'local_a' } }),
+      event('inherited', 'local_a'),
+    ] } });
+    assert.deepEqual(tree.items('local_a', 'events').map(i => `${i.label}|${i.detail}`),
+      ['b_created|생성 · 나 이벤트', 'inherited|', 'thing_viewed|조회 · 직접 쓴 이름']);
+  });
+
+  it('get_string의 컴포넌트는 정규화한다 — moodle은 core, 한국어가 없으면 영어', () => {
+    const tree = build({ strings, events: { core: [
+      event('course_created', 'core', { crud: 'c', title: { key: 'eventcoursecreated', component: 'moodle' } }),
+    ] } });
+    assert.equal(tree.items('core', 'events')[0].detail, '생성 · Course created');
+  });
+
+  it('검색은 전체 이름과 이벤트 이름을 훑고, 클래스 선언으로 간다', () => {
+    const tree = build({ strings, events: { local_a: [event('b_created', 'local_a', { title: { key: 'event_b', component: 'local_a' } })] } });
+    const [item] = tree.items('local_a', 'events');
+    assert.equal(item.match, '\\local_a\\event\\b_created 나 이벤트');
+    assert.deepEqual(item.location, at('local_a/classes/event/b_created.php', 4));
+  });
+
+  it('이벤트가 있는 컴포넌트만 뷰에 나온다', () =>
+    assert.deepEqual(build({ strings, events: { local_a: [event('x', 'local_a')] } }).componentsIn('events').map(c => c.component), ['local_a']));
+});
+

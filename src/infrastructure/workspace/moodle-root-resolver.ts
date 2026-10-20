@@ -465,3 +465,44 @@ export async function listTemplateFilesAsync(root: string): Promise<TemplateFile
   }
   return out;
 }
+
+const EVENT_DIR = path.join('classes', 'event');
+
+/** 이벤트 클래스 파일 — 코어(`lib/classes/event`), 코어 서브시스템, 플러그인의 `classes/event/*.php`.
+ *  Moodle 이벤트는 `\<컴포넌트>\event\<이름>`이라 하위 디렉터리는 보지 않는다. */
+export async function listEventFilesAsync(root: string): Promise<DbFileRef[]> {
+  const dirs: DbFileRef[] = [{ file: path.join(root, 'lib', EVENT_DIR), component: 'core' }];
+  for (const [sub, rel] of await coreSubsystemDirsAsync(root)) {
+    if (rel !== 'lib') dirs.push({ file: path.join(root, rel, EVENT_DIR), component: `core_${sub}` });
+  }
+  let n = 0;
+  for (const [type, relDir] of await pluginTypeDirsAsync(root)) {
+    const typeDir = path.join(root, relDir);
+    if (!await existsAsync(typeDir)) continue;
+    for (const name of await safeReaddirAsync(typeDir)) {
+      dirs.push({ file: path.join(typeDir, name, EVENT_DIR), component: `${type}_${name}` });
+      if (++n % INDEX_YIELD_EVERY === 0) await yieldNow();
+    }
+  }
+  const out: DbFileRef[] = [];
+  for (const { file: dir, component } of dirs) {
+    for (const f of await safeReaddirFilesAsync(dir)) {
+      if (f.endsWith('.php')) out.push({ file: path.join(dir, f), component });
+    }
+  }
+  return out;
+}
+
+/** 이벤트 클래스 파일 경로 → component. 규칙 밖은 null. */
+export function componentOfEventFile(root: string, file: string): string | null {
+  const rel = path.relative(root, file);
+  if (rel.startsWith('..') || path.isAbsolute(rel) || !rel.endsWith('.php')) return null;
+  const dir = path.dirname(rel);
+  if (dir === path.join('lib', EVENT_DIR)) return 'core';
+  for (const [sub, subRel] of coreSubsystemDirs(root)) {
+    if (subRel !== 'lib' && dir === path.join(subRel, EVENT_DIR)) return `core_${sub}`;
+  }
+  const hit = pluginTypeOfRel(root, rel);
+  if (!hit) return null;
+  return path.dirname(hit.rest) === 'classes/event' ? `${hit.type}_${hit.name}` : null;
+}

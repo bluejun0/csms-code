@@ -3,7 +3,7 @@ import { SearchPluginItems, SearchHit } from '../application/search-plugin-items
 import { PluginCategory } from '../application/list-plugin-tree';
 
 const CATEGORY_ICONS: Record<PluginCategory, string> = {
-  tables: 'database', strings: 'symbol-string', api: 'plug', templates: 'file-code', config: 'settings-gear',
+  tables: 'database', strings: 'symbol-string', api: 'plug', templates: 'file-code', config: 'settings-gear', events: 'zap',
 };
 
 interface HitPick extends vscode.QuickPickItem { hit: SearchHit; }
@@ -45,11 +45,11 @@ export function registerSearch(ctx: vscode.ExtensionContext, command: string,
 }
 
 const SCOPE_NAMES: Record<PluginCategory, string> = {
-  tables: '테이블', strings: '문자열', api: 'API', templates: '템플릿', config: '설정',
+  tables: '테이블', strings: '문자열', api: 'API', templates: '템플릿', config: '설정', events: '이벤트',
 };
 
 function scopeName(category?: PluginCategory): string {
-  return category ? SCOPE_NAMES[category] : '테이블·문자열·API·템플릿·설정';
+  return category ? SCOPE_NAMES[category] : '테이블·문자열·API·템플릿·설정·이벤트';
 }
 
 function toPick(hit: SearchHit): HitPick {

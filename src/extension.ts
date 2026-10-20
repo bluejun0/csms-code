@@ -6,7 +6,7 @@ import { TreeSitterPhpSyntax } from './infrastructure/php/php-syntax';
 import { CachedPhpSyntax } from './infrastructure/php/facts-cache';
 import { pluginTypeDirsAsync, clearPluginTypeCache } from './infrastructure/workspace/plugin-type-map';
 import { registerUpdateCheck } from './presentation/update-notifier';
-import { findMoodleRoot, componentOfLangFile, componentOfTemplateFile, componentOfInstallXmlFile, componentOfAmdFile, componentOfServicesFile, langFileMetaOf, isLangFileOfAnyLocale } from './infrastructure/workspace/moodle-root-resolver';
+import { findMoodleRoot, componentOfLangFile, componentOfTemplateFile, componentOfInstallXmlFile, componentOfAmdFile, componentOfServicesFile, langFileMetaOf, isLangFileOfAnyLocale, componentOfEventFile } from './infrastructure/workspace/moodle-root-resolver';
 import { RecordTypeInference } from './domain/code-analysis/record-type-inference';
 import { ValidateRecordColumns } from './application/validate-record-columns';
 import { CompleteRecordColumns } from './application/complete-record-columns';
@@ -86,6 +86,7 @@ import { ListResolvedJsCalls } from './application/list-resolved-js-calls';
 import { JsDefinitionProvider } from './presentation/providers/js-definition-provider';
 import { JsHoverProvider } from './presentation/providers/js-hover-provider';
 import { ServiceIndex } from './infrastructure/services/service-index';
+import { EventIndex } from './infrastructure/events/event-index';
 import { ListPluginTree, PluginCategory } from './application/list-plugin-tree';
 import { PluginExplorerProvider } from './presentation/providers/plugin-explorer-provider';
 import { SearchPluginItems } from './application/search-plugin-items';
@@ -116,6 +117,7 @@ export async function activate(ctx: vscode.ExtensionContext) {
   const templates = new TemplateIndex();
   const amd = new AmdIndex();
   const services = new ServiceIndex();
+  const events = new EventIndex();
 
   // 번들 시 dist에 파서 런타임·PHP 문법 wasm 두 개가 복사됨
   let syntax: CachedPhpSyntax;
@@ -405,11 +407,11 @@ export async function activate(ctx: vscode.ExtensionContext) {
   });
   // 액티비티 바의 카테고리 뷰 넷 — 같은 조립기를 카테고리만 바꿔 등록한다.
   // 뷰 id는 카테고리 이름 그대로다(package.json의 `csmscode.tables` 등).
-  const pluginTree = new ListPluginTree(store, strings, services, templates, configKeys);
+  const pluginTree = new ListPluginTree(store, strings, services, templates, configKeys, events);
   // 설정 색인만 지연 생성이다 — 뷰를 펼치거나 그 뷰에서 찾기를 열 때 만든다(실측 웜 ~400ms, 콜드 최대 19초).
   // 다 만들어지면 그 뷰를 다시 그린다. 뷰를 안 열면 지금까지와 같이 비용이 0이다.
   const prepareConfig = () => { if (!configReady) void ensureConfig(); };
-  const explorers = (['tables', 'strings', 'api', 'templates', 'config'] as PluginCategory[]).map(category => {
+  const explorers = (['tables', 'strings', 'api', 'templates', 'config', 'events'] as PluginCategory[]).map(category => {
     const explorer = new PluginExplorerProvider(pluginTree, category,
       category === 'config' ? prepareConfig : undefined);
     ctx.subscriptions.push(explorer, vscode.window.registerTreeDataProvider(`csmscode.${category}`, explorer));
@@ -420,7 +422,7 @@ export async function activate(ctx: vscode.ExtensionContext) {
   const pluginSearch = new SearchPluginItems(pluginTree);
   configReadyListeners.push(() => { for (const e of explorers) e.refresh(); pluginSearch.release(); });
   registerSearch(ctx, 'csmscode.search', pluginSearch);
-  for (const category of ['tables', 'strings', 'api', 'templates', 'config'] as PluginCategory[]) {
+  for (const category of ['tables', 'strings', 'api', 'templates', 'config', 'events'] as PluginCategory[]) {
     registerSearch(ctx, `csmscode.search.${category}`, pluginSearch,
       { category, prepare: category === 'config' ? prepareConfig : undefined });
   }
@@ -450,6 +452,7 @@ export async function activate(ctx: vscode.ExtensionContext) {
     await templates.buildFromRootAsync(root);
     await amd.buildFromRootAsync(root);
     await services.buildFromRootAsync(root);
+    await events.buildFromRootAsync(root);
   };
 
   /** 전체 재빌드는 항상 이 게이트를 통과한다.
@@ -561,6 +564,19 @@ export async function activate(ctx: vscode.ExtensionContext) {
     servicesWatcher.onDidChange(u => onServices(u, false)),
     servicesWatcher.onDidCreate(u => onServices(u, false)),
     servicesWatcher.onDidDelete(u => onServices(u, true)));
+
+  // classes/event/*.php 변경 → 그 파일만 갱신
+  const eventsWatcher = vscode.workspace.createFileSystemWatcher('**/classes/event/*.php');
+  const onEvent = (uri: vscode.Uri, removed: boolean) => applyIncremental(() => {
+    const component = componentOfEventFile(root, uri.fsPath);
+    if (!component) return false;
+    if (removed) events.removeFile(uri.fsPath); else events.updateFile(uri.fsPath, component);
+    return true;
+  });
+  ctx.subscriptions.push(eventsWatcher,
+    eventsWatcher.onDidChange(u => onEvent(u, false)),
+    eventsWatcher.onDidCreate(u => onEvent(u, false)),
+    eventsWatcher.onDidDelete(u => onEvent(u, true)));
 
   // 플러그인 타입 선언이 바뀌면 맵 자체가 달라져 파일 단위 증분이 불가능하다 — 전체를 다시 만든다.
   const typeDeclWatcher = vscode.workspace.createFileSystemWatcher('**/db/subplugins.{json,php}');
